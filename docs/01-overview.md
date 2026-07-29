@@ -91,6 +91,6 @@ tests/
 1. **ECS 优先** — 一切皆为 Component、Resource、System 或 Event。不使用 OOP 风格的继承。
 2. **Tick 计时** — 所有持续时间、周期、任务等待均以 `FixedUpdate` tick 为单位，而非挂钟秒数。
 3. **队列模式** — 技能激活和效果应用支持延迟批量处理，避免同一帧内递归执行导致的借用问题。
-4. **脏标记模式** — `Attribute` 和 `AttributeSet` 追踪脏状态；`Changed<AttributeSet>` 驱动重算。
+4. **脏标记模式** — `AttributeSet` 的冷热位图是唯一脏状态；`Changed<AttributeSet>` 驱动按位重算。
 5. **引用计数标签** — `GameplayTagContainer` 追踪每个位被设置的次数，防止重叠的效果授予/移除互相干扰。
 6. **Arc 共享定义** — `GameplayEffect` 和 `GameplayAbility` 定义通过 `Arc` 共享；规格通过 `Arc::ptr_eq` 比较。

@@ -12,6 +12,12 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 static POST_EXECUTE_COUNT: AtomicUsize = AtomicUsize::new(0);
+static EVALUATION_COUNT: AtomicUsize = AtomicUsize::new(0);
+
+fn count_evaluations(aggregator: &bevy_tools::Aggregator, base_value: f64) -> f64 {
+    EVALUATION_COUNT.fetch_add(1, Ordering::SeqCst);
+    bevy_tools::default_executor(aggregator, base_value)
+}
 
 fn count_post_execute(
     _attributes: &mut AttributeSet,
@@ -23,6 +29,29 @@ fn count_post_execute(
     assert_eq!(old_value, 10.0);
     assert_eq!(new_value, 15.0);
     POST_EXECUTE_COUNT.fetch_add(1, Ordering::SeqCst);
+}
+
+#[test]
+fn attribute_set_dirty_bit_is_the_only_recalculation_source() {
+    EVALUATION_COUNT.store(0, Ordering::SeqCst);
+    let mut app = test_app();
+    let health = register_hot_attribute(&mut app, "Health");
+    let manager = app
+        .world()
+        .resource::<bevy_tools::AttributeIdManager>()
+        .clone();
+    let mut attributes = AttributeSet::default();
+    attributes.initialize_attribute(
+        &manager,
+        health,
+        100.0,
+        Some(count_evaluations),
+        AttributeClamp::None,
+    );
+
+    assert_eq!(attributes.get_current_value(&manager, health), Some(100.0));
+    assert_eq!(attributes.get_current_value(&manager, health), Some(100.0));
+    assert_eq!(EVALUATION_COUNT.load(Ordering::SeqCst), 1);
 }
 
 #[test]

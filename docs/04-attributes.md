@@ -85,15 +85,14 @@ pub struct AttributeLocation {
 
 ### `Attribute`
 
-核心值类型，具有三层值模型：
+`AttributeSet` 的 crate 内部值类型，具有三层值模型。外部代码不能直接构造或修改 `Attribute`，所有状态变化必须通过 `AttributeSet`：
 
 ```rust
-pub struct Attribute {
+pub(crate) struct Attribute {
     base: f64,           // 基础值（被即时效果修改）
     evaluated: f64,      // 聚合值（base + 持续修饰器）
     current: f64,        // Clamp 后的最终值
     aggregator: Aggregator,
-    dirty: bool,
     clamp: AttributeClamp,
 }
 ```
@@ -104,19 +103,19 @@ pub struct Attribute {
 base ──► [Aggregator.evaluate()] ──► evaluated ──► [clamp] ──► current
 ```
 
-**主要方法：**
+`Attribute` 自身不保存脏状态。`AttributeSet` 的冷热 dirty 位图是唯一事实来源：位被取出时才调用 `Attribute::recalculate()`，该方法无条件重新执行 Aggregator 并更新 Clamp。
+
+**crate 内部主要方法：**
 
 | 方法                                   | 说明                              |
 | -------------------------------------- | --------------------------------- |
 | `init(base_value, executor, clamp)`    | 初始化基础值、自定义执行器、Clamp |
-| `recalculate()`                        | 脏则重算，然后 Clamp              |
-| `get_current_value() -> f64`           | 获取当前值（脏时触发重算）        |
-| `get_base_value() -> f64`              | 获取原始基础值                    |
-| `set_clamp(clamp)`                     | 设置 Clamp 范围，标记脏           |
+| `recalculate()`                        | 无条件重算 Aggregator 和 Clamp    |
+| `get_current_value() -> f64`           | 读取已经计算的当前值              |
+| `set_clamp(clamp)`                     | 更新内部 Clamp 配置               |
 | `apply_modifier_spec(spec, handle)`    | 向聚合器添加持续修饰器            |
 | `remove_modifier_by_handle(handle)`    | 按效果句柄移除持续修饰器          |
 | `modify_base_value(spec)`              | 直接对 base 应用即时修饰器        |
-| `reset_aggregator()`                   | 清除所有持续修饰器                |
 | `modifier_count() -> usize`            | 已应用修饰器总数                  |
 | `make_snapshot() -> AttributeSnapshot` | 捕获当前 base + current 值        |
 
@@ -147,6 +146,8 @@ pub struct AttributeSet {
 ```
 
 两个区域都通过 `AttributeIdManager` O(1) 定位。热点修改只设置热点位图，重算时不会扫描或访问冷属性；冷区同理。未初始化槽位仍使用 `None` 表示，避免把默认值 `0.0` 与“不拥有该属性”混淆。
+
+`AttributeSet` 是属性修改的唯一入口。读取指定属性时会检查并清除对应 dirty bit；只有该 bit 原先被设置时才执行内部重算，重复读取干净属性不会再次求值。
 
 **主要方法：**
 

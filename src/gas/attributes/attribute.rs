@@ -14,12 +14,11 @@ pub enum AttributeClamp {
 }
 
 #[derive(Debug, Clone)]
-pub struct Attribute {
+pub(crate) struct Attribute {
     base: f64,
     evaluated: f64,
     current: f64,
     aggregator: Aggregator,
-    dirty: bool,
     clamp: AttributeClamp,
 }
 
@@ -30,14 +29,13 @@ impl Default for Attribute {
             evaluated: 0.0,
             current: 0.0,
             aggregator: Aggregator::default(),
-            dirty: true,
             clamp: AttributeClamp::None,
         }
     }
 }
 
 impl Attribute {
-    pub fn init(
+    pub(crate) fn init(
         &mut self,
         base_value: f64,
         executor: Option<fn(&Aggregator, f64) -> f64>,
@@ -46,37 +44,23 @@ impl Attribute {
         self.base = base_value;
         self.clamp = clamp;
         self.set_executor(executor);
-        self.recalculate();
     }
 
-    pub fn recalculate(&mut self) {
-        if self.dirty {
-            self.evaluated = self.aggregator.evaluate(self.base);
-            self.dirty = false;
-        }
+    pub(crate) fn recalculate(&mut self) {
+        self.evaluated = self.aggregator.evaluate(self.base);
         self.clamp_current();
     }
 
-    pub fn get_current_value(&mut self) -> f64 {
-        self.recalculate();
+    pub(crate) fn get_current_value(&self) -> f64 {
         self.current
     }
 
-    pub fn get_base_value(&self) -> f64 {
-        self.base
-    }
-
-    pub fn get_clamp(&self) -> AttributeClamp {
-        self.clamp
-    }
-
-    pub fn set_clamp(&mut self, clamp: AttributeClamp) {
+    pub(crate) fn set_clamp(&mut self, clamp: AttributeClamp) {
         self.clamp = clamp;
-        self.make_dirty();
     }
 
     fn clamp_current(&mut self) {
-        let (min, max) = self.get_clamp_bounds();
+        let (min, max) = self.clamp_bounds();
         let mut value = self.evaluated;
         if let Some(min) = min {
             value = value.max(min);
@@ -87,51 +71,37 @@ impl Attribute {
         self.current = value;
     }
 
-    #[inline]
-    pub fn make_dirty(&mut self) {
-        self.dirty = true;
-    }
-
-    pub fn set_executor(&mut self, executor: Option<fn(&Aggregator, f64) -> f64>) {
+    pub(crate) fn set_executor(&mut self, executor: Option<fn(&Aggregator, f64) -> f64>) {
         self.aggregator.set_executor(executor);
-        self.make_dirty();
     }
 
-    pub fn apply_modifier_spec(&mut self, spec: &ModifierSpec, handle: ActiveEffectHandle) {
+    pub(crate) fn apply_modifier_spec(&mut self, spec: &ModifierSpec, handle: ActiveEffectHandle) {
         self.aggregator.apply_modifier_spec(spec, handle);
-        self.make_dirty();
     }
 
-    pub fn remove_modifier_by_handle(&mut self, handle: ActiveEffectHandle) {
+    pub(crate) fn remove_modifier_by_handle(&mut self, handle: ActiveEffectHandle) {
         self.aggregator.remove_modifier_by_handle(handle);
-        self.make_dirty();
     }
 
-    pub fn modify_base_value(&mut self, spec: &ModifierSpec) {
+    pub(crate) fn modify_base_value(&mut self, spec: &ModifierSpec) {
         match spec.get_operation() {
             ModifierOperation::Add => self.base += spec.get_value(),
             ModifierOperation::PercentAdd => self.base *= 1.0 + spec.get_value(),
             ModifierOperation::Multiply => self.base *= spec.get_value(),
             ModifierOperation::Override => self.base = spec.get_value(),
         }
-        self.make_dirty();
-    }
-
-    pub fn reset_aggregator(&mut self) {
-        self.aggregator.reset();
-        self.make_dirty();
     }
 
     /// Returns the total number of modifiers applied to this attribute.
-    pub fn modifier_count(&self) -> usize {
+    pub(crate) fn modifier_count(&self) -> usize {
         self.aggregator.modifier_count()
     }
 
-    pub fn make_snapshot(&self) -> AttributeSnapshot {
+    pub(crate) fn make_snapshot(&self) -> AttributeSnapshot {
         AttributeSnapshot::new(self.base, self.current)
     }
 
-    fn get_clamp_bounds(&self) -> (Option<f64>, Option<f64>) {
+    fn clamp_bounds(&self) -> (Option<f64>, Option<f64>) {
         match self.clamp {
             AttributeClamp::None => (None, None),
             AttributeClamp::Range { min, max } => (min, max),

@@ -80,7 +80,7 @@ impl AttributeSet {
         self.post_execute = post_execute;
     }
 
-    /// Recalculates one initialized attribute if its internal state is dirty.
+    /// Recalculates one initialized attribute if its dirty bit is set.
     pub fn recalculate_attribute(&mut self, manager: &AttributeIdManager, id: AttributeId) {
         let Some(location) = manager.location(id) else {
             debug_assert!(false, "attribute ID is missing from the global manager");
@@ -102,10 +102,12 @@ impl AttributeSet {
         id: AttributeId,
     ) -> Option<f64> {
         let location = manager.location(id)?;
-        self.clear_dirty(location);
-        self.attribute_slot_mut(location)
-            .as_mut()
-            .map(Attribute::get_current_value)
+        let was_dirty = self.take_dirty(location);
+        let attribute = self.attribute_slot_mut(location).as_mut()?;
+        if was_dirty {
+            attribute.recalculate();
+        }
+        Some(attribute.get_current_value())
     }
 
     /// Applies an instant modifier and invokes the post-execute callback.
@@ -211,17 +213,22 @@ impl AttributeSet {
         }
     }
 
-    fn clear_dirty(&mut self, location: AttributeLocation) {
+    fn take_dirty(&mut self, location: AttributeLocation) -> bool {
         let (word, bit) = (location.slot() / 64, location.slot() % 64);
-        match location.region() {
-            AttributeRegion::Hot => self.hot_dirty[word] &= !(1 << bit),
-            AttributeRegion::Cold => self.cold_dirty[word] &= !(1 << bit),
-        }
+        let dirty_word = match location.region() {
+            AttributeRegion::Hot => &mut self.hot_dirty[word],
+            AttributeRegion::Cold => &mut self.cold_dirty[word],
+        };
+        let mask = 1 << bit;
+        let was_dirty = *dirty_word & mask != 0;
+        *dirty_word &= !mask;
+        was_dirty
     }
 
     fn recalculate_location(&mut self, location: AttributeLocation) {
-        self.clear_dirty(location);
-        if let Some(attribute) = self.attribute_slot_mut(location) {
+        if self.take_dirty(location)
+            && let Some(attribute) = self.attribute_slot_mut(location)
+        {
             attribute.recalculate();
         }
     }

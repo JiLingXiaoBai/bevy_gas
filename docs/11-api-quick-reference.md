@@ -37,7 +37,6 @@
 | `AttributeIdError`                  | `enum`        | 注册错误                      |
 | `AttributeLocation`                 | `struct`      | 属性的区域及区域内槽位       |
 | `AttributeRegion`                   | `enum`        | `Hot` / `Cold` 存储分类      |
-| `Attribute`                         | `struct`      | 单个属性（base/eval/current） |
 | `AttributeClamp`                    | `enum`        | Clamp 范围（None 或 Range）   |
 | `AttributeSet`                      | `Component`   | 每实体属性集合                |
 | `AttributePostExecute`              | `type alias`  | 修改后回调                    |
