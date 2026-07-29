@@ -1,7 +1,8 @@
 use super::common_test::{
     active_effect_handles, apply_effect, attribute_set, current_value, empty_effect_tags,
-    register_attribute, run_effect_duration_tick, test_app,
+    register_attribute, register_hot_attribute, run_effect_duration_tick, test_app,
 };
+use bevy::ecs::system::RunSystemOnce;
 use bevy::prelude::*;
 use bevy_tools::{
     AttributeClamp, AttributeIdManager, AttributeSet, EffectDurationTicks, GameplayEffect,
@@ -14,6 +15,7 @@ static POST_EXECUTE_COUNT: AtomicUsize = AtomicUsize::new(0);
 
 fn count_post_execute(
     _attributes: &mut AttributeSet,
+    _manager: &bevy_tools::AttributeIdManager,
     _id: bevy_tools::AttributeId,
     old_value: f64,
     new_value: f64,
@@ -24,20 +26,114 @@ fn count_post_execute(
 }
 
 #[test]
+fn attribute_id_manager_routes_ordinary_ids_to_independent_hot_and_cold_slots() {
+    let mut app = test_app();
+    let hot_health = register_hot_attribute(&mut app, "Health");
+    let cold_strength = register_attribute(&mut app, "Strength");
+    let hot_mana = register_hot_attribute(&mut app, "Mana");
+    let manager = app
+        .world()
+        .resource::<bevy_tools::AttributeIdManager>()
+        .clone();
+
+    assert_eq!(hot_health.to_index(), 0);
+    assert_eq!(cold_strength.to_index(), 1);
+    assert_eq!(hot_mana.to_index(), 2);
+    assert_eq!(
+        manager.location(hot_health).unwrap().region(),
+        bevy_tools::AttributeRegion::Hot
+    );
+    assert_eq!(manager.location(hot_health).unwrap().slot(), 0);
+    assert_eq!(
+        manager.location(cold_strength).unwrap().region(),
+        bevy_tools::AttributeRegion::Cold
+    );
+    assert_eq!(manager.location(cold_strength).unwrap().slot(), 0);
+    assert_eq!(manager.location(hot_mana).unwrap().slot(), 1);
+
+    let mut attributes = AttributeSet::default();
+    attributes.initialize_attribute(&manager, hot_health, 100.0, None, AttributeClamp::None);
+    attributes.initialize_attribute(&manager, cold_strength, 25.0, None, AttributeClamp::None);
+
+    assert_eq!(
+        attributes.get_current_value(&manager, hot_health),
+        Some(100.0)
+    );
+    assert_eq!(
+        attributes.get_current_value(&manager, cold_strength),
+        Some(25.0)
+    );
+    assert_eq!(attributes.get_current_value(&manager, hot_mana), None);
+
+    let source = app.world_mut().spawn_empty().id();
+    let snapshot = attributes.make_snapshot(source);
+    assert_eq!(
+        snapshot.get_current_value(&manager, hot_health),
+        Some(100.0)
+    );
+    assert_eq!(
+        snapshot.get_current_value(&manager, cold_strength),
+        Some(25.0)
+    );
+}
+
+#[test]
+fn attribute_registration_rejects_region_mismatch_and_hot_overflow() {
+    let mut app = test_app();
+    register_hot_attribute(&mut app, "Health");
+
+    let mismatch = app
+        .world_mut()
+        .run_system_once(|mut register: bevy_tools::AttributeIdRegister| {
+            register.request_or_register_attribute_id("Health", bevy_tools::AttributeRegion::Cold)
+        })
+        .unwrap();
+    assert_eq!(
+        mismatch,
+        Err(bevy_tools::AttributeIdError::RegionMismatch {
+            existing: bevy_tools::AttributeRegion::Hot,
+            requested: bevy_tools::AttributeRegion::Cold,
+        })
+    );
+
+    let overflow = app
+        .world_mut()
+        .run_system_once(|mut register: bevy_tools::AttributeIdRegister| {
+            let mut result = Ok(());
+            for index in 1..=bevy_tools::HOT_ATTRIBUTE_SET_SIZE {
+                if let Err(error) = register.request_or_register_attribute_id(
+                    &format!("HotAttribute{index}"),
+                    bevy_tools::AttributeRegion::Hot,
+                ) {
+                    result = Err(error);
+                    break;
+                }
+            }
+            result
+        })
+        .unwrap();
+    assert_eq!(
+        overflow,
+        Err(bevy_tools::AttributeIdError::RegionCapacityExceeded {
+            region: bevy_tools::AttributeRegion::Hot,
+            max: bevy_tools::HOT_ATTRIBUTE_SET_SIZE,
+        })
+    );
+}
+
+#[test]
 fn duration_modifier_is_clamped_and_removed_on_expiration() {
     let mut app = test_app();
     let health = register_attribute(&mut app, "Health");
-    let target = app
-        .world_mut()
-        .spawn(attribute_set(
-            health,
-            90.0,
-            AttributeClamp::Range {
-                min: Some(0.0),
-                max: Some(100.0),
-            },
-        ))
-        .id();
+    let target = super::common_test::spawn_attribute_set(
+        &mut app,
+        health,
+        90.0,
+        AttributeClamp::Range {
+            min: Some(0.0),
+            max: Some(100.0),
+        },
+    );
     let effect = Arc::new(GameplayEffect::new(
         vec![super::common_test::add_modifier(health, 20.0)],
         EffectDurationTicks::DurationTicks(ModifierMagnitude::Flat(2.0)),
@@ -64,9 +160,14 @@ fn clamp_supports_min_only_max_only_and_closed_range() {
     let min_only = register_attribute(&mut app, "MinOnly");
     let max_only = register_attribute(&mut app, "MaxOnly");
     let closed = register_attribute(&mut app, "Closed");
+    let manager = app
+        .world()
+        .resource::<bevy_tools::AttributeIdManager>()
+        .clone();
 
     let mut attributes = AttributeSet::default();
     attributes.initialize_attribute(
+        &manager,
         min_only,
         -5.0,
         None,
@@ -76,6 +177,7 @@ fn clamp_supports_min_only_max_only_and_closed_range() {
         },
     );
     attributes.initialize_attribute(
+        &manager,
         max_only,
         25.0,
         None,
@@ -85,6 +187,7 @@ fn clamp_supports_min_only_max_only_and_closed_range() {
         },
     );
     attributes.initialize_attribute(
+        &manager,
         closed,
         20.0,
         None,
@@ -104,10 +207,8 @@ fn clamp_supports_min_only_max_only_and_closed_range() {
 fn duration_modifiers_use_add_percent_then_multiply_order() {
     let mut app = test_app();
     let damage = register_attribute(&mut app, "Damage");
-    let target = app
-        .world_mut()
-        .spawn(attribute_set(damage, 100.0, AttributeClamp::None))
-        .id();
+    let target =
+        super::common_test::spawn_attribute_set(&mut app, damage, 100.0, AttributeClamp::None);
     let effect = Arc::new(GameplayEffect::new(
         vec![
             super::common_test::modifier(damage, ModifierOperation::Multiply, 2.0),
@@ -129,10 +230,8 @@ fn duration_modifiers_use_add_percent_then_multiply_order() {
 fn override_modifier_takes_precedence_over_other_duration_modifiers() {
     let mut app = test_app();
     let damage = register_attribute(&mut app, "Damage");
-    let target = app
-        .world_mut()
-        .spawn(attribute_set(damage, 100.0, AttributeClamp::None))
-        .id();
+    let target =
+        super::common_test::spawn_attribute_set(&mut app, damage, 100.0, AttributeClamp::None);
     let effect = Arc::new(GameplayEffect::new(
         vec![
             super::common_test::modifier(damage, ModifierOperation::Add, 10.0),
@@ -155,10 +254,8 @@ fn modifiers_targeting_uninitialized_attribute_do_not_create_values() {
     let mut app = test_app();
     let health = register_attribute(&mut app, "Health");
     let mana = register_attribute(&mut app, "Mana");
-    let target = app
-        .world_mut()
-        .spawn(attribute_set(health, 10.0, AttributeClamp::None))
-        .id();
+    let target =
+        super::common_test::spawn_attribute_set(&mut app, health, 10.0, AttributeClamp::None);
     let effect = Arc::new(GameplayEffect::new(
         vec![super::common_test::add_modifier(mana, 5.0)],
         EffectDurationTicks::Instant,
@@ -170,12 +267,16 @@ fn modifiers_targeting_uninitialized_attribute_do_not_create_values() {
 
     assert!(apply_effect(&mut app, target, target, effect));
     assert_eq!(current_value(&mut app, target, health), 10.0);
+    let manager = app
+        .world()
+        .resource::<bevy_tools::AttributeIdManager>()
+        .clone();
     assert!(
         app.world_mut()
             .entity_mut(target)
             .get_mut::<AttributeSet>()
             .unwrap()
-            .get_current_value(mana)
+            .get_current_value(&manager, mana)
             .is_none()
     );
 }
@@ -184,10 +285,8 @@ fn modifiers_targeting_uninitialized_attribute_do_not_create_values() {
 fn removing_missing_modifier_handle_does_not_change_current_value() {
     let mut app = test_app();
     let health = register_attribute(&mut app, "Health");
-    let target = app
-        .world_mut()
-        .spawn(attribute_set(health, 10.0, AttributeClamp::None))
-        .id();
+    let target =
+        super::common_test::spawn_attribute_set(&mut app, health, 10.0, AttributeClamp::None);
     let effect = Arc::new(GameplayEffect::new(
         vec![super::common_test::add_modifier(health, 5.0)],
         EffectDurationTicks::Infinite,
@@ -213,7 +312,7 @@ fn instant_modifier_invokes_post_execute_callback() {
     POST_EXECUTE_COUNT.store(0, Ordering::SeqCst);
     let mut app = test_app();
     let health = register_attribute(&mut app, "Health");
-    let mut attributes = attribute_set(health, 10.0, AttributeClamp::None);
+    let mut attributes = attribute_set(&app, health, 10.0, AttributeClamp::None);
     attributes.set_post_execute(Some(count_post_execute));
     let target = app.world_mut().spawn(attributes).id();
 
@@ -240,8 +339,13 @@ fn attribute_id_registration_reports_capacity_exceeded() {
 
         let mut manager = app.world_mut().resource_mut::<AttributeIdManager>();
         let mut result = Ok(());
-        for unique_name in unique_names {
-            if let Err(err) = manager.register_id_internal(unique_name) {
+        for (index, unique_name) in unique_names.into_iter().enumerate() {
+            let region = if index < bevy_tools::HOT_ATTRIBUTE_SET_SIZE {
+                bevy_tools::AttributeRegion::Hot
+            } else {
+                bevy_tools::AttributeRegion::Cold
+            };
+            if let Err(err) = manager.register_id_internal(unique_name, region) {
                 result = Err(err);
                 break;
             }
@@ -261,10 +365,8 @@ fn attribute_id_registration_reports_capacity_exceeded() {
 fn attribute_set_snapshot_captures_base_current_and_source_entity() {
     let mut app = test_app();
     let health = register_attribute(&mut app, "Health");
-    let source = app
-        .world_mut()
-        .spawn(attribute_set(health, 10.0, AttributeClamp::None))
-        .id();
+    let source =
+        super::common_test::spawn_attribute_set(&mut app, health, 10.0, AttributeClamp::None);
     let effect = Arc::new(GameplayEffect::new(
         vec![super::common_test::add_modifier(health, 5.0)],
         EffectDurationTicks::Infinite,
@@ -275,6 +377,10 @@ fn attribute_set_snapshot_captures_base_current_and_source_entity() {
     ));
     assert!(apply_effect(&mut app, source, source, effect));
 
+    let manager = app
+        .world()
+        .resource::<bevy_tools::AttributeIdManager>()
+        .clone();
     let snapshot = app
         .world_mut()
         .entity_mut(source)
@@ -283,18 +389,20 @@ fn attribute_set_snapshot_captures_base_current_and_source_entity() {
         .make_snapshot(source);
 
     assert_eq!(snapshot.get_source_entity(), source);
-    assert_eq!(snapshot.get_base_value(health), Some(10.0));
-    assert_eq!(snapshot.get_current_value(health), Some(15.0));
+    assert_eq!(snapshot.get_base_value(&manager, health), Some(10.0));
+    assert_eq!(snapshot.get_current_value(&manager, health), Some(15.0));
 }
 
 #[test]
 fn attribute_set_snapshot_is_not_changed_by_later_attribute_mutation() {
     let mut app = test_app();
     let health = register_attribute(&mut app, "Health");
-    let source = app
-        .world_mut()
-        .spawn(attribute_set(health, 10.0, AttributeClamp::None))
-        .id();
+    let source =
+        super::common_test::spawn_attribute_set(&mut app, health, 10.0, AttributeClamp::None);
+    let manager = app
+        .world()
+        .resource::<bevy_tools::AttributeIdManager>()
+        .clone();
     let snapshot = app
         .world_mut()
         .entity_mut(source)
@@ -310,6 +418,6 @@ fn attribute_set_snapshot_is_not_changed_by_later_attribute_mutation() {
     ));
 
     assert_eq!(current_value(&mut app, source, health), 30.0);
-    assert_eq!(snapshot.get_base_value(health), Some(10.0));
-    assert_eq!(snapshot.get_current_value(health), Some(10.0));
+    assert_eq!(snapshot.get_base_value(&manager, health), Some(10.0));
+    assert_eq!(snapshot.get_current_value(&manager, health), Some(10.0));
 }

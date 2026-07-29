@@ -32,9 +32,11 @@
 | 项                                  | 类型          | 说明                          |
 | ----------------------------------- | ------------- | ----------------------------- |
 | `AttributeId`                       | `struct`      | 属性句柄（u16）               |
-| `AttributeIdManager`                | `Resource`    | 全局属性 ID 注册表            |
+| `AttributeIdManager`                | `Resource`    | 属性 ID、冷热槽位及计数管理器 |
 | `AttributeIdRegister`               | `SystemParam` | 按名称注册属性 ID             |
 | `AttributeIdError`                  | `enum`        | 注册错误                      |
+| `AttributeLocation`                 | `struct`      | 属性的区域及区域内槽位       |
+| `AttributeRegion`                   | `enum`        | `Hot` / `Cold` 存储分类      |
 | `Attribute`                         | `struct`      | 单个属性（base/eval/current） |
 | `AttributeClamp`                    | `enum`        | Clamp 范围（None 或 Range）   |
 | `AttributeSet`                      | `Component`   | 每实体属性集合                |

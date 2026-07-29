@@ -242,7 +242,9 @@ impl ModifierMagnitudeCalculation for FireballDamageCalc {
         let snapshot = context.source_snapshot()
             .expect("火球术需要来源快照");
 
-        let attack = snapshot.get_current_value(attack_id).unwrap_or(0.0);
+        let attack = snapshot
+            .get_current_value(context.attribute_id_manager(), attack_id)
+            .unwrap_or(0.0);
         let level = context.level() as f64;
 
         // 基础 50 + 150% 攻击力 + 每级 10

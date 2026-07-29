@@ -71,7 +71,7 @@ RecalculateAttributes
 
 | Resource                          | 类型       | 默认容量      |
 | --------------------------------- | ---------- | ------------- |
-| `AttributeIdManager`              | `Resource` | —             |
+| `AttributeIdManager`              | `Resource` | ID 256；热点 32 / 冷区 224 |
 | `AbilityActivationQueue`          | `Resource` | 每 tick 64 个 |
 | `GameplayEffectApplicationQueue`  | `Resource` | 每 tick 64 个 |
 | `ActiveGameplayEffectTargetIndex` | `Resource` | —             |
@@ -83,6 +83,8 @@ RecalculateAttributes
 | 常量                                             | 值  | 说明                             |
 | ------------------------------------------------ | --- | -------------------------------- |
 | `ATTRIBUTE_SET_SIZE`                             | 256 | 每个 `AttributeSet` 的最大属性数 |
+| `HOT_ATTRIBUTE_SET_SIZE`                         | 32  | 热点属性区域容量                 |
+| `COLD_ATTRIBUTE_SET_SIZE`                        | 224 | 冷属性区域容量                   |
 | `GAMEPLAY_TAG_SIZE`                              | 512 | 最大 Gameplay 标签数             |
 | `ABILITY_ACTIVATION_QUEUE_MAX_PER_TICK`          | 64  | 每 tick 处理的最大技能激活数     |
 | `GAMEPLAY_EFFECT_APPLICATION_QUEUE_MAX_PER_TICK` | 64  | 每 tick 处理的最大效果应用数     |

@@ -1,4 +1,4 @@
-use crate::attributes::{AttributeSet, AttributeSetSnapshot};
+use crate::attributes::{AttributeIdManager, AttributeSet, AttributeSetSnapshot};
 use crate::gameplay_abilities::{
     AbilityActivationContext, AbilityActivationStatus, AbilityChainError, AbilitySpecHandle,
     AbilityTaskDef, ActiveAbilityHandle, ActiveGameplayAbility, GameplayAbility,
@@ -27,6 +27,7 @@ pub struct AbilitySystemParams<'w, 's> {
     pub commands: Commands<'w, 's>,
     pub tag_manager: Res<'w, GameplayTagManager>,
     pub random_gen: ResMut<'w, Random>,
+    pub attribute_id_manager: Res<'w, AttributeIdManager>,
     pub attr_set_query: Query<'w, 's, &'static mut AttributeSet>,
     pub tag_container_query: Query<'w, 's, &'static mut GameplayTagContainer>,
     pub asc_query: Query<'w, 's, &'static mut AbilitySystemComponent>,
@@ -619,7 +620,9 @@ fn can_pay_prepared_cost(
     };
 
     for cost in cost_plan.get_modifier_specs() {
-        let Some(current_val) = attr_set.get_current_value(cost.get_id()) else {
+        let Some(current_val) =
+            attr_set.get_current_value(&params.attribute_id_manager, cost.get_id())
+        else {
             return false;
         };
         if current_val + cost.get_value() < 0.0 {
@@ -730,6 +733,7 @@ fn can_pay_ability_cost(
         let context = EffectContext {
             target: Some(target),
             payload: &payload,
+            attribute_id_manager: &params.attribute_id_manager,
             attr_set_query: &params.attr_set_query.as_readonly(),
             tag_container_query: &params.tag_container_query.as_readonly(),
             asc_query: &params.asc_query.as_readonly(),
@@ -743,7 +747,9 @@ fn can_pay_ability_cost(
     };
 
     for cost in cost_spec.get_modifier_specs() {
-        let Some(current_val) = attr_set.get_current_value(cost.get_id()) else {
+        let Some(current_val) =
+            attr_set.get_current_value(&params.attribute_id_manager, cost.get_id())
+        else {
             return false;
         };
         if current_val + cost.get_value() < 0.0 {

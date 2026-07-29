@@ -27,7 +27,9 @@ impl ModifierMagnitudeCalculation for QueuedEffectContextMagnitude {
 
         context
             .source_snapshot()
-            .and_then(|snapshot| snapshot.get_current_value(self.snapshot_attribute))
+            .and_then(|snapshot| {
+                snapshot.get_current_value(context.attribute_id_manager(), self.snapshot_attribute)
+            })
             .unwrap_or(0.0)
     }
 }
@@ -58,14 +60,12 @@ fn capture_ability_task_event(
 fn effect_application_queue_respects_per_tick_limit() {
     let mut app = test_app();
     let health = register_attribute(&mut app, "Health");
-    let target = app
-        .world_mut()
-        .spawn(super::common_test::attribute_set(
-            health,
-            0.0,
-            bevy_tools::AttributeClamp::None,
-        ))
-        .id();
+    let target = super::common_test::spawn_attribute_set(
+        &mut app,
+        health,
+        0.0,
+        bevy_tools::AttributeClamp::None,
+    );
     let effect = instant_add_effect(health, 1.0);
     set_effect_queue_limit(&mut app, 1);
 
@@ -166,14 +166,12 @@ fn queue_limits_clamp_zero_to_one() {
 fn effect_application_queue_processes_requests_fifo() {
     let mut app = test_app();
     let health = register_attribute(&mut app, "Health");
-    let target = app
-        .world_mut()
-        .spawn(super::common_test::attribute_set(
-            health,
-            0.0,
-            bevy_tools::AttributeClamp::None,
-        ))
-        .id();
+    let target = super::common_test::spawn_attribute_set(
+        &mut app,
+        health,
+        0.0,
+        bevy_tools::AttributeClamp::None,
+    );
     let first = Arc::new(GameplayEffect::new(
         vec![super::common_test::modifier(
             health,
@@ -215,12 +213,11 @@ fn effect_application_queue_processes_requests_fifo() {
 fn ability_activation_queue_processes_requests_fifo() {
     let mut app = test_app();
     let marker = register_attribute(&mut app, "Marker");
+    let attributes =
+        super::common_test::attribute_set(&app, marker, 0.0, bevy_tools::AttributeClamp::None);
     let source = app
         .world_mut()
-        .spawn((
-            AbilitySystemComponent::default(),
-            super::common_test::attribute_set(marker, 0.0, bevy_tools::AttributeClamp::None),
-        ))
+        .spawn((AbilitySystemComponent::default(), attributes))
         .id();
     let first_effect = Arc::new(GameplayEffect::new(
         vec![super::common_test::modifier(
@@ -301,14 +298,12 @@ fn task_can_enqueue_gameplay_effect_application() {
     let mut app = test_app();
     let health = register_attribute(&mut app, "Health");
     let source = app.world_mut().spawn_empty().id();
-    let target = app
-        .world_mut()
-        .spawn(super::common_test::attribute_set(
-            health,
-            10.0,
-            bevy_tools::AttributeClamp::None,
-        ))
-        .id();
+    let target = super::common_test::spawn_attribute_set(
+        &mut app,
+        health,
+        10.0,
+        bevy_tools::AttributeClamp::None,
+    );
     let active = super::common_test::spawn_active_ability(
         &mut app,
         source,
@@ -348,22 +343,18 @@ fn task_effect_application_inherits_activation_context_payload() {
     let power = register_attribute(&mut app, "Power");
     let damage = register_attribute(&mut app, "Damage");
     let causer = app.world_mut().spawn_empty().id();
-    let source = app
-        .world_mut()
-        .spawn(super::common_test::attribute_set(
-            power,
-            11.0,
-            bevy_tools::AttributeClamp::None,
-        ))
-        .id();
-    let target = app
-        .world_mut()
-        .spawn(super::common_test::attribute_set(
-            damage,
-            0.0,
-            bevy_tools::AttributeClamp::None,
-        ))
-        .id();
+    let source = super::common_test::spawn_attribute_set(
+        &mut app,
+        power,
+        11.0,
+        bevy_tools::AttributeClamp::None,
+    );
+    let target = super::common_test::spawn_attribute_set(
+        &mut app,
+        damage,
+        0.0,
+        bevy_tools::AttributeClamp::None,
+    );
     let snapshot = app
         .world_mut()
         .entity_mut(source)

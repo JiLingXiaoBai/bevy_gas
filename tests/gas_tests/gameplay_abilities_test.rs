@@ -29,7 +29,9 @@ impl ModifierMagnitudeCalculation for ContextPayloadMagnitude {
 
         context
             .source_snapshot()
-            .and_then(|snapshot| snapshot.get_current_value(self.snapshot_attribute))
+            .and_then(|snapshot| {
+                snapshot.get_current_value(context.attribute_id_manager(), self.snapshot_attribute)
+            })
             .unwrap_or(0.0)
     }
 }
@@ -39,12 +41,13 @@ fn ability_activation_commits_cost_and_cooldown_then_cooldown_blocks_reactivatio
     let mut app = test_app();
     let mana = register_attribute(&mut app, "Mana");
     let cooldown_tag = register_tag(&mut app, "Cooldown.Fireball");
+    let attributes = attribute_set(&app, mana, 50.0, bevy_tools::AttributeClamp::None);
     let source = app
         .world_mut()
         .spawn((
             AbilitySystemComponent::default(),
             GameplayTagContainer::default(),
-            attribute_set(mana, 50.0, bevy_tools::AttributeClamp::None),
+            attributes,
         ))
         .id();
     let cost = super::common_test::instant_add_effect(mana, -20.0);
@@ -96,12 +99,10 @@ fn ability_activation_commits_cost_and_cooldown_then_cooldown_blocks_reactivatio
 fn ability_cost_fails_when_it_would_drop_attribute_below_zero() {
     let mut app = test_app();
     let stamina = register_attribute(&mut app, "Stamina");
+    let attributes = attribute_set(&app, stamina, 10.0, bevy_tools::AttributeClamp::None);
     let source = app
         .world_mut()
-        .spawn((
-            AbilitySystemComponent::default(),
-            attribute_set(stamina, 10.0, bevy_tools::AttributeClamp::None),
-        ))
+        .spawn((AbilitySystemComponent::default(), attributes))
         .id();
     let ability = Arc::new(GameplayAbility::new(
         AbilityTags::default(),
@@ -363,12 +364,10 @@ fn cooldown_prepare_failure_does_not_spend_ability_cost() {
     let mut app = test_app();
     let mana = register_attribute(&mut app, "Mana");
     let cooldown_tag = register_tag(&mut app, "Cooldown.NoContainer");
+    let attributes = attribute_set(&app, mana, 50.0, bevy_tools::AttributeClamp::None);
     let source = app
         .world_mut()
-        .spawn((
-            AbilitySystemComponent::default(),
-            attribute_set(mana, 50.0, bevy_tools::AttributeClamp::None),
-        ))
+        .spawn((AbilitySystemComponent::default(), attributes))
         .id();
     let cooldown = Arc::new(bevy_tools::GameplayEffect::new(
         Vec::new(),
@@ -652,17 +651,21 @@ fn chained_activation_inherits_context_and_activation_effects_use_payload() {
     let power = register_attribute(&mut app, "Power");
     let damage = register_attribute(&mut app, "Damage");
     let causer = app.world_mut().spawn_empty().id();
+    let attributes = attribute_set(&app, power, 7.0, bevy_tools::AttributeClamp::None);
     let source = app
         .world_mut()
-        .spawn((
-            AbilitySystemComponent::default(),
-            attribute_set(power, 7.0, bevy_tools::AttributeClamp::None),
-        ))
+        .spawn((AbilitySystemComponent::default(), attributes))
         .id();
-    let target = app
-        .world_mut()
-        .spawn(attribute_set(damage, 0.0, bevy_tools::AttributeClamp::None))
-        .id();
+    let target = super::common_test::spawn_attribute_set(
+        &mut app,
+        damage,
+        0.0,
+        bevy_tools::AttributeClamp::None,
+    );
+    let manager = app
+        .world()
+        .resource::<bevy_tools::AttributeIdManager>()
+        .clone();
     let source_snapshot = app
         .world_mut()
         .entity_mut(source)
@@ -730,7 +733,7 @@ fn chained_activation_inherits_context_and_activation_effects_use_payload() {
         second_context
             .get_source_snapshot()
             .unwrap()
-            .get_current_value(power),
+            .get_current_value(&manager, power),
         Some(7.0)
     );
     assert_eq!(

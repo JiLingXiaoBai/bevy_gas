@@ -1,4 +1,5 @@
 use super::ATTRIBUTE_SET_SIZE;
+use crate::settings::GameplayAbilitySystemSettings;
 use crate::{UniqueName, UniqueNamePool};
 use bevy::ecs::system::SystemParam;
 use bevy::platform::collections::HashMap;
@@ -13,14 +14,58 @@ impl AttributeId {
     pub(crate) fn new(index: u16) -> Self {
         Self(index)
     }
+
+    /// Returns the ordinary global index assigned to this attribute.
     pub fn to_index(self) -> usize {
         self.0 as usize
     }
 }
 
+/// The storage region assigned to an attribute.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AttributeRegion {
+    /// Frequently accessed attributes stored in the compact hot region.
+    Hot,
+    /// Less frequently accessed attributes stored in the cold region.
+    Cold,
+}
+
+/// The physical storage location assigned to an attribute ID.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AttributeLocation {
+    region: AttributeRegion,
+    slot: usize,
+}
+
+impl AttributeLocation {
+    const fn new(region: AttributeRegion, slot: usize) -> Self {
+        Self { region, slot }
+    }
+
+    /// Returns the storage region containing the attribute.
+    pub const fn region(self) -> AttributeRegion {
+        self.region
+    }
+
+    /// Returns the attribute's index within its storage region.
+    pub const fn slot(self) -> usize {
+        self.slot
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AttributeIdError {
+    /// The combined hot and cold attribute capacity was exceeded.
     CapacityExceeded { max: usize },
+    /// One storage region reached its configured capacity.
+    RegionCapacityExceeded { region: AttributeRegion, max: usize },
+    /// An existing attribute was requested with a different region.
+    RegionMismatch {
+        existing: AttributeRegion,
+        requested: AttributeRegion,
+    },
+    /// Internal registration data was inconsistent for an existing ID.
+    MissingLocation { id: AttributeId },
 }
 
 impl fmt::Display for AttributeIdError {
@@ -29,16 +74,38 @@ impl fmt::Display for AttributeIdError {
             AttributeIdError::CapacityExceeded { max } => {
                 write!(f, "attribute id capacity exceeded; max attributes: {max}")
             }
+            AttributeIdError::RegionCapacityExceeded { region, max } => {
+                write!(
+                    f,
+                    "{region:?} attribute capacity exceeded; max attributes in region: {max}"
+                )
+            }
+            AttributeIdError::RegionMismatch {
+                existing,
+                requested,
+            } => write!(
+                f,
+                "attribute was already registered as {existing:?}, but {requested:?} was requested"
+            ),
+            AttributeIdError::MissingLocation { id } => write!(
+                f,
+                "attribute ID {} is missing its storage location",
+                id.to_index()
+            ),
         }
     }
 }
 
 impl Error for AttributeIdError {}
 
-#[derive(Resource)]
+/// Global manager for attribute IDs and their hot or cold storage locations.
+#[derive(Resource, Clone)]
 pub struct AttributeIdManager {
     name_to_index: HashMap<UniqueName, u16>,
     next_id_index: u16,
+    locations: [Option<AttributeLocation>; GameplayAbilitySystemSettings::ATTRIBUTE_SET_SIZE],
+    hot_count: usize,
+    cold_count: usize,
 }
 
 impl Default for AttributeIdManager {
@@ -46,23 +113,55 @@ impl Default for AttributeIdManager {
         Self {
             name_to_index: HashMap::new(),
             next_id_index: 0,
+            locations: [None; GameplayAbilitySystemSettings::ATTRIBUTE_SET_SIZE],
+            hot_count: 0,
+            cold_count: 0,
         }
     }
 }
 
 impl AttributeIdManager {
+    /// Returns the ID registered for `unique_name`, if present.
     pub fn get_attribute_id(&self, unique_name: UniqueName) -> Option<AttributeId> {
         self.name_to_index
             .get(&unique_name)
             .map(|&id| AttributeId::new(id))
     }
 
+    /// Returns the storage location assigned to `id`.
+    pub fn location(&self, id: AttributeId) -> Option<AttributeLocation> {
+        self.locations[id.to_index()]
+    }
+
+    /// Returns the number of registered hot attributes.
+    pub const fn hot_count(&self) -> usize {
+        self.hot_count
+    }
+
+    /// Returns the number of registered cold attributes.
+    pub const fn cold_count(&self) -> usize {
+        self.cold_count
+    }
+
+    /// Registers an attribute ID and assigns its hot or cold storage slot.
     pub fn register_id_internal(
         &mut self,
         unique_name: UniqueName,
+        region: AttributeRegion,
     ) -> Result<AttributeId, AttributeIdError> {
         if let Some(&index) = self.name_to_index.get(&unique_name) {
-            return Ok(AttributeId::new(index));
+            let id = AttributeId::new(index);
+            let Some(existing_location) = self.location(id) else {
+                debug_assert!(false, "registered attribute ID is missing its location");
+                return Err(AttributeIdError::MissingLocation { id });
+            };
+            if existing_location.region() != region {
+                return Err(AttributeIdError::RegionMismatch {
+                    existing: existing_location.region(),
+                    requested: region,
+                });
+            }
+            return Ok(id);
         }
 
         let new_index = self.next_id_index;
@@ -72,12 +171,42 @@ impl AttributeIdManager {
             });
         }
 
+        let Some(slot) = self.next_slot(region) else {
+            let max = match region {
+                AttributeRegion::Hot => GameplayAbilitySystemSettings::HOT_ATTRIBUTE_SET_SIZE,
+                AttributeRegion::Cold => GameplayAbilitySystemSettings::COLD_ATTRIBUTE_SET_SIZE,
+            };
+            return Err(AttributeIdError::RegionCapacityExceeded { region, max });
+        };
+
         let attribute_id = AttributeId::new(new_index);
         self.name_to_index.insert(unique_name, new_index);
         self.next_id_index += 1;
+        self.assign_location(attribute_id, region, slot);
         Ok(attribute_id)
     }
+
+    fn next_slot(&self, region: AttributeRegion) -> Option<usize> {
+        match region {
+            AttributeRegion::Hot => (self.hot_count
+                < GameplayAbilitySystemSettings::HOT_ATTRIBUTE_SET_SIZE)
+                .then_some(self.hot_count),
+            AttributeRegion::Cold => (self.cold_count
+                < GameplayAbilitySystemSettings::COLD_ATTRIBUTE_SET_SIZE)
+                .then_some(self.cold_count),
+        }
+    }
+
+    fn assign_location(&mut self, id: AttributeId, region: AttributeRegion, slot: usize) {
+        debug_assert!(self.locations[id.to_index()].is_none());
+        self.locations[id.to_index()] = Some(AttributeLocation::new(region, slot));
+        match region {
+            AttributeRegion::Hot => self.hot_count += 1,
+            AttributeRegion::Cold => self.cold_count += 1,
+        }
+    }
 }
+
 #[derive(SystemParam)]
 pub struct AttributeIdRegister<'w> {
     unique_name_pool: ResMut<'w, UniqueNamePool>,
@@ -85,15 +214,14 @@ pub struct AttributeIdRegister<'w> {
 }
 
 impl<'w> AttributeIdRegister<'w> {
+    /// Returns an existing attribute ID or registers it in `region`.
     pub fn request_or_register_attribute_id(
         &mut self,
         attribute_id_name: &str,
+        region: AttributeRegion,
     ) -> Result<AttributeId, AttributeIdError> {
         let unique_name = self.unique_name_pool.new_name(attribute_id_name);
-
-        if let Some(attribute_id) = self.attribute_id_manager.get_attribute_id(unique_name) {
-            return Ok(attribute_id);
-        }
-        self.attribute_id_manager.register_id_internal(unique_name)
+        self.attribute_id_manager
+            .register_id_internal(unique_name, region)
     }
 }

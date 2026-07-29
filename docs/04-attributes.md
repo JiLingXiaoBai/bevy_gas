@@ -2,7 +2,7 @@
 
 ## 概述
 
-属性系统管理数值（HP、MP、力量等），支持**修饰器聚合**和**延迟重算**。每个实体可拥有一个 `AttributeSet` 组件，最多容纳 256 个属性。
+属性系统管理数值（HP、MP、力量等），支持**修饰器聚合**和**延迟重算**。每个实体可拥有一个 `AttributeSet` 组件，最多容纳 256 个属性。属性 ID 保持普通连续编号，物理存储由全局 `AttributeIdManager` 分配到 32 个热点槽位或 224 个冷属性槽位。
 
 ## 核心类型
 
@@ -21,18 +21,28 @@ impl AttributeId {
 
 ### `AttributeIdManager`
 
-全局 `Resource`，映射 `UniqueName` → `AttributeId`。
+全局 `Resource`，统一管理 `UniqueName` → `AttributeId`、普通 ID → 冷热物理槽位，以及两个区域的注册计数。
 
 ```rust
 #[derive(Resource)]
 pub struct AttributeIdManager {
     name_to_index: HashMap<UniqueName, u16>,
     next_id_index: u16,
+    locations: [Option<AttributeLocation>; 256],
+    hot_count: usize,
+    cold_count: usize,
 }
 
 impl AttributeIdManager {
     pub fn get_attribute_id(&self, unique_name: UniqueName) -> Option<AttributeId>;
-    pub fn register_id_internal(&mut self, unique_name: UniqueName) -> Result<AttributeId, AttributeIdError>;
+    pub fn register_id_internal(
+        &mut self,
+        unique_name: UniqueName,
+        region: AttributeRegion,
+    ) -> Result<AttributeId, AttributeIdError>;
+    pub fn location(&self, id: AttributeId) -> Option<AttributeLocation>;
+    pub const fn hot_count(&self) -> usize;
+    pub const fn cold_count(&self) -> usize;
 }
 ```
 
@@ -48,9 +58,30 @@ impl AttributeIdRegister<'_> {
     pub fn request_or_register_attribute_id(
         &mut self,
         attribute_id_name: &str,
+        region: AttributeRegion,
     ) -> Result<AttributeId, AttributeIdError>;
 }
 ```
+
+同一名称再次注册时必须使用相同区域，否则返回 `AttributeIdError::RegionMismatch`。热点或冷区单独达到容量时返回 `RegionCapacityExceeded`。
+
+### `AttributeRegion` / `AttributeLocation`
+
+注册顺序只决定普通 ID；`AttributeIdManager` 在热点和冷区分别维护连续物理槽位。
+
+```rust
+pub enum AttributeRegion {
+    Hot,
+    Cold,
+}
+
+pub struct AttributeLocation {
+    region: AttributeRegion,
+    slot: usize,
+}
+```
+
+冷热分类属于全局静态设计信息，应在初始化阶段确定；运行时不会在两个区域之间迁移属性。
 
 ### `Attribute`
 
@@ -107,33 +138,38 @@ pub enum AttributeClamp {
 ```rust
 #[derive(Component)]
 pub struct AttributeSet {
-    attributes: Vec<Option<Attribute>>,  // 固定大小：ATTRIBUTE_SET_SIZE
+    hot_attributes: Box<[Option<Attribute>; 32]>,
+    cold_attributes: Box<[Option<Attribute>; 224]>,
+    hot_dirty: [u64; 1],
+    cold_dirty: [u64; 4],
     post_execute: Option<AttributePostExecute>,
-    dirty: bool,
 }
 ```
+
+两个区域都通过 `AttributeIdManager` O(1) 定位。热点修改只设置热点位图，重算时不会扫描或访问冷属性；冷区同理。未初始化槽位仍使用 `None` 表示，避免把默认值 `0.0` 与“不拥有该属性”混淆。
 
 **主要方法：**
 
 | 方法                                                   | 说明                         |
 | ------------------------------------------------------ | ---------------------------- |
-| `initialize_attribute(id, base, executor, clamp)`      | 初始化特定属性槽位           |
-| `set_attribute_clamp(id, clamp)`                       | 更新属性的 Clamp             |
+| `initialize_attribute(manager, id, base, executor, clamp)` | 按管理器映射初始化属性槽位    |
+| `set_attribute_clamp(manager, id, clamp)`                  | 更新属性的 Clamp             |
 | `set_post_execute(callback)`                           | 设置修改后回调               |
-| `recalculate_attribute(id)`                            | 标记脏并重算全部             |
-| `recalculate_all()`                                    | 重算所有脏属性               |
-| `get_current_value(id) -> Option<f64>`                 | 获取属性的当前值             |
-| `apply_instant_modifier(spec)`                         | 应用即时修饰器（修改 base）  |
-| `apply_duration_modifier(spec, handle)`                | 应用持续修饰器（加入聚合器） |
+| `recalculate_attribute(manager, id)`                   | 只重算指定属性               |
+| `recalculate_dirty()`                                  | 按冷热位图重算脏属性         |
+| `get_current_value(manager, id) -> Option<f64>`        | 获取属性的当前值             |
+| `apply_instant_modifier(manager, spec)`                | 应用即时修饰器（修改 base）  |
+| `apply_duration_modifier(manager, spec, handle)`       | 应用持续修饰器（加入聚合器） |
 | `remove_modifiers(handle)`                             | 移除特定效果句柄的所有修饰器 |
-| `remove_modifiers_for_attributes(handle, ids)`         | 按属性 ID 精确移除修饰器     |
+| `remove_modifiers_for_attributes(manager, handle, ids)` | 按属性 ID 精确移除修饰器    |
 | `make_snapshot(source_entity) -> AttributeSetSnapshot` | 创建所有属性的完整快照       |
 
 ### `AttributePostExecute`
 
 ```rust
-pub type AttributePostExecute = fn(&mut AttributeSet, AttributeId, f64, f64);
-//                                     attr_set,     attr_id,     old, new
+pub type AttributePostExecute =
+    fn(&mut AttributeSet, &AttributeIdManager, AttributeId, f64, f64);
+//       attr_set,          manager,         attr_id,     old, new
 ```
 
 即时修饰器改变属性值后调用的回调。适用于"HP 变化时"等副作用。
@@ -150,12 +186,13 @@ pub struct AttributeSnapshot {
 
 #[derive(Component, Clone)]
 pub struct AttributeSetSnapshot {
-    snapshot: Box<[Option<Box<AttributeSnapshot>>]>,
+    hot: Box<[Option<AttributeSnapshot>; 32]>,
+    cold: Box<[Option<AttributeSnapshot>; 224]>,
     source_entity: Entity,
 }
 ```
 
-快照用于 `EffectPayload` 中，在效果应用时捕获来源实体的属性，从而支持基于"快照时刻"值的计算。
+快照用于 `EffectPayload` 中，在效果应用时捕获来源实体的属性，从而支持基于"快照时刻"值的计算。读取快照时传入统一管理器：`snapshot.get_current_value(manager, id)`。
 
 ## 重算系统
 
@@ -164,12 +201,12 @@ pub fn recalculate_attribute_sets_system(
     mut query: Query<&mut AttributeSet, Changed<AttributeSet>>,
 ) {
     for mut attr_set in query.iter_mut() {
-        attr_set.recalculate_all();
+        attr_set.recalculate_dirty();
     }
 }
 ```
 
-在 `RecalculateAttributes` 集合中运行。使用 Bevy 的 `Changed<AttributeSet>` 变更检测进行高效过滤。
+在 `RecalculateAttributes` 集合中运行。外层使用 Bevy 的 `Changed<AttributeSet>` 过滤实体，组件内部再通过固定大小 dirty 位图只访问实际变化的热点或冷属性。位图按槽位升序处理，不依赖哈希容器遍历顺序。
 
 ## 聚合器
 

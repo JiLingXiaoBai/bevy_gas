@@ -1,6 +1,8 @@
 use bevy::ecs::system::RunSystemOnce;
 use bevy::prelude::*;
-use bevy_tools::attributes::{AttributeClamp, AttributeId, AttributeIdManager, AttributeSet};
+use bevy_tools::attributes::{
+    AttributeClamp, AttributeId, AttributeIdRegister, AttributeRegion, AttributeSet,
+};
 use bevy_tools::modifiers::{Modifier, ModifierMagnitude, ModifierOperation};
 use bevy_tools::{
     AbilitySystemParams, EffectDurationTicks, EffectPayload, EffectTags,
@@ -38,14 +40,12 @@ fn register_tag(app: &mut App, name: &str) -> GameplayTag {
 }
 
 fn register_attribute(app: &mut App, name: &str) -> AttributeId {
-    let unique_name = {
-        let mut names = app.world_mut().resource_mut::<UniqueNamePool>();
-        names.new_name(name)
-    };
-
+    let name = name.to_string();
     app.world_mut()
-        .resource_mut::<AttributeIdManager>()
-        .register_id_internal(unique_name)
+        .run_system_once(move |mut register: AttributeIdRegister| {
+            register.request_or_register_attribute_id(&name, AttributeRegion::Cold)
+        })
+        .unwrap()
         .unwrap()
 }
 
@@ -110,8 +110,12 @@ fn failed_effect_application_does_not_leave_duration_modifier() {
     let mut app = test_app();
     let tag = register_tag(&mut app, "State.Buffed");
     let health = register_attribute(&mut app, "Health");
+    let manager = app
+        .world()
+        .resource::<bevy_tools::AttributeIdManager>()
+        .clone();
     let mut attributes = AttributeSet::default();
-    attributes.initialize_attribute(health, 10.0, None, AttributeClamp::None);
+    attributes.initialize_attribute(&manager, health, 10.0, None, AttributeClamp::None);
     let target = app.world_mut().spawn(attributes).id();
     let effect = Arc::new(GameplayEffect::new(
         vec![Modifier::new(
@@ -135,5 +139,5 @@ fn failed_effect_application_does_not_leave_duration_modifier() {
     assert!(!app.world().resource::<ApplyResult>().0);
     let mut attributes = app.world_mut().entity_mut(target);
     let mut attributes = attributes.get_mut::<AttributeSet>().unwrap();
-    assert_eq!(attributes.get_current_value(health), Some(10.0));
+    assert_eq!(attributes.get_current_value(&manager, health), Some(10.0));
 }

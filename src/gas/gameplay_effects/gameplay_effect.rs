@@ -2,7 +2,7 @@ use super::gameplay_effect_spec::{
     EffectDurationTicksSpec, EffectPeriodTicksSpec, GameplayEffectSpec,
 };
 use crate::ability_system::AbilitySystemComponent;
-use crate::attributes::{AttributeSet, AttributeSetSnapshot};
+use crate::attributes::{AttributeIdManager, AttributeSet, AttributeSetSnapshot};
 use crate::gameplay_tags::{
     GameplayTag, GameplayTagBits, GameplayTagContainer, GameplayTagManager, tag_bits_from_tags,
     tag_bits_from_tags_with_manager,
@@ -16,6 +16,7 @@ use std::sync::Arc;
 pub struct EffectContext<'w, 's> {
     pub target: Option<Entity>,
     pub payload: &'w EffectPayload,
+    pub attribute_id_manager: &'w AttributeIdManager,
     pub attr_set_query: &'w Query<'w, 's, &'static AttributeSet>,
     pub tag_container_query: &'w Query<'w, 's, &'static GameplayTagContainer>,
     pub asc_query: &'w Query<'w, 's, &'static AbilitySystemComponent>,
@@ -36,6 +37,11 @@ impl<'w, 's> EffectContext<'w, 's> {
 
     pub fn source_snapshot(&self) -> Option<&AttributeSetSnapshot> {
         self.payload.get_source_snapshot()
+    }
+
+    /// Returns the global mapping used to locate hot and cold attributes.
+    pub fn attribute_id_manager(&self) -> &AttributeIdManager {
+        self.attribute_id_manager
     }
 }
 

@@ -43,6 +43,7 @@ pub struct AbilitySystemParams<'w, 's> {
     pub commands: Commands<'w, 's>,
     pub tag_manager: Res<'w, GameplayTagManager>,
     pub random_gen: ResMut<'w, Random>,
+    pub attribute_id_manager: Res<'w, AttributeIdManager>,
     pub attr_set_query: Query<'w, 's, &'static mut AttributeSet>,
     pub tag_container_query: Query<'w, 's, &'static mut GameplayTagContainer>,
     pub asc_query: Query<'w, 's, &'static mut AbilitySystemComponent>,

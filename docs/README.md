@@ -40,8 +40,12 @@ fn setup(mut tag_register: GameplayTagRegister, mut attr_register: AttributeIdRe
     let stun = tag_register.request_or_register_tag("Effect.Debuff.Stun").unwrap();
 
     // 注册属性
-    let health = attr_register.request_or_register_attribute_id("Health").unwrap();
-    let max_health = attr_register.request_or_register_attribute_id("MaxHealth").unwrap();
+    let health = attr_register
+        .request_or_register_attribute_id("Health", AttributeRegion::Hot)
+        .unwrap();
+    let max_health = attr_register
+        .request_or_register_attribute_id("MaxHealth", AttributeRegion::Cold)
+        .unwrap();
 }
 ```
 

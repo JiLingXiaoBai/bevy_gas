@@ -261,6 +261,7 @@ pub struct EffectPayload {
 pub struct EffectContext<'w, 's> {
     pub target: Option<Entity>,
     pub payload: &'w EffectPayload,
+    pub attribute_id_manager: &'w AttributeIdManager,
     pub attr_set_query: &'w Query<'w, 's, &'static AttributeSet>,
     pub tag_container_query: &'w Query<'w, 's, &'static GameplayTagContainer>,
     pub asc_query: &'w Query<'w, 's, &'static AbilitySystemComponent>,
@@ -271,6 +272,7 @@ impl EffectContext<'_, '_> {
     pub fn causer(&self) -> Option<Entity>;
     pub fn level(&self) -> u32;
     pub fn source_snapshot(&self) -> Option<&AttributeSetSnapshot>;
+    pub fn attribute_id_manager(&self) -> &AttributeIdManager;
 }
 ```
 
