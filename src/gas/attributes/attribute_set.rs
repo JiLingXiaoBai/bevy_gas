@@ -58,9 +58,9 @@ impl AttributeSet {
             debug_assert!(false, "attribute ID is missing from the global manager");
             return;
         };
-        self.aggregators.remove(id);
-        self.aggregators.set_executor(id, location, executor);
-        *self.attribute_slot_mut(location) = Some(Attribute::new(id, base_value));
+        self.aggregators.remove(location);
+        self.aggregators.set_executor(location, executor);
+        *self.attribute_slot_mut(location) = Some(Attribute::new(base_value));
         self.mark_dirty(location);
     }
 
@@ -84,11 +84,13 @@ impl AttributeSet {
             &mut self.hot_attributes,
             &mut self.hot_dirty,
             &self.aggregators,
+            AttributeRegion::Hot,
         );
         recalculate_region(
             &mut self.cold_attributes,
             &mut self.cold_dirty,
             &self.aggregators,
+            AttributeRegion::Cold,
         );
     }
 
@@ -103,7 +105,7 @@ impl AttributeSet {
         let (attribute, aggregators) = self.attribute_and_aggregators_mut(location);
         let attribute = attribute.as_mut()?;
         if was_dirty {
-            attribute.recalculate(aggregators.get(attribute.id()));
+            attribute.recalculate(aggregators.get(location));
         }
         Some(attribute.get_current_value())
     }
@@ -142,8 +144,7 @@ impl AttributeSet {
             return;
         };
         if self.attribute_slot_mut(location).is_some() {
-            self.aggregators
-                .apply_modifier_spec(spec.get_id(), location, spec, handle);
+            self.aggregators.apply_modifier_spec(location, spec, handle);
             self.mark_dirty(location);
         }
     }
@@ -169,7 +170,7 @@ impl AttributeSet {
                 debug_assert!(false, "attribute ID is missing from the global manager");
                 continue;
             };
-            let removed = self.aggregators.remove_modifier_by_handle(id, handle);
+            let removed = self.aggregators.remove_modifier_by_handle(location, handle);
             if removed {
                 self.mark_dirty(location);
             }
@@ -221,7 +222,7 @@ impl AttributeSet {
         if self.take_dirty(location) {
             let (attribute, aggregators) = self.attribute_and_aggregators_mut(location);
             if let Some(attribute) = attribute {
-                attribute.recalculate(aggregators.get(attribute.id()));
+                attribute.recalculate(aggregators.get(location));
             }
         }
     }
@@ -243,6 +244,7 @@ fn recalculate_region<const SIZE: usize, const WORDS: usize>(
     attributes: &mut [Option<Attribute>; SIZE],
     dirty: &mut [u64; WORDS],
     aggregators: &AttributeAggregatorSet,
+    region: AttributeRegion,
 ) {
     for (word_index, dirty_word) in dirty.iter_mut().enumerate() {
         let mut bits = std::mem::take(dirty_word);
@@ -250,7 +252,8 @@ fn recalculate_region<const SIZE: usize, const WORDS: usize>(
             let bit = bits.trailing_zeros() as usize;
             let index = word_index * 64 + bit;
             if let Some(attribute) = attributes.get_mut(index).and_then(Option::as_mut) {
-                attribute.recalculate(aggregators.get(attribute.id()));
+                let location = AttributeLocation::new(region, index);
+                attribute.recalculate(aggregators.get(location));
             }
             bits &= bits - 1;
         }

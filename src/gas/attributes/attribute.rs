@@ -1,26 +1,19 @@
 use super::attribute_aggregator::Aggregator;
-use super::attribute_id_manager::AttributeId;
 use super::attribute_snapshot::AttributeSnapshot;
 use crate::modifiers::{ModifierOperation, ModifierSpec};
 
 #[derive(Debug, Clone)]
 pub(crate) struct Attribute {
-    id: AttributeId,
     base: f32,
     current: f32,
 }
 
 impl Attribute {
-    pub(crate) fn new(id: AttributeId, base_value: f32) -> Self {
+    pub(crate) fn new(base_value: f32) -> Self {
         Self {
-            id,
             base: base_value,
             current: base_value,
         }
-    }
-
-    pub(crate) fn id(&self) -> AttributeId {
-        self.id
     }
 
     pub(crate) fn recalculate(&mut self, aggregator: Option<&Aggregator>) {

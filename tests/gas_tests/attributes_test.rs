@@ -202,7 +202,7 @@ fn custom_executor_survives_removal_of_last_modifier() {
 }
 
 #[test]
-fn sparse_aggregators_support_reverse_id_insertion_and_independent_removal() {
+fn sparse_aggregators_support_reverse_location_insertion_and_independent_removal() {
     let mut app = test_app();
     let health = register_hot_attribute(&mut app, "Health");
     let mana = register_attribute(&mut app, "Mana");
@@ -232,7 +232,7 @@ fn sparse_aggregators_support_reverse_id_insertion_and_independent_removal() {
         empty_effect_tags(),
     ));
 
-    // Apply the higher AttributeId first so insertion must preserve lookup correctness.
+    // Apply the later storage location first so insertion must preserve lookup correctness.
     assert!(apply_effect(&mut app, target, target, mana_effect));
     assert!(apply_effect(&mut app, target, target, health_effect));
     assert_eq!(current_value(&mut app, target, health), 120.0);

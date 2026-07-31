@@ -91,10 +91,10 @@ pub struct Aggregator {
 }
 ```
 
-Aggregator 不再内嵌在 `Attribute` 中。每个目标的 `AttributeSet` 通过 crate 内部的 `AttributeAggregatorSet` 稀疏保存实际存在持续修饰器的属性，并以 `AttributeId` 为键进行二分查找。`ActiveGameplayEffect` 仍通过 `ActiveEffectHandle` 标识自己贡献的 modifier。
+Aggregator 不再内嵌在 `Attribute` 中。每个目标的 `AttributeSet` 通过 crate 内部的 `AttributeAggregatorSet` 稀疏保存实际存在持续修饰器的属性，并以 `AttributeLocation` 为键进行二分查找。`Attribute` 本身只保存 base/current 数值，不重复保存 ID。`ActiveGameplayEffect` 仍通过 `ActiveEffectHandle` 标识自己贡献的 modifier。
 
 ```text
-ActiveGameplayEffect ──handle──► AttributeAggregatorSet[AttributeId]
+ActiveGameplayEffect ──handle──► AttributeAggregatorSet[AttributeLocation]
                                       │
                                       ▼
                                   Aggregator

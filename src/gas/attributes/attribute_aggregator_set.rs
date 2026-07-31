@@ -1,10 +1,9 @@
-use super::{Aggregator, AttributeId, AttributeLocation};
+use super::{Aggregator, AttributeLocation};
 use crate::gameplay_effects::ActiveEffectHandle;
 use crate::modifiers::ModifierSpec;
 
 #[derive(Debug, Clone)]
 struct AttributeAggregatorEntry {
-    id: AttributeId,
     location: AttributeLocation,
     aggregator: Aggregator,
 }
@@ -16,19 +15,18 @@ pub(crate) struct AttributeAggregatorSet {
 }
 
 impl AttributeAggregatorSet {
-    pub(crate) fn get(&self, id: AttributeId) -> Option<&Aggregator> {
-        let index = self.search(id).ok()?;
+    pub(crate) fn get(&self, location: AttributeLocation) -> Option<&Aggregator> {
+        let index = self.search(location).ok()?;
         Some(&self.entries[index].aggregator)
     }
 
     pub(crate) fn apply_modifier_spec(
         &mut self,
-        id: AttributeId,
         location: AttributeLocation,
         spec: &ModifierSpec,
         handle: ActiveEffectHandle,
     ) {
-        let index = self.get_or_insert_index(id, location);
+        let index = self.get_or_insert_index(location);
         self.entries[index]
             .aggregator
             .apply_modifier_spec(spec, handle);
@@ -36,29 +34,28 @@ impl AttributeAggregatorSet {
 
     pub(crate) fn set_executor(
         &mut self,
-        id: AttributeId,
         location: AttributeLocation,
         executor: Option<fn(&Aggregator, f32) -> f32>,
     ) {
         if executor.is_none() {
             return;
         }
-        let index = self.get_or_insert_index(id, location);
+        let index = self.get_or_insert_index(location);
         self.entries[index].aggregator.set_executor(executor);
     }
 
-    pub(crate) fn remove(&mut self, id: AttributeId) {
-        if let Ok(index) = self.search(id) {
+    pub(crate) fn remove(&mut self, location: AttributeLocation) {
+        if let Ok(index) = self.search(location) {
             self.entries.remove(index);
         }
     }
 
     pub(crate) fn remove_modifier_by_handle(
         &mut self,
-        id: AttributeId,
+        location: AttributeLocation,
         handle: ActiveEffectHandle,
     ) -> bool {
-        let Ok(index) = self.search(id) else {
+        let Ok(index) = self.search(location) else {
             return false;
         };
         let modifier_count_before = self.entries[index].aggregator.modifier_count();
@@ -89,17 +86,13 @@ impl AttributeAggregatorSet {
         });
     }
 
-    fn get_or_insert_index(&mut self, id: AttributeId, location: AttributeLocation) -> usize {
-        match self.search(id) {
-            Ok(index) => {
-                debug_assert_eq!(self.entries[index].location, location);
-                index
-            }
+    fn get_or_insert_index(&mut self, location: AttributeLocation) -> usize {
+        match self.search(location) {
+            Ok(index) => index,
             Err(index) => {
                 self.entries.insert(
                     index,
                     AttributeAggregatorEntry {
-                        id,
                         location,
                         aggregator: Aggregator::default(),
                     },
@@ -109,8 +102,8 @@ impl AttributeAggregatorSet {
         }
     }
 
-    fn search(&self, id: AttributeId) -> Result<usize, usize> {
+    fn search(&self, location: AttributeLocation) -> Result<usize, usize> {
         self.entries
-            .binary_search_by_key(&id.to_index(), |entry| entry.id.to_index())
+            .binary_search_by_key(&location.sort_key(), |entry| entry.location.sort_key())
     }
 }

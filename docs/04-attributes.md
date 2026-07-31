@@ -89,7 +89,6 @@ pub struct AttributeLocation {
 
 ```rust
 pub(crate) struct Attribute {
-    id: AttributeId,
     base: f32,           // 基础值（被即时效果修改）
     current: f32,        // 聚合后的当前值
 }
@@ -98,16 +97,16 @@ pub(crate) struct Attribute {
 **值流转：**
 
 ```
-base + AttributeAggregatorSet.get(id) ──► Aggregator.evaluate() ──► current
+base + AttributeAggregatorSet.get(location) ──► Aggregator.evaluate() ──► current
 ```
 
-`Attribute` 只保存属性身份与数值，不再拥有持续修饰器或自定义 executor。`AttributeSet` 的冷热 dirty 位图是唯一事实来源：位被取出时才查询稀疏 Aggregator 并调用 `Attribute::recalculate()`。存在 Aggregator 时使用该 Aggregator 配置的 executor 求值；不存在时 `current` 直接等于 `base`。
+`Attribute` 只保存数值，不再重复保存可由数组槽位确定的 `AttributeId`，也不拥有持续修饰器或自定义 executor。`AttributeSet` 的冷热 dirty 位图是唯一事实来源：位被取出时根据区域和槽位构造 `AttributeLocation`，查询稀疏 Aggregator 并调用 `Attribute::recalculate()`。存在 Aggregator 时使用该 Aggregator 配置的 executor 求值；不存在时 `current` 直接等于 `base`。
 
 **crate 内部主要方法：**
 
 | 方法                                   | 说明                              |
 | -------------------------------------- | --------------------------------- |
-| `new(id, base_value)`                  | 初始化身份和基础值                |
+| `new(base_value)`                      | 初始化基础值和当前值              |
 | `recalculate(aggregator)`              | 使用可选 Aggregator 无条件重算    |
 | `get_current_value() -> f32`           | 读取已经计算的当前值              |
 | `modify_base_value(spec)`              | 直接对 base 应用即时修饰器        |
@@ -115,7 +114,7 @@ base + AttributeAggregatorSet.get(id) ──► Aggregator.evaluate() ──► 
 
 ### `AttributeAggregatorSet`
 
-`AttributeSet` 内部的目标级运行时存储，按 `AttributeId` 管理所有持续修饰器：
+`AttributeSet` 内部的目标级运行时存储，按 `AttributeLocation` 管理所有持续修饰器：
 
 ```rust
 pub(crate) struct AttributeAggregatorSet {
@@ -123,13 +122,12 @@ pub(crate) struct AttributeAggregatorSet {
 }
 
 struct AttributeAggregatorEntry {
-    id: AttributeId,
     location: AttributeLocation,
     aggregator: Aggregator,
 }
 ```
 
-`entries` 按 `AttributeId` 升序排列，并通过二分查找访问。属性收到持续修饰器或配置自定义 executor 时创建对应 Aggregator。最后一个修饰器被移除后，使用默认 executor 的空 entry 会被删除；带自定义 executor 的空 entry 会继续保留。`location` 用于按 handle 批量移除时直接设置正确的冷热 dirty bit，不参与逻辑身份判断。
+`entries` 按 `AttributeLocation` 升序排列，并通过二分查找访问；热点区域先于冷区，每个区域内按槽位升序排列。属性收到持续修饰器或配置自定义 executor 时创建对应 Aggregator。最后一个修饰器被移除后，使用默认 executor 的空 entry 会被删除；带自定义 executor 的空 entry 会继续保留。同一个 location 同时负责定位数值槽位、查找 Aggregator，以及按 handle 批量移除时设置正确的冷热 dirty bit，避免在 `Attribute` 中重复存储 ID。
 
 该结构是 UE `FActiveGameplayEffectsContainer::AttributeAggregatorMap` 在当前 ECS 布局中的对应物，但暂时仍作为 `AttributeSet` 的内部子结构，从而保持属性修改与 dirty 标记在一次组件可变借用中完成。
 

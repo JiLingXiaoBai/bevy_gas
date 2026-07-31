@@ -38,7 +38,7 @@ pub struct AttributeLocation {
 }
 
 impl AttributeLocation {
-    const fn new(region: AttributeRegion, slot: usize) -> Self {
+    pub(crate) const fn new(region: AttributeRegion, slot: usize) -> Self {
         Self { region, slot }
     }
 
@@ -50,6 +50,14 @@ impl AttributeLocation {
     /// Returns the attribute's index within its storage region.
     pub const fn slot(self) -> usize {
         self.slot
+    }
+
+    pub(crate) const fn sort_key(self) -> (u8, usize) {
+        let region = match self.region {
+            AttributeRegion::Hot => 0,
+            AttributeRegion::Cold => 1,
+        };
+        (region, self.slot)
     }
 }
 
