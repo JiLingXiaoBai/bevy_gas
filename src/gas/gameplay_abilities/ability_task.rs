@@ -1,7 +1,8 @@
-use crate::ability_system::AbilityActivationQueue;
-use crate::gameplay_abilities::{
-    AbilityActivationStatus, AbilitySpecHandle, ActiveAbilityHandle, ActiveGameplayAbility,
+use super::{
+    AbilityActivationContext, AbilityActivationStatus, AbilitySpecHandle, ActiveAbilityHandle,
+    ActiveGameplayAbility,
 };
+use crate::ability_system::AbilityActivationQueue;
 use crate::gameplay_effects::{EffectPayload, GameplayEffect, GameplayEffectApplicationQueue};
 use crate::unique_names::UniqueName;
 use bevy::prelude::*;
@@ -321,7 +322,7 @@ pub fn tick_ability_tasks_system(
 fn effect_payload_from_activation_context(
     source: Entity,
     level: u32,
-    activation_context: &crate::gameplay_abilities::AbilityActivationContext,
+    activation_context: &AbilityActivationContext,
 ) -> EffectPayload {
     let payload = EffectPayload::new(source, activation_context.get_causer(), level);
     if let Some(source_snapshot) = activation_context.get_source_snapshot() {

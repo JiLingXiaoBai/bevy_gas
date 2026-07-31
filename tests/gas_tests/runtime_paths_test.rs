@@ -1,7 +1,8 @@
 use super::common_test::{
-    active_effect_handles, add_tag_to_entity, apply_effect_with_payload, current_value,
-    empty_effect_tags, register_attribute, register_tag, run_active_effect_index_reconcile,
-    run_fixed_update, test_app,
+    ability_task_count, active_ability_count, active_effect_handles, add_modifier,
+    add_tag_to_entity, apply_effect, apply_effect_with_payload, current_value, empty_effect_tags,
+    give_ability, register_attribute, register_tag, run_active_effect_index_reconcile,
+    run_fixed_update, spawn_attribute_set, test_app,
 };
 use bevy::prelude::*;
 use bevy_tools::{
@@ -59,9 +60,9 @@ impl ModifierMagnitudeCalculation for SourceTagMagnitude {
 fn fixed_update_processes_queued_effect_before_next_duration_tick() {
     let mut app = test_app();
     let health = register_attribute(&mut app, "Health");
-    let target = super::common_test::spawn_attribute_set(&mut app, health, 10.0);
+    let target = spawn_attribute_set(&mut app, health, 10.0);
     let effect = Arc::new(GameplayEffect::new(
-        vec![super::common_test::add_modifier(health, 5.0)],
+        vec![add_modifier(health, 5.0)],
         EffectDurationTicks::DurationTicks(ModifierMagnitude::Flat(1.0)),
         None,
         1.0,
@@ -101,7 +102,7 @@ fn fixed_update_activation_tasks_and_cleanup_run_in_plugin_order() {
         false,
         false,
     ));
-    let handle = super::common_test::give_ability(&mut app, source, ability);
+    let handle = give_ability(&mut app, source, ability);
 
     {
         let mut queue = app.world_mut().resource_mut::<AbilityActivationQueue>();
@@ -110,12 +111,12 @@ fn fixed_update_activation_tasks_and_cleanup_run_in_plugin_order() {
     }
 
     run_fixed_update(&mut app);
-    assert_eq!(super::common_test::active_ability_count(&mut app), 1);
-    assert_eq!(super::common_test::ability_task_count(&mut app), 1);
+    assert_eq!(active_ability_count(&mut app), 1);
+    assert_eq!(ability_task_count(&mut app), 1);
 
     run_fixed_update(&mut app);
-    assert_eq!(super::common_test::active_ability_count(&mut app), 0);
-    assert_eq!(super::common_test::ability_task_count(&mut app), 0);
+    assert_eq!(active_ability_count(&mut app), 0);
+    assert_eq!(ability_task_count(&mut app), 0);
     assert_eq!(
         app.world()
             .entity(source)
@@ -132,7 +133,7 @@ fn fixed_update_activation_tasks_and_cleanup_run_in_plugin_order() {
 fn calculated_magnitude_can_use_effect_level() {
     let mut app = test_app();
     let damage = register_attribute(&mut app, "Damage");
-    let target = super::common_test::spawn_attribute_set(&mut app, damage, 0.0);
+    let target = spawn_attribute_set(&mut app, damage, 0.0);
     let effect = Arc::new(GameplayEffect::new(
         vec![Modifier::new(
             damage,
@@ -160,8 +161,8 @@ fn calculated_magnitude_can_use_source_snapshot() {
     let mut app = test_app();
     let power = register_attribute(&mut app, "Power");
     let damage = register_attribute(&mut app, "Damage");
-    let source = super::common_test::spawn_attribute_set(&mut app, power, 7.0);
-    let target = super::common_test::spawn_attribute_set(&mut app, damage, 0.0);
+    let source = spawn_attribute_set(&mut app, power, 7.0);
+    let target = spawn_attribute_set(&mut app, damage, 0.0);
     let snapshot = app
         .world_mut()
         .entity_mut(source)
@@ -196,7 +197,7 @@ fn calculated_magnitude_can_read_source_tags() {
     let damage = register_attribute(&mut app, "Damage");
     let empowered = register_tag(&mut app, "State.Empowered");
     let source = app.world_mut().spawn(GameplayTagContainer::default()).id();
-    let target = super::common_test::spawn_attribute_set(&mut app, damage, 0.0);
+    let target = spawn_attribute_set(&mut app, damage, 0.0);
     add_tag_to_entity(&mut app, source, empowered);
     let effect = Arc::new(GameplayEffect::new(
         vec![Modifier::new(
@@ -228,9 +229,9 @@ fn calculated_magnitude_can_read_source_tags() {
 fn reconcile_removes_externally_despawned_active_effect_from_target_index() {
     let mut app = test_app();
     let power = register_attribute(&mut app, "Power");
-    let target = super::common_test::spawn_attribute_set(&mut app, power, 10.0);
+    let target = spawn_attribute_set(&mut app, power, 10.0);
     let effect = Arc::new(GameplayEffect::new(
-        vec![super::common_test::add_modifier(power, 5.0)],
+        vec![add_modifier(power, 5.0)],
         EffectDurationTicks::Infinite,
         None,
         1.0,
@@ -238,9 +239,7 @@ fn reconcile_removes_externally_despawned_active_effect_from_target_index() {
         empty_effect_tags(),
     ));
 
-    assert!(super::common_test::apply_effect(
-        &mut app, target, target, effect
-    ));
+    assert!(apply_effect(&mut app, target, target, effect));
     let handle = active_effect_handles(&app, target)[0];
     app.world_mut().entity_mut(handle).despawn();
 

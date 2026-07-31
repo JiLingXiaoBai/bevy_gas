@@ -1,4 +1,4 @@
-use crate::ability_system::{AbilitySystemParams, try_activate_ability_by_handle};
+use super::{AbilitySystemParams, try_activate_ability_by_handle};
 use crate::gameplay_abilities::{
     AbilityActivationContext, AbilityChainContext, AbilityChainError, AbilitySpecHandle,
 };

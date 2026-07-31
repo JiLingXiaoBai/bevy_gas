@@ -91,6 +91,17 @@ pub struct Aggregator {
 }
 ```
 
+Aggregator 不再内嵌在 `Attribute` 中。每个目标的 `AttributeSet` 通过 crate 内部的 `AttributeAggregatorSet` 稀疏保存实际存在持续修饰器的属性，并以 `AttributeId` 为键进行二分查找。`ActiveGameplayEffect` 仍通过 `ActiveEffectHandle` 标识自己贡献的 modifier。
+
+```text
+ActiveGameplayEffect ──handle──► AttributeAggregatorSet[AttributeId]
+                                      │
+                                      ▼
+                                  Aggregator
+```
+
+效果移除后，如果某个 Aggregator 已没有 modifier，使用默认 executor 的 entry 会从稀疏集合中删除；带自定义 executor 的 entry 会继续保留。executor 属于 Aggregator，而不是 `Attribute` 数值记录。不存在 Aggregator 时当前值直接回退到基础值。
+
 ### 默认求值顺序
 
 ```
@@ -116,15 +127,17 @@ result *= 1.0 + percent_sum
 
 ### 自定义执行器
 
-可以替换默认的求值逻辑：
+初始化属性时可以为其 Aggregator 配置自定义求值函数：
 
 ```rust
-aggregator.set_executor(Some(my_custom_executor));
+attributes.initialize_attribute(&manager, id, base_value, Some(my_custom_executor));
 
 fn my_custom_executor(aggregator: &Aggregator, base_value: f32) -> f32 {
-    // 自定义逻辑
+    default_executor(aggregator, base_value)
 }
 ```
+
+也可以直接通过 `Aggregator::set_executor()` 配置独立 Aggregator。配置自定义 executor 会使目标级稀疏容器保留该 Aggregator，即使它暂时没有 modifier。
 
 ### 主要方法
 
@@ -134,14 +147,14 @@ fn my_custom_executor(aggregator: &Aggregator, base_value: f32) -> f32 {
 | `remove_modifier_by_handle(handle)` | 移除特定效果的所有修饰器 |
 | `reset()`                           | 清除所有修饰器           |
 | `modifier_count() -> usize`         | 所有桶中的修饰器总数     |
-| `evaluate(base_value) -> f32`       | 运行执行器               |
-| `set_executor(executor)`            | 替换求值函数             |
+| `evaluate(base_value) -> f32`       | 使用当前 executor 求值   |
+| `set_executor(executor)`            | 设置自定义求值函数       |
 
 ## 即时修饰器 vs. 持续修饰器
 
 | 类型     | 应用方式                                  | 修改对象     | 移除时机             |
 | -------- | ----------------------------------------- | ------------ | -------------------- |
 | **即时** | `AttributeSet::apply_instant_modifier()`  | `base` 值    | 永不（永久修改）     |
-| **持续** | `AttributeSet::apply_duration_modifier()` | `Aggregator` | 效果过期或被显式移除 |
+| **持续** | `AttributeSet::apply_duration_modifier()` | `AttributeAggregatorSet` 中的 `Aggregator` | 效果过期或被显式移除 |
 
 即时修饰器永久改变基础值。持续修饰器是临时的，在其父效果过期时自动移除。

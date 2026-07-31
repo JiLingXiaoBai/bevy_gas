@@ -1,5 +1,5 @@
+use super::{EffectPayload, GameplayEffect, apply_gameplay_effect};
 use crate::ability_system::AbilitySystemParams;
-use crate::gameplay_effects::{EffectPayload, GameplayEffect, apply_gameplay_effect};
 use crate::settings::GameplayAbilitySystemSettings;
 use bevy::prelude::*;
 use std::collections::VecDeque;

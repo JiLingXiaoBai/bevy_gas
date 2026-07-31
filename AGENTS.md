@@ -196,6 +196,11 @@ cargo build
 
 - **Rust edition 2024** — 使用新语言特性（如 `if let` 链、`use` 重导出、
   `impl Trait` 在关联类型位置等）
+- **模块引用路径** — 子模块引用同一功能领域内的父模块或兄弟模块项时使用
+  `use super::...`；引用其他功能领域的模块项时使用 `use crate::...`。避免使用
+  `crate` 路径绕过当前功能模块边界，也避免用多层 `super::super::...` 跨领域引用
+- **文件头统一导入** — 文件中使用的类型和函数应优先通过文件头的 `use` 语句导入，
+  避免在函数签名、函数体或字段类型中重复书写 `super::...` 或 `crate::...` 完整路径
 - **`pub use` 重导出模式** — 每个模块使用模块文件+同名目录布局，并通过
   `pub use submodule::*` 重导出其公开项
 - **Component/Resource 为中心** — 游戏状态存储在 Bevy Component 和 Resource

@@ -1,4 +1,4 @@
-use super::*;
+use super::{GameplayTag, GameplayTagManager, MAX_TAG_COUNTS};
 use bevy::prelude::{Component, Res};
 
 pub const BLOCK_SIZE_EXPONENT: usize = 6; // 2^6 =64

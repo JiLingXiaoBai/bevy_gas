@@ -1,6 +1,7 @@
 use super::AbilitySpecHandle;
 use crate::attributes::AttributeSetSnapshot;
 use crate::settings::GameplayAbilitySystemSettings;
+use crate::unique_names::UniqueName;
 use bevy::prelude::{Component, Entity};
 use std::error::Error;
 use std::fmt;
@@ -159,7 +160,7 @@ pub enum AbilityActivationReason {
     Direct,
     Input { input_id: u16 },
     Chained { parent_ability: ActiveAbilityHandle },
-    TaskEvent { event_id: crate::UniqueName },
+    TaskEvent { event_id: UniqueName },
     GameplayEffect,
 }
 

@@ -1,5 +1,6 @@
 mod attribute;
 mod attribute_aggregator;
+mod attribute_aggregator_set;
 mod attribute_id_manager;
 mod attribute_set;
 mod attribute_set_snapshot;

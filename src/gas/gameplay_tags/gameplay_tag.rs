@@ -1,4 +1,4 @@
-use super::*;
+use super::{GameplayTagError, GameplayTagManager};
 use crate::unique_names::UniqueNamePool;
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::ResMut;

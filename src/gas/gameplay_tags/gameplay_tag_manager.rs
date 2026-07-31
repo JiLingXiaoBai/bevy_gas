@@ -1,4 +1,4 @@
-use super::*;
+use super::{GameplayTag, GameplayTagBits, add_bit_with_tag};
 use crate::settings::GameplayAbilitySystemSettings;
 use crate::unique_names::UniqueName;
 use bevy::platform::collections::HashMap;

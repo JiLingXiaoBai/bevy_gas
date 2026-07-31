@@ -3,11 +3,13 @@ use super::gameplay_effect::{
     StackMagnitudePolicy, StackOverflowPolicy, StackPeriodPolicy, StackingType,
 };
 use super::gameplay_effect_spec::{EffectDurationTicksSpec, GameplayEffectSpec};
+use super::{EffectContext, EffectTags, TagRequirements};
 use crate::ability_system::AbilitySystemParams;
 use crate::attributes::{AttributeIdManager, AttributeSet};
 use crate::gameplay_tags::{
     GameplayTag, GameplayTagContainer, GameplayTagManager, tag_bits_from_tags_with_manager,
 };
+use crate::modifiers::ModifierSpec;
 use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
 use std::sync::Arc;
@@ -117,7 +119,7 @@ impl ActiveGameplayEffect {
 }
 
 impl GameplayEffectApplicationPlan {
-    pub fn get_modifier_specs(&self) -> &[crate::modifiers::ModifierSpec] {
+    pub fn get_modifier_specs(&self) -> &[ModifierSpec] {
         self.spec.get_modifier_specs()
     }
 
@@ -177,7 +179,7 @@ pub fn prepare_gameplay_effect(
     }
 
     let spec = {
-        let context = crate::gameplay_effects::EffectContext {
+        let context = EffectContext {
             target: Some(target),
             payload,
             attribute_id_manager: &params.attribute_id_manager,
@@ -815,7 +817,7 @@ fn find_stackable_active_effect(
 fn passes_application_requirements(
     source: Entity,
     target: Entity,
-    incoming_tags: &crate::gameplay_effects::EffectTags,
+    incoming_tags: &EffectTags,
     params: &AbilitySystemParams,
 ) -> bool {
     let source_tags = params.tag_container_query.get(source).ok();
@@ -832,7 +834,7 @@ fn passes_application_requirements(
 fn is_blocked_by_application_immunity(
     source: Entity,
     target: Entity,
-    incoming_tags: &crate::gameplay_effects::EffectTags,
+    incoming_tags: &EffectTags,
     params: &mut AbilitySystemParams,
 ) -> bool {
     let source_tags = params.tag_container_query.get(source).ok();
@@ -875,7 +877,7 @@ fn should_remove_active_effect(
 }
 
 fn removal_requirement_matches(
-    requirements: &crate::gameplay_effects::TagRequirements,
+    requirements: &TagRequirements,
     tags: Option<&GameplayTagContainer>,
 ) -> bool {
     !requirements.is_empty() && requirements.passes(tags)

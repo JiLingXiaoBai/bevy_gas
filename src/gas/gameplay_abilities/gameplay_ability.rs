@@ -1,4 +1,4 @@
-use crate::gameplay_abilities::AbilityTaskDef;
+use super::AbilityTaskDef;
 use crate::gameplay_effects::GameplayEffect;
 use crate::gameplay_tags::GameplayTag;
 use std::sync::Arc;

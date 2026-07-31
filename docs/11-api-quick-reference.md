@@ -54,7 +54,7 @@
 | `ModifierSpec`                 | `struct` | 已解析的不可变修饰器                   |
 | `AppliedModifier`              | `struct` | 带句柄的已应用修饰器                   |
 | `Aggregator`                   | `struct` | 修饰器收集 + 求值                      |
-| `default_executor`             | `fn`     | 默认聚合公式                           |
+| `default_executor`             | `fn`     | Aggregator 默认求值公式                 |
 
 ### Gameplay 效果
 

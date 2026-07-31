@@ -7,7 +7,7 @@
 3. 在 `Aggregator::remove_modifier_by_handle()` 中处理——清理新桶
 4. 在 `Aggregator::reset()` 中处理——清空新桶
 5. 在 `Aggregator::modifier_count()` 中处理——纳入新桶
-6. 在 `default_executor()` 中更新新操作的求值逻辑
+6. 在 `default_executor()` 中更新新操作的默认求值逻辑
 7. 在 crate 内部的 `Attribute::modify_base_value()` 中处理即时修饰器，并确保所有调用仍由 `AttributeSet` 负责设置 dirty bit
 
 ## 新增堆叠策略变体

@@ -29,6 +29,7 @@ pub struct Aggregator {
     multiplicative: Vec<AppliedModifier>,
     override_value: Option<AppliedModifier>,
     executor: fn(&Aggregator, f32) -> f32,
+    has_custom_executor: bool,
 }
 
 impl Default for Aggregator {
@@ -39,6 +40,7 @@ impl Default for Aggregator {
             multiplicative: Vec::new(),
             override_value: None,
             executor: default_executor,
+            has_custom_executor: false,
         }
     }
 }
@@ -47,7 +49,12 @@ impl Aggregator {
     pub fn set_executor(&mut self, executor: Option<fn(&Aggregator, f32) -> f32>) {
         if let Some(executor) = executor {
             self.executor = executor;
+            self.has_custom_executor = true;
         }
+    }
+
+    pub(crate) fn has_custom_executor(&self) -> bool {
+        self.has_custom_executor
     }
 
     pub fn apply_modifier_spec(&mut self, spec: &ModifierSpec, handle: ActiveEffectHandle) {

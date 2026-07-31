@@ -1,9 +1,10 @@
 use super::common_test::{
     ability_task_count, activate_ability, activate_ability_result, activate_ability_with_context,
     active_ability_context_for_spec, active_ability_count, active_ability_entity_for_spec,
-    add_tag_to_entity, attribute_set, current_value, effect_tags, give_ability, register_attribute,
-    register_tag, run_ability_activation_queue, run_ability_tasks, run_finished_ability_cleanup,
-    spawn_ability_task, spawn_active_ability, test_app,
+    add_tag_to_entity, attribute_set, current_value, effect_tags, empty_effect_tags, give_ability,
+    instant_add_effect, register_attribute, register_tag, run_ability_activation_queue,
+    run_ability_tasks, run_finished_ability_cleanup, spawn_ability_task, spawn_active_ability,
+    spawn_attribute_set, test_app,
 };
 use bevy::prelude::*;
 use bevy_tools::{
@@ -50,7 +51,7 @@ fn ability_activation_commits_cost_and_cooldown_then_cooldown_blocks_reactivatio
             attributes,
         ))
         .id();
-    let cost = super::common_test::instant_add_effect(mana, -20.0);
+    let cost = instant_add_effect(mana, -20.0);
     let cooldown = Arc::new(bevy_tools::GameplayEffect::new(
         Vec::new(),
         EffectDurationTicks::Infinite,
@@ -108,7 +109,7 @@ fn ability_cost_fails_when_it_would_drop_attribute_below_zero() {
         AbilityTags::default(),
         Vec::new(),
         None,
-        Some(super::common_test::instant_add_effect(stamina, -20.0)),
+        Some(instant_add_effect(stamina, -20.0)),
         Vec::new(),
         true,
         false,
@@ -381,7 +382,7 @@ fn cooldown_prepare_failure_does_not_spend_ability_cost() {
         AbilityTags::default(),
         Vec::new(),
         Some(cooldown),
-        Some(super::common_test::instant_add_effect(mana, -20.0)),
+        Some(instant_add_effect(mana, -20.0)),
         Vec::new(),
         true,
         false,
@@ -656,7 +657,7 @@ fn chained_activation_inherits_context_and_activation_effects_use_payload() {
         .world_mut()
         .spawn((AbilitySystemComponent::default(), attributes))
         .id();
-    let target = super::common_test::spawn_attribute_set(&mut app, damage, 0.0);
+    let target = spawn_attribute_set(&mut app, damage, 0.0);
     let manager = app
         .world()
         .resource::<bevy_tools::AttributeIdManager>()
@@ -695,7 +696,7 @@ fn chained_activation_inherits_context_and_activation_effects_use_payload() {
         None,
         1.0,
         StackingPolicy::non_stacking(),
-        super::common_test::empty_effect_tags(),
+        empty_effect_tags(),
     ));
     let second = Arc::new(GameplayAbility::new(
         AbilityTags::default(),

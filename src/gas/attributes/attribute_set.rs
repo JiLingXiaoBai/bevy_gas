@@ -1,5 +1,9 @@
 use super::attribute::Attribute;
-use super::*;
+use super::attribute_aggregator_set::AttributeAggregatorSet;
+use super::{
+    Aggregator, AttributeId, AttributeIdManager, AttributeLocation, AttributeRegion,
+    AttributeSetSnapshot,
+};
 use crate::gameplay_effects::ActiveEffectHandle;
 use crate::modifiers::ModifierSpec;
 use crate::settings::GameplayAbilitySystemSettings;
@@ -22,6 +26,7 @@ pub type AttributePostExecute = fn(&mut AttributeSet, &AttributeIdManager, Attri
 pub struct AttributeSet {
     hot_attributes: Box<[Option<Attribute>; HOT_ATTRIBUTE_SET_SIZE]>,
     cold_attributes: Box<[Option<Attribute>; COLD_ATTRIBUTE_SET_SIZE]>,
+    aggregators: AttributeAggregatorSet,
     hot_dirty: [u64; HOT_DIRTY_WORDS],
     cold_dirty: [u64; COLD_DIRTY_WORDS],
     post_execute: Option<AttributePostExecute>,
@@ -32,6 +37,7 @@ impl Default for AttributeSet {
         Self {
             hot_attributes: Box::new(std::array::from_fn(|_| None)),
             cold_attributes: Box::new(std::array::from_fn(|_| None)),
+            aggregators: AttributeAggregatorSet::default(),
             hot_dirty: [0; HOT_DIRTY_WORDS],
             cold_dirty: [0; COLD_DIRTY_WORDS],
             post_execute: None,
@@ -52,9 +58,9 @@ impl AttributeSet {
             debug_assert!(false, "attribute ID is missing from the global manager");
             return;
         };
-        let mut attribute = Attribute::default();
-        attribute.init(base_value, executor);
-        *self.attribute_slot_mut(location) = Some(attribute);
+        self.aggregators.remove(id);
+        self.aggregators.set_executor(id, location, executor);
+        *self.attribute_slot_mut(location) = Some(Attribute::new(id, base_value));
         self.mark_dirty(location);
     }
 
@@ -74,8 +80,16 @@ impl AttributeSet {
 
     /// Recalculates all attributes selected by the hot and cold dirty masks.
     pub fn recalculate_dirty(&mut self) {
-        recalculate_region(&mut self.hot_attributes, &mut self.hot_dirty);
-        recalculate_region(&mut self.cold_attributes, &mut self.cold_dirty);
+        recalculate_region(
+            &mut self.hot_attributes,
+            &mut self.hot_dirty,
+            &self.aggregators,
+        );
+        recalculate_region(
+            &mut self.cold_attributes,
+            &mut self.cold_dirty,
+            &self.aggregators,
+        );
     }
 
     /// Returns the current value for an initialized attribute.
@@ -86,9 +100,10 @@ impl AttributeSet {
     ) -> Option<f32> {
         let location = manager.location(id)?;
         let was_dirty = self.take_dirty(location);
-        let attribute = self.attribute_slot_mut(location).as_mut()?;
+        let (attribute, aggregators) = self.attribute_and_aggregators_mut(location);
+        let attribute = attribute.as_mut()?;
         if was_dirty {
-            attribute.recalculate();
+            attribute.recalculate(aggregators.get(attribute.id()));
         }
         Some(attribute.get_current_value())
     }
@@ -126,16 +141,20 @@ impl AttributeSet {
             debug_assert!(false, "attribute ID is missing from the global manager");
             return;
         };
-        if let Some(attribute) = self.attribute_slot_mut(location) {
-            attribute.apply_modifier_spec(spec, handle);
+        if self.attribute_slot_mut(location).is_some() {
+            self.aggregators
+                .apply_modifier_spec(spec.get_id(), location, spec, handle);
             self.mark_dirty(location);
         }
     }
 
     /// Removes modifiers with `handle` from every initialized attribute.
     pub fn remove_modifiers(&mut self, handle: ActiveEffectHandle) {
-        remove_modifiers_from_region(&mut self.hot_attributes, &mut self.hot_dirty, handle);
-        remove_modifiers_from_region(&mut self.cold_attributes, &mut self.cold_dirty, handle);
+        let (hot_dirty, cold_dirty) = (&mut self.hot_dirty, &mut self.cold_dirty);
+        self.aggregators
+            .remove_modifiers_by_handle(handle, |location| {
+                mark_dirty_in_masks(hot_dirty, cold_dirty, location);
+            });
     }
 
     /// Removes modifiers with `handle` from the supplied attribute IDs.
@@ -150,13 +169,7 @@ impl AttributeSet {
                 debug_assert!(false, "attribute ID is missing from the global manager");
                 continue;
             };
-            let removed = if let Some(attribute) = self.attribute_slot_mut(location) {
-                let len_before = attribute.modifier_count();
-                attribute.remove_modifier_by_handle(handle);
-                attribute.modifier_count() != len_before
-            } else {
-                false
-            };
+            let removed = self.aggregators.remove_modifier_by_handle(id, handle);
             if removed {
                 self.mark_dirty(location);
             }
@@ -189,11 +202,7 @@ impl AttributeSet {
     }
 
     fn mark_dirty(&mut self, location: AttributeLocation) {
-        let (word, bit) = (location.slot() / 64, location.slot() % 64);
-        match location.region() {
-            AttributeRegion::Hot => self.hot_dirty[word] |= 1 << bit,
-            AttributeRegion::Cold => self.cold_dirty[word] |= 1 << bit,
-        }
+        mark_dirty_in_masks(&mut self.hot_dirty, &mut self.cold_dirty, location);
     }
 
     fn take_dirty(&mut self, location: AttributeLocation) -> bool {
@@ -209,17 +218,31 @@ impl AttributeSet {
     }
 
     fn recalculate_location(&mut self, location: AttributeLocation) {
-        if self.take_dirty(location)
-            && let Some(attribute) = self.attribute_slot_mut(location)
-        {
-            attribute.recalculate();
+        if self.take_dirty(location) {
+            let (attribute, aggregators) = self.attribute_and_aggregators_mut(location);
+            if let Some(attribute) = attribute {
+                attribute.recalculate(aggregators.get(attribute.id()));
+            }
         }
+    }
+
+    fn attribute_and_aggregators_mut(
+        &mut self,
+        location: AttributeLocation,
+    ) -> (&mut Option<Attribute>, &AttributeAggregatorSet) {
+        let aggregators = &self.aggregators;
+        let attribute = match location.region() {
+            AttributeRegion::Hot => &mut self.hot_attributes[location.slot()],
+            AttributeRegion::Cold => &mut self.cold_attributes[location.slot()],
+        };
+        (attribute, aggregators)
     }
 }
 
 fn recalculate_region<const SIZE: usize, const WORDS: usize>(
     attributes: &mut [Option<Attribute>; SIZE],
     dirty: &mut [u64; WORDS],
+    aggregators: &AttributeAggregatorSet,
 ) {
     for (word_index, dirty_word) in dirty.iter_mut().enumerate() {
         let mut bits = std::mem::take(dirty_word);
@@ -227,27 +250,22 @@ fn recalculate_region<const SIZE: usize, const WORDS: usize>(
             let bit = bits.trailing_zeros() as usize;
             let index = word_index * 64 + bit;
             if let Some(attribute) = attributes.get_mut(index).and_then(Option::as_mut) {
-                attribute.recalculate();
+                attribute.recalculate(aggregators.get(attribute.id()));
             }
             bits &= bits - 1;
         }
     }
 }
 
-fn remove_modifiers_from_region<const SIZE: usize, const WORDS: usize>(
-    attributes: &mut [Option<Attribute>; SIZE],
-    dirty: &mut [u64; WORDS],
-    handle: ActiveEffectHandle,
+fn mark_dirty_in_masks<const HOT_WORDS: usize, const COLD_WORDS: usize>(
+    hot_dirty: &mut [u64; HOT_WORDS],
+    cold_dirty: &mut [u64; COLD_WORDS],
+    location: AttributeLocation,
 ) {
-    for (index, attribute) in attributes.iter_mut().enumerate() {
-        let Some(attribute) = attribute else {
-            continue;
-        };
-        let len_before = attribute.modifier_count();
-        attribute.remove_modifier_by_handle(handle);
-        if attribute.modifier_count() != len_before {
-            dirty[index / 64] |= 1 << (index % 64);
-        }
+    let (word, bit) = (location.slot() / 64, location.slot() % 64);
+    match location.region() {
+        AttributeRegion::Hot => hot_dirty[word] |= 1 << bit,
+        AttributeRegion::Cold => cold_dirty[word] |= 1 << bit,
     }
 }
 
