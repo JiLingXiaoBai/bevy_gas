@@ -238,14 +238,14 @@ let stun_immunity = Arc::new(GameplayEffect::new(
 struct FireballDamageCalc;
 
 impl ModifierMagnitudeCalculation for FireballDamageCalc {
-    fn calculate(&self, context: &EffectContext) -> f64 {
+    fn calculate(&self, context: &EffectContext) -> f32 {
         let snapshot = context.source_snapshot()
             .expect("火球术需要来源快照");
 
         let attack = snapshot
             .get_current_value(context.attribute_id_manager(), attack_id)
             .unwrap_or(0.0);
-        let level = context.level() as f64;
+        let level = context.level() as f32;
 
         // 基础 50 + 150% 攻击力 + 每级 10
         -(50.0 + attack * 1.5 + level * 10.0)

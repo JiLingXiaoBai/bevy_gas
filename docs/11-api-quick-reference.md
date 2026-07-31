@@ -37,7 +37,6 @@
 | `AttributeIdError`                  | `enum`        | 注册错误                      |
 | `AttributeLocation`                 | `struct`      | 属性的区域及区域内槽位       |
 | `AttributeRegion`                   | `enum`        | `Hot` / `Cold` 存储分类      |
-| `AttributeClamp`                    | `enum`        | Clamp 范围（None 或 Range）   |
 | `AttributeSet`                      | `Component`   | 每实体属性集合                |
 | `AttributePostExecute`              | `type alias`  | 修改后回调                    |
 | `AttributeSnapshot`                 | `struct`      | 不可变属性值快照              |
@@ -49,7 +48,7 @@
 | 项                             | 类型     | 说明                                   |
 | ------------------------------ | -------- | -------------------------------------- |
 | `ModifierOperation`            | `enum`   | Add / PercentAdd / Multiply / Override |
-| `ModifierMagnitude`            | `enum`   | Flat(f64) 或 Calculated(trait)         |
+| `ModifierMagnitude`            | `enum`   | Flat(f32) 或 Calculated(trait)         |
 | `ModifierMagnitudeCalculation` | `trait`  | 动态幅度计算                           |
 | `Modifier`                     | `struct` | 修饰器定义                             |
 | `ModifierSpec`                 | `struct` | 已解析的不可变修饰器                   |

@@ -21,7 +21,7 @@
 
 1. 通过 `AttributeIdRegister::request_or_register_attribute_id("MyAttribute", AttributeRegion::Hot/Cold)` 注册并确定全局存储区域
 2. 从 `AttributeIdManager` Resource 取得统一管理器
-3. 在 `AttributeSet::initialize_attribute(&manager, id, base_value, executor, clamp)` 中初始化
+3. 在 `AttributeSet::initialize_attribute(&manager, id, base_value, executor)` 中初始化
 4. 通过返回的普通连续 `AttributeId` 引用；所有访问使用同一个管理器定位冷热槽位
 
 ## 新增 Gameplay 标签

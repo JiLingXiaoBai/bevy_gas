@@ -10,12 +10,12 @@ pub enum ModifierOperation {
 }
 
 pub enum ModifierMagnitude {
-    Flat(f64),
+    Flat(f32),
     Calculated(Box<dyn ModifierMagnitudeCalculation>),
 }
 
 pub trait ModifierMagnitudeCalculation: Send + Sync {
-    fn calculate(&self, context: &EffectContext) -> f64;
+    fn calculate(&self, context: &EffectContext) -> f32;
 }
 
 pub struct Modifier {
@@ -51,7 +51,7 @@ impl Modifier {
 pub struct ModifierSpec {
     id: AttributeId,
     op: ModifierOperation,
-    value: f64,
+    value: f32,
 }
 
 impl ModifierSpec {
@@ -63,7 +63,7 @@ impl ModifierSpec {
         self.op
     }
 
-    pub fn get_value(&self) -> f64 {
+    pub fn get_value(&self) -> f32 {
         self.value
     }
 
@@ -71,7 +71,7 @@ impl ModifierSpec {
         Self {
             id: self.id,
             op: self.op,
-            value: self.value * stack_count as f64,
+            value: self.value * stack_count as f32,
         }
     }
 }
@@ -79,11 +79,11 @@ impl ModifierSpec {
 #[derive(Debug, Clone, Copy)]
 pub struct AppliedModifier {
     handle: ActiveEffectHandle,
-    value: f64,
+    value: f32,
 }
 
 impl AppliedModifier {
-    pub fn new(handle: ActiveEffectHandle, value: f64) -> Self {
+    pub fn new(handle: ActiveEffectHandle, value: f32) -> Self {
         AppliedModifier { handle, value }
     }
 
@@ -91,7 +91,7 @@ impl AppliedModifier {
         self.handle
     }
 
-    pub fn get_value(&self) -> f64 {
+    pub fn get_value(&self) -> f32 {
         self.value
     }
 }

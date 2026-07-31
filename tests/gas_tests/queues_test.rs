@@ -20,7 +20,7 @@ struct QueuedEffectContextMagnitude {
 }
 
 impl ModifierMagnitudeCalculation for QueuedEffectContextMagnitude {
-    fn calculate(&self, context: &EffectContext) -> f64 {
+    fn calculate(&self, context: &EffectContext) -> f32 {
         if context.causer() != Some(self.expected_causer) {
             return 0.0;
         }
@@ -60,12 +60,7 @@ fn capture_ability_task_event(
 fn effect_application_queue_respects_per_tick_limit() {
     let mut app = test_app();
     let health = register_attribute(&mut app, "Health");
-    let target = super::common_test::spawn_attribute_set(
-        &mut app,
-        health,
-        0.0,
-        bevy_tools::AttributeClamp::None,
-    );
+    let target = super::common_test::spawn_attribute_set(&mut app, health, 0.0);
     let effect = instant_add_effect(health, 1.0);
     set_effect_queue_limit(&mut app, 1);
 
@@ -166,12 +161,7 @@ fn queue_limits_clamp_zero_to_one() {
 fn effect_application_queue_processes_requests_fifo() {
     let mut app = test_app();
     let health = register_attribute(&mut app, "Health");
-    let target = super::common_test::spawn_attribute_set(
-        &mut app,
-        health,
-        0.0,
-        bevy_tools::AttributeClamp::None,
-    );
+    let target = super::common_test::spawn_attribute_set(&mut app, health, 0.0);
     let first = Arc::new(GameplayEffect::new(
         vec![super::common_test::modifier(
             health,
@@ -213,8 +203,7 @@ fn effect_application_queue_processes_requests_fifo() {
 fn ability_activation_queue_processes_requests_fifo() {
     let mut app = test_app();
     let marker = register_attribute(&mut app, "Marker");
-    let attributes =
-        super::common_test::attribute_set(&app, marker, 0.0, bevy_tools::AttributeClamp::None);
+    let attributes = super::common_test::attribute_set(&app, marker, 0.0);
     let source = app
         .world_mut()
         .spawn((AbilitySystemComponent::default(), attributes))
@@ -298,12 +287,7 @@ fn task_can_enqueue_gameplay_effect_application() {
     let mut app = test_app();
     let health = register_attribute(&mut app, "Health");
     let source = app.world_mut().spawn_empty().id();
-    let target = super::common_test::spawn_attribute_set(
-        &mut app,
-        health,
-        10.0,
-        bevy_tools::AttributeClamp::None,
-    );
+    let target = super::common_test::spawn_attribute_set(&mut app, health, 10.0);
     let active = super::common_test::spawn_active_ability(
         &mut app,
         source,
@@ -343,18 +327,8 @@ fn task_effect_application_inherits_activation_context_payload() {
     let power = register_attribute(&mut app, "Power");
     let damage = register_attribute(&mut app, "Damage");
     let causer = app.world_mut().spawn_empty().id();
-    let source = super::common_test::spawn_attribute_set(
-        &mut app,
-        power,
-        11.0,
-        bevy_tools::AttributeClamp::None,
-    );
-    let target = super::common_test::spawn_attribute_set(
-        &mut app,
-        damage,
-        0.0,
-        bevy_tools::AttributeClamp::None,
-    );
+    let source = super::common_test::spawn_attribute_set(&mut app, power, 11.0);
+    let target = super::common_test::spawn_attribute_set(&mut app, damage, 0.0);
     let snapshot = app
         .world_mut()
         .entity_mut(source)

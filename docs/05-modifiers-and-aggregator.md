@@ -35,12 +35,12 @@ impl Modifier {
 
 ```rust
 pub enum ModifierMagnitude {
-    Flat(f64),
+    Flat(f32),
     Calculated(Box<dyn ModifierMagnitudeCalculation>),
 }
 
 pub trait ModifierMagnitudeCalculation: Send + Sync {
-    fn calculate(&self, context: &EffectContext) -> f64;
+    fn calculate(&self, context: &EffectContext) -> f32;
 }
 ```
 
@@ -55,13 +55,13 @@ pub trait ModifierMagnitudeCalculation: Send + Sync {
 pub struct ModifierSpec {
     id: AttributeId,
     op: ModifierOperation,
-    value: f64,
+    value: f32,
 }
 
 impl ModifierSpec {
     pub fn get_id(&self) -> AttributeId;
     pub fn get_operation(&self) -> ModifierOperation;
-    pub fn get_value(&self) -> f64;
+    pub fn get_value(&self) -> f32;
     pub fn scaled_by_stack(&self, stack_count: u32) -> Self;  // value * stack_count
 }
 ```
@@ -73,7 +73,7 @@ impl ModifierSpec {
 ```rust
 pub struct AppliedModifier {
     handle: ActiveEffectHandle,
-    value: f64,
+    value: f32,
 }
 ```
 
@@ -87,7 +87,7 @@ pub struct Aggregator {
     percent_additive: Vec<AppliedModifier>,
     multiplicative: Vec<AppliedModifier>,
     override_value: Option<AppliedModifier>,
-    executor: fn(&Aggregator, f64) -> f64,
+    executor: fn(&Aggregator, f32) -> f32,
 }
 ```
 
@@ -121,7 +121,7 @@ result *= 1.0 + percent_sum
 ```rust
 aggregator.set_executor(Some(my_custom_executor));
 
-fn my_custom_executor(aggregator: &Aggregator, base_value: f64) -> f64 {
+fn my_custom_executor(aggregator: &Aggregator, base_value: f32) -> f32 {
     // 自定义逻辑
 }
 ```
@@ -134,7 +134,7 @@ fn my_custom_executor(aggregator: &Aggregator, base_value: f64) -> f64 {
 | `remove_modifier_by_handle(handle)` | 移除特定效果的所有修饰器 |
 | `reset()`                           | 清除所有修饰器           |
 | `modifier_count() -> usize`         | 所有桶中的修饰器总数     |
-| `evaluate(base_value) -> f64`       | 运行执行器               |
+| `evaluate(base_value) -> f32`       | 运行执行器               |
 | `set_executor(executor)`            | 替换求值函数             |
 
 ## 即时修饰器 vs. 持续修饰器

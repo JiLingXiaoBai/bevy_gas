@@ -1,8 +1,7 @@
 use bevy::ecs::system::RunSystemOnce;
 use bevy::prelude::*;
 use bevy_tools::attributes::{
-    AttributeClamp, AttributeId, AttributeIdManager, AttributeIdRegister, AttributeRegion,
-    AttributeSet,
+    AttributeId, AttributeIdManager, AttributeIdRegister, AttributeRegion, AttributeSet,
 };
 use bevy_tools::gameplay_abilities::{AbilitySpecHandle, AbilityTask, ActiveGameplayAbility};
 use bevy_tools::gameplay_effects::{
@@ -80,42 +79,31 @@ pub fn effect_tags(asset_tags: Vec<GameplayTag>, granted_tags: Vec<GameplayTag>)
     )
 }
 
-pub fn add_modifier(attribute: AttributeId, value: f64) -> Modifier {
+pub fn add_modifier(attribute: AttributeId, value: f32) -> Modifier {
     modifier(attribute, ModifierOperation::Add, value)
 }
 
-pub fn modifier(attribute: AttributeId, operation: ModifierOperation, value: f64) -> Modifier {
+pub fn modifier(attribute: AttributeId, operation: ModifierOperation, value: f32) -> Modifier {
     Modifier::new(attribute, operation, ModifierMagnitude::Flat(value))
 }
 
-pub fn attribute_set(
-    app: &App,
-    attribute: AttributeId,
-    base_value: f64,
-    clamp: AttributeClamp,
-) -> AttributeSet {
+pub fn attribute_set(app: &App, attribute: AttributeId, base_value: f32) -> AttributeSet {
     let mut attributes = AttributeSet::default();
     attributes.initialize_attribute(
         app.world().resource::<AttributeIdManager>(),
         attribute,
         base_value,
         None,
-        clamp,
     );
     attributes
 }
 
-pub fn spawn_attribute_set(
-    app: &mut App,
-    attribute: AttributeId,
-    base_value: f64,
-    clamp: AttributeClamp,
-) -> Entity {
-    let attributes = attribute_set(app, attribute, base_value, clamp);
+pub fn spawn_attribute_set(app: &mut App, attribute: AttributeId, base_value: f32) -> Entity {
+    let attributes = attribute_set(app, attribute, base_value);
     app.world_mut().spawn(attributes).id()
 }
 
-pub fn instant_add_effect(attribute: AttributeId, value: f64) -> Arc<GameplayEffect> {
+pub fn instant_add_effect(attribute: AttributeId, value: f32) -> Arc<GameplayEffect> {
     Arc::new(GameplayEffect::new(
         vec![add_modifier(attribute, value)],
         EffectDurationTicks::Instant,
@@ -215,7 +203,7 @@ pub fn activate_ability_with_context(
         .unwrap()
 }
 
-pub fn current_value(app: &mut App, entity: Entity, attribute: AttributeId) -> f64 {
+pub fn current_value(app: &mut App, entity: Entity, attribute: AttributeId) -> f32 {
     let manager = app.world().resource::<AttributeIdManager>().clone();
     app.world_mut()
         .entity_mut(entity)

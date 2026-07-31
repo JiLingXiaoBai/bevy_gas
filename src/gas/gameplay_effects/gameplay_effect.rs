@@ -473,7 +473,7 @@ pub struct GameplayEffect {
     modifiers: Vec<Modifier>,
     duration: EffectDurationTicks,
     period: Option<EffectPeriodTicks>,
-    probability_to_apply: f64,
+    probability_to_apply: f32,
     stacking_policy: StackingPolicy,
     tags: EffectTags,
 }
@@ -483,7 +483,7 @@ impl GameplayEffect {
         modifiers: Vec<Modifier>,
         duration: EffectDurationTicks,
         period: Option<EffectPeriodTicks>,
-        probability_to_apply: f64,
+        probability_to_apply: f32,
         stacking_policy: StackingPolicy,
         tags: EffectTags,
     ) -> Self {
@@ -520,15 +520,15 @@ impl GameplayEffect {
             .all(|modifier| modifier.get_operation() == ModifierOperation::Add)
     }
 
-    pub fn get_probability_to_apply(&self) -> f64 {
+    pub fn get_probability_to_apply(&self) -> f32 {
         self.probability_to_apply
     }
 }
 
-fn magnitude_to_ticks(value: f64) -> u32 {
+fn magnitude_to_ticks(value: f32) -> u32 {
     if !value.is_finite() || value <= 0.0 {
         0
-    } else if value >= u32::MAX as f64 {
+    } else if value >= u32::MAX as f32 {
         u32::MAX
     } else {
         value.ceil() as u32

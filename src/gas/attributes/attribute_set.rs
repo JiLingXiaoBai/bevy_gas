@@ -1,3 +1,4 @@
+use super::attribute::Attribute;
 use super::*;
 use crate::gameplay_effects::ActiveEffectHandle;
 use crate::modifiers::ModifierSpec;
@@ -15,7 +16,7 @@ const HOT_DIRTY_WORDS: usize = HOT_ATTRIBUTE_SET_SIZE.div_ceil(64);
 const COLD_DIRTY_WORDS: usize = COLD_ATTRIBUTE_SET_SIZE.div_ceil(64);
 
 /// Callback invoked after an instant modifier changes an initialized attribute.
-pub type AttributePostExecute = fn(&mut AttributeSet, &AttributeIdManager, AttributeId, f64, f64);
+pub type AttributePostExecute = fn(&mut AttributeSet, &AttributeIdManager, AttributeId, f32, f32);
 
 #[derive(Component)]
 pub struct AttributeSet {
@@ -44,35 +45,17 @@ impl AttributeSet {
         &mut self,
         manager: &AttributeIdManager,
         id: AttributeId,
-        base_value: f64,
-        executor: Option<fn(&Aggregator, f64) -> f64>,
-        clamp: AttributeClamp,
+        base_value: f32,
+        executor: Option<fn(&Aggregator, f32) -> f32>,
     ) {
         let Some(location) = manager.location(id) else {
             debug_assert!(false, "attribute ID is missing from the global manager");
             return;
         };
         let mut attribute = Attribute::default();
-        attribute.init(base_value, executor, clamp);
+        attribute.init(base_value, executor);
         *self.attribute_slot_mut(location) = Some(attribute);
         self.mark_dirty(location);
-    }
-
-    /// Replaces the clamp configuration for an initialized attribute.
-    pub fn set_attribute_clamp(
-        &mut self,
-        manager: &AttributeIdManager,
-        id: AttributeId,
-        clamp: AttributeClamp,
-    ) {
-        let Some(location) = manager.location(id) else {
-            debug_assert!(false, "attribute ID is missing from the global manager");
-            return;
-        };
-        if let Some(attribute) = self.attribute_slot_mut(location) {
-            attribute.set_clamp(clamp);
-            self.mark_dirty(location);
-        }
     }
 
     /// Sets the callback invoked after instant modifier execution.
@@ -100,7 +83,7 @@ impl AttributeSet {
         &mut self,
         manager: &AttributeIdManager,
         id: AttributeId,
-    ) -> Option<f64> {
+    ) -> Option<f32> {
         let location = manager.location(id)?;
         let was_dirty = self.take_dirty(location);
         let attribute = self.attribute_slot_mut(location).as_mut()?;

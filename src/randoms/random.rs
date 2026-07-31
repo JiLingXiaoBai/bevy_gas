@@ -38,8 +38,8 @@ impl Random {
         self.rng.random_range(range)
     }
 
-    pub fn random_bool(&mut self, probability: f64) -> bool {
-        self.rng.random_bool(probability)
+    pub fn random_bool(&mut self, probability: f32) -> bool {
+        self.rng.random_bool(f64::from(probability))
     }
 
     pub fn from_rng<T>(&mut self) -> T

@@ -9,7 +9,7 @@
 | 01  | [项目概述](./01-overview.md)                           | 架构、设计原则、源码树                      |
 | 02  | [插件系统与生命周期](./02-plugins-and-lifecycle.md)    | 插件、FixedUpdate 管线、SystemSet、全局设置 |
 | 03  | [Gameplay 标签](./03-gameplay-tags.md)                 | 层级位集标签、引用计数、注册                |
-| 04  | [属性系统](./04-attributes.md)                         | 属性系统、延迟重算、Clamp、快照             |
+| 04  | [属性系统](./04-attributes.md)                         | 属性系统、延迟重算、快照                   |
 | 05  | [修饰器与聚合器](./05-modifiers-and-aggregator.md)     | 修饰器操作、幅度类型、求值顺序              |
 | 06  | [Gameplay 效果](./06-gameplay-effects.md)              | Buff/Debuff 系统、堆叠、抑制、免疫、队列    |
 | 07  | [Gameplay 技能](./07-gameplay-abilities.md)            | 技能定义、激活流程、链式激活                |

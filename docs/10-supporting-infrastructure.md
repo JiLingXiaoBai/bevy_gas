@@ -49,7 +49,7 @@ impl Random {
     pub fn from_seed(seed: u64) -> Self;
     pub fn set_seed(&mut self, seed: u64);
     pub fn random_range<T, R>(&mut self, range: R) -> T;
-    pub fn random_bool(&mut self, probability: f64) -> bool;
+    pub fn random_bool(&mut self, probability: f32) -> bool;
     pub fn from_rng<T: FromRng>(&mut self) -> T;
     pub fn sample_interior<S: ShapeSample>(&mut self, shape: &S) -> S::Output;
     pub fn sample_boundary<S: ShapeSample>(&mut self, shape: &S) -> S::Output;

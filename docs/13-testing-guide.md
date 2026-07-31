@@ -7,7 +7,7 @@ tests/
 ├── gas_tests/
 │   ├── common_test.rs                   # 共享测试工具
 │   ├── gameplay_tags_test.rs            # 标签注册、位集、容器
-│   ├── attributes_test.rs               # 属性初始化、重算、Clamp
+│   ├── attributes_test.rs               # 属性初始化、重算、聚合器
 │   ├── gameplay_effects_test.rs         # 效果应用、堆叠、抑制
 │   ├── gameplay_abilities_test.rs       # 技能激活、任务、链式
 │   ├── active_gameplay_effect_test.rs   # 活跃效果生命周期
@@ -86,7 +86,7 @@ for _ in 0..n_ticks {
 | ---------- | -------------------------------------------- |
 | 标签注册   | 父标签自动注册、容量限制                     |
 | 标签容器   | 添加/移除、引用计数、has_tag/has_all/has_any |
-| 属性初始化 | 基础值、重算、Clamp                          |
+| 属性初始化 | 基础值、重算、聚合器                        |
 | 修饰器聚合 | 顺序：Override → Add → PercentAdd → Multiply |
 | 即时效果   | Base 值修改、post_execute 回调               |
 | 持续效果   | 修饰器应用、过期清理                         |

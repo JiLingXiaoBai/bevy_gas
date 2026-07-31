@@ -6,20 +6,20 @@ use super::common_test::{
 use bevy::prelude::*;
 use bevy_tools::{
     AbilityActivationContext, AbilityActivationQueue, AbilitySystemComponent, AbilityTaskDef,
-    AbilityTaskOnFinishedDef, AttributeClamp, AttributeId, AttributeSet, EffectContext,
-    EffectDurationTicks, EffectPayload, GameplayAbility, GameplayEffect,
-    GameplayEffectApplicationQueue, GameplayTag, GameplayTagContainer, Modifier, ModifierMagnitude,
-    ModifierMagnitudeCalculation, ModifierOperation, StackingPolicy,
+    AbilityTaskOnFinishedDef, AttributeId, AttributeSet, EffectContext, EffectDurationTicks,
+    EffectPayload, GameplayAbility, GameplayEffect, GameplayEffectApplicationQueue, GameplayTag,
+    GameplayTagContainer, Modifier, ModifierMagnitude, ModifierMagnitudeCalculation,
+    ModifierOperation, StackingPolicy,
 };
 use std::sync::Arc;
 
 struct LevelMagnitude {
-    scale: f64,
+    scale: f32,
 }
 
 impl ModifierMagnitudeCalculation for LevelMagnitude {
-    fn calculate(&self, context: &EffectContext) -> f64 {
-        context.level() as f64 * self.scale
+    fn calculate(&self, context: &EffectContext) -> f32 {
+        context.level() as f32 * self.scale
     }
 }
 
@@ -28,7 +28,7 @@ struct SnapshotCurrentMagnitude {
 }
 
 impl ModifierMagnitudeCalculation for SnapshotCurrentMagnitude {
-    fn calculate(&self, context: &EffectContext) -> f64 {
+    fn calculate(&self, context: &EffectContext) -> f32 {
         context
             .source_snapshot()
             .and_then(|snapshot| {
@@ -40,12 +40,12 @@ impl ModifierMagnitudeCalculation for SnapshotCurrentMagnitude {
 
 struct SourceTagMagnitude {
     tag: GameplayTag,
-    tagged: f64,
-    untagged: f64,
+    tagged: f32,
+    untagged: f32,
 }
 
 impl ModifierMagnitudeCalculation for SourceTagMagnitude {
-    fn calculate(&self, context: &EffectContext) -> f64 {
+    fn calculate(&self, context: &EffectContext) -> f32 {
         let has_tag = context
             .tag_container_query
             .get(context.source())
@@ -59,8 +59,7 @@ impl ModifierMagnitudeCalculation for SourceTagMagnitude {
 fn fixed_update_processes_queued_effect_before_next_duration_tick() {
     let mut app = test_app();
     let health = register_attribute(&mut app, "Health");
-    let target =
-        super::common_test::spawn_attribute_set(&mut app, health, 10.0, AttributeClamp::None);
+    let target = super::common_test::spawn_attribute_set(&mut app, health, 10.0);
     let effect = Arc::new(GameplayEffect::new(
         vec![super::common_test::add_modifier(health, 5.0)],
         EffectDurationTicks::DurationTicks(ModifierMagnitude::Flat(1.0)),
@@ -133,8 +132,7 @@ fn fixed_update_activation_tasks_and_cleanup_run_in_plugin_order() {
 fn calculated_magnitude_can_use_effect_level() {
     let mut app = test_app();
     let damage = register_attribute(&mut app, "Damage");
-    let target =
-        super::common_test::spawn_attribute_set(&mut app, damage, 0.0, AttributeClamp::None);
+    let target = super::common_test::spawn_attribute_set(&mut app, damage, 0.0);
     let effect = Arc::new(GameplayEffect::new(
         vec![Modifier::new(
             damage,
@@ -162,10 +160,8 @@ fn calculated_magnitude_can_use_source_snapshot() {
     let mut app = test_app();
     let power = register_attribute(&mut app, "Power");
     let damage = register_attribute(&mut app, "Damage");
-    let source =
-        super::common_test::spawn_attribute_set(&mut app, power, 7.0, AttributeClamp::None);
-    let target =
-        super::common_test::spawn_attribute_set(&mut app, damage, 0.0, AttributeClamp::None);
+    let source = super::common_test::spawn_attribute_set(&mut app, power, 7.0);
+    let target = super::common_test::spawn_attribute_set(&mut app, damage, 0.0);
     let snapshot = app
         .world_mut()
         .entity_mut(source)
@@ -200,8 +196,7 @@ fn calculated_magnitude_can_read_source_tags() {
     let damage = register_attribute(&mut app, "Damage");
     let empowered = register_tag(&mut app, "State.Empowered");
     let source = app.world_mut().spawn(GameplayTagContainer::default()).id();
-    let target =
-        super::common_test::spawn_attribute_set(&mut app, damage, 0.0, AttributeClamp::None);
+    let target = super::common_test::spawn_attribute_set(&mut app, damage, 0.0);
     add_tag_to_entity(&mut app, source, empowered);
     let effect = Arc::new(GameplayEffect::new(
         vec![Modifier::new(
@@ -233,8 +228,7 @@ fn calculated_magnitude_can_read_source_tags() {
 fn reconcile_removes_externally_despawned_active_effect_from_target_index() {
     let mut app = test_app();
     let power = register_attribute(&mut app, "Power");
-    let target =
-        super::common_test::spawn_attribute_set(&mut app, power, 10.0, AttributeClamp::None);
+    let target = super::common_test::spawn_attribute_set(&mut app, power, 10.0);
     let effect = Arc::new(GameplayEffect::new(
         vec![super::common_test::add_modifier(power, 5.0)],
         EffectDurationTicks::Infinite,

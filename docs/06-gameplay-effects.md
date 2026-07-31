@@ -19,7 +19,7 @@ pub struct GameplayEffect {
     modifiers: Vec<Modifier>,
     duration: EffectDurationTicks,
     period: Option<EffectPeriodTicks>,
-    probability_to_apply: f64,       // 0.0–1.0
+    probability_to_apply: f32,       // 0.0–1.0
     stacking_policy: StackingPolicy,
     tags: EffectTags,
 }

@@ -1,8 +1,6 @@
 use bevy::ecs::system::RunSystemOnce;
 use bevy::prelude::*;
-use bevy_tools::attributes::{
-    AttributeClamp, AttributeId, AttributeIdRegister, AttributeRegion, AttributeSet,
-};
+use bevy_tools::attributes::{AttributeId, AttributeIdRegister, AttributeRegion, AttributeSet};
 use bevy_tools::modifiers::{Modifier, ModifierMagnitude, ModifierOperation};
 use bevy_tools::{
     AbilitySystemParams, EffectDurationTicks, EffectPayload, EffectTags,
@@ -115,7 +113,7 @@ fn failed_effect_application_does_not_leave_duration_modifier() {
         .resource::<bevy_tools::AttributeIdManager>()
         .clone();
     let mut attributes = AttributeSet::default();
-    attributes.initialize_attribute(&manager, health, 10.0, None, AttributeClamp::None);
+    attributes.initialize_attribute(&manager, health, 10.0, None);
     let target = app.world_mut().spawn(attributes).id();
     let effect = Arc::new(GameplayEffect::new(
         vec![Modifier::new(

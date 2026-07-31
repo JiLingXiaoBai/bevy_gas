@@ -1,7 +1,7 @@
 use crate::gameplay_effects::ActiveEffectHandle;
 use crate::modifiers::{AppliedModifier, ModifierOperation, ModifierSpec};
 
-pub fn default_executor(aggregator: &Aggregator, base_value: f64) -> f64 {
+pub fn default_executor(aggregator: &Aggregator, base_value: f32) -> f32 {
     if let Some(override_value) = aggregator.override_value {
         return override_value.get_value();
     }
@@ -28,7 +28,7 @@ pub struct Aggregator {
     percent_additive: Vec<AppliedModifier>,
     multiplicative: Vec<AppliedModifier>,
     override_value: Option<AppliedModifier>,
-    executor: fn(&Aggregator, f64) -> f64,
+    executor: fn(&Aggregator, f32) -> f32,
 }
 
 impl Default for Aggregator {
@@ -44,7 +44,7 @@ impl Default for Aggregator {
 }
 
 impl Aggregator {
-    pub fn set_executor(&mut self, executor: Option<fn(&Aggregator, f64) -> f64>) {
+    pub fn set_executor(&mut self, executor: Option<fn(&Aggregator, f32) -> f32>) {
         if let Some(executor) = executor {
             self.executor = executor;
         }
@@ -89,7 +89,7 @@ impl Aggregator {
             + usize::from(self.override_value.is_some())
     }
 
-    pub fn evaluate(&self, base_value: f64) -> f64 {
+    pub fn evaluate(&self, base_value: f32) -> f32 {
         (self.executor)(self, base_value)
     }
 }

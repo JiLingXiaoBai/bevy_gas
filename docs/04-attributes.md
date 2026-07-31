@@ -85,50 +85,36 @@ pub struct AttributeLocation {
 
 ### `Attribute`
 
-`AttributeSet` 的 crate 内部值类型，具有三层值模型。外部代码不能直接构造或修改 `Attribute`，所有状态变化必须通过 `AttributeSet`：
+`AttributeSet` 的 crate 内部值类型，具有基础值和当前值两层模型。外部代码不能直接构造或修改 `Attribute`，所有状态变化必须通过 `AttributeSet`：
 
 ```rust
 pub(crate) struct Attribute {
-    base: f64,           // 基础值（被即时效果修改）
-    evaluated: f64,      // 聚合值（base + 持续修饰器）
-    current: f64,        // Clamp 后的最终值
+    base: f32,           // 基础值（被即时效果修改）
+    current: f32,        // 聚合后的当前值
     aggregator: Aggregator,
-    clamp: AttributeClamp,
 }
 ```
 
 **值流转：**
 
 ```
-base ──► [Aggregator.evaluate()] ──► evaluated ──► [clamp] ──► current
+base ──► [Aggregator.evaluate()] ──► current
 ```
 
-`Attribute` 自身不保存脏状态。`AttributeSet` 的冷热 dirty 位图是唯一事实来源：位被取出时才调用 `Attribute::recalculate()`，该方法无条件重新执行 Aggregator 并更新 Clamp。
+`Attribute` 自身不保存脏状态。`AttributeSet` 的冷热 dirty 位图是唯一事实来源：位被取出时才调用 `Attribute::recalculate()`，该方法无条件重新执行 Aggregator 并更新当前值。
 
 **crate 内部主要方法：**
 
 | 方法                                   | 说明                              |
 | -------------------------------------- | --------------------------------- |
-| `init(base_value, executor, clamp)`    | 初始化基础值、自定义执行器、Clamp |
-| `recalculate()`                        | 无条件重算 Aggregator 和 Clamp    |
-| `get_current_value() -> f64`           | 读取已经计算的当前值              |
-| `set_clamp(clamp)`                     | 更新内部 Clamp 配置               |
+| `init(base_value, executor)`           | 初始化基础值和自定义执行器        |
+| `recalculate()`                        | 无条件重算 Aggregator             |
+| `get_current_value() -> f32`           | 读取已经计算的当前值              |
 | `apply_modifier_spec(spec, handle)`    | 向聚合器添加持续修饰器            |
 | `remove_modifier_by_handle(handle)`    | 按效果句柄移除持续修饰器          |
 | `modify_base_value(spec)`              | 直接对 base 应用即时修饰器        |
 | `modifier_count() -> usize`            | 已应用修饰器总数                  |
 | `make_snapshot() -> AttributeSnapshot` | 捕获当前 base + current 值        |
-
-### `AttributeClamp`
-
-```rust
-pub enum AttributeClamp {
-    None,
-    Range { min: Option<f64>, max: Option<f64> },
-}
-```
-
-纯静态 Clamp 值，不支持动态属性间引用。
 
 ### `AttributeSet`
 
@@ -153,12 +139,11 @@ pub struct AttributeSet {
 
 | 方法                                                   | 说明                         |
 | ------------------------------------------------------ | ---------------------------- |
-| `initialize_attribute(manager, id, base, executor, clamp)` | 按管理器映射初始化属性槽位    |
-| `set_attribute_clamp(manager, id, clamp)`                  | 更新属性的 Clamp             |
+| `initialize_attribute(manager, id, base, executor)`        | 按管理器映射初始化属性槽位    |
 | `set_post_execute(callback)`                           | 设置修改后回调               |
 | `recalculate_attribute(manager, id)`                   | 只重算指定属性               |
 | `recalculate_dirty()`                                  | 按冷热位图重算脏属性         |
-| `get_current_value(manager, id) -> Option<f64>`        | 获取属性的当前值             |
+| `get_current_value(manager, id) -> Option<f32>`        | 获取属性的当前值             |
 | `apply_instant_modifier(manager, spec)`                | 应用即时修饰器（修改 base）  |
 | `apply_duration_modifier(manager, spec, handle)`       | 应用持续修饰器（加入聚合器） |
 | `remove_modifiers(handle)`                             | 移除特定效果句柄的所有修饰器 |
@@ -169,7 +154,7 @@ pub struct AttributeSet {
 
 ```rust
 pub type AttributePostExecute =
-    fn(&mut AttributeSet, &AttributeIdManager, AttributeId, f64, f64);
+    fn(&mut AttributeSet, &AttributeIdManager, AttributeId, f32, f32);
 //       attr_set,          manager,         attr_id,     old, new
 ```
 
@@ -181,8 +166,8 @@ pub type AttributePostExecute =
 
 ```rust
 pub struct AttributeSnapshot {
-    base: f64,
-    current: f64,
+    base: f32,
+    current: f32,
 }
 
 #[derive(Component, Clone)]

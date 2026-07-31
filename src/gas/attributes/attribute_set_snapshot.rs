@@ -25,13 +25,13 @@ impl AttributeSetSnapshot {
     }
 
     /// Returns the captured current value for `id`.
-    pub fn get_current_value(&self, manager: &AttributeIdManager, id: AttributeId) -> Option<f64> {
+    pub fn get_current_value(&self, manager: &AttributeIdManager, id: AttributeId) -> Option<f32> {
         self.get_attribute(manager, id)
             .map(AttributeSnapshot::current)
     }
 
     /// Returns the captured base value for `id`.
-    pub fn get_base_value(&self, manager: &AttributeIdManager, id: AttributeId) -> Option<f64> {
+    pub fn get_base_value(&self, manager: &AttributeIdManager, id: AttributeId) -> Option<f32> {
         self.get_attribute(manager, id).map(AttributeSnapshot::base)
     }
 
