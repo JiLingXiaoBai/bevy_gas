@@ -12,19 +12,22 @@ use bevy_tools::{
     AbilityActivationStatus, AbilityChainContext, AbilityChainError, AbilitySpecHandle,
     AbilitySystemComponent, AbilityTags, AbilityTask, AbilityTaskDef, AbilityTaskOnFinished,
     AbilityTaskOnFinishedDef, AttributeId, EffectContext, EffectDurationTicks, GameplayAbility,
-    GameplayEffect, GameplayTagContainer, Modifier, ModifierMagnitude,
+    GameplayAbilitySpec, GameplayEffect, GameplayTagContainer, Modifier, ModifierMagnitude,
     ModifierMagnitudeCalculation, ModifierOperation, StackingPolicy,
 };
 use std::sync::Arc;
 
 struct ContextPayloadMagnitude {
+    expected_instigator: Entity,
     expected_causer: Entity,
     snapshot_attribute: AttributeId,
 }
 
 impl ModifierMagnitudeCalculation for ContextPayloadMagnitude {
     fn calculate(&self, context: &EffectContext) -> f32 {
-        if context.causer() != Some(self.expected_causer) {
+        if context.instigator() != self.expected_instigator
+            || context.causer() != Some(self.expected_causer)
+        {
             return 0.0;
         }
 
@@ -521,6 +524,28 @@ fn ability_spec_preserves_input_id_and_clear_rebuilds_indices() {
 }
 
 #[test]
+fn ability_spec_tracks_input_pressed_state() {
+    let ability = Arc::new(GameplayAbility::new(
+        AbilityTags::default(),
+        Vec::new(),
+        None,
+        None,
+        Vec::new(),
+        true,
+        false,
+    ));
+    let mut spec = GameplayAbilitySpec::new(AbilitySpecHandle::new(0), ability, 1, Some(4));
+
+    assert!(!spec.is_input_pressed());
+
+    spec.set_input_pressed(true);
+    assert!(spec.is_input_pressed());
+
+    spec.set_input_pressed(false);
+    assert!(!spec.is_input_pressed());
+}
+
+#[test]
 fn clear_ability_returns_false_while_spec_is_active() {
     let mut app = test_app();
     let source = app
@@ -651,6 +676,7 @@ fn chained_activation_inherits_context_and_activation_effects_use_payload() {
     let mut app = test_app();
     let power = register_attribute(&mut app, "Power");
     let damage = register_attribute(&mut app, "Damage");
+    let instigator = app.world_mut().spawn_empty().id();
     let causer = app.world_mut().spawn_empty().id();
     let attributes = attribute_set(&app, power, 7.0);
     let source = app
@@ -688,6 +714,7 @@ fn chained_activation_inherits_context_and_activation_effects_use_payload() {
             damage,
             ModifierOperation::Add,
             ModifierMagnitude::Calculated(Box::new(ContextPayloadMagnitude {
+                expected_instigator: instigator,
                 expected_causer: causer,
                 snapshot_attribute: power,
             })),
@@ -713,6 +740,7 @@ fn chained_activation_inherits_context_and_activation_effects_use_payload() {
 
     let context =
         AbilityActivationContext::direct(source, AbilityChainContext::root(first_handle, 0))
+            .with_instigator(instigator)
             .with_causer(Some(causer))
             .with_source_snapshot(source_snapshot);
     activate_ability_with_context(&mut app, source, target, first_handle, context).unwrap();
@@ -723,7 +751,7 @@ fn chained_activation_inherits_context_and_activation_effects_use_payload() {
 
     assert_eq!(current_value(&mut app, target, damage), 7.0);
     let second_context = active_ability_context_for_spec(&mut app, second_handle).unwrap();
-    assert_eq!(second_context.get_instigator(), source);
+    assert_eq!(second_context.get_instigator(), instigator);
     assert_eq!(second_context.get_causer(), Some(causer));
     assert_eq!(
         second_context

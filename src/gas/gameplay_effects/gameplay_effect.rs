@@ -23,10 +23,17 @@ pub struct EffectContext<'w, 's> {
 }
 
 impl<'w, 's> EffectContext<'w, 's> {
+    /// Returns the entity whose ASC, attributes, and tags provide this effect's gameplay source.
     pub fn source(&self) -> Entity {
         self.payload.get_source()
     }
 
+    /// Returns the entity that initiated the action producing this effect.
+    pub fn instigator(&self) -> Entity {
+        self.payload.get_instigator()
+    }
+
+    /// Returns the optional physical entity that directly caused this effect.
     pub fn causer(&self) -> Option<Entity> {
         self.payload.get_causer()
     }
@@ -48,19 +55,30 @@ impl<'w, 's> EffectContext<'w, 's> {
 #[derive(Clone)]
 pub struct EffectPayload {
     source: Entity,
+    instigator: Entity,
     causer: Option<Entity>,
     level: u32,
     source_snapshot: Option<AttributeSetSnapshot>,
 }
 
 impl EffectPayload {
+    /// Creates effect metadata using `source` as both the gameplay source and default instigator.
+    ///
+    /// `causer` identifies the optional physical entity that directly caused the effect.
     pub fn new(source: Entity, causer: Option<Entity>, level: u32) -> Self {
         Self {
             source,
+            instigator: source,
             causer,
             level,
             source_snapshot: None,
         }
+    }
+
+    /// Sets the entity that initiated the action producing this effect.
+    pub fn with_instigator(mut self, instigator: Entity) -> Self {
+        self.instigator = instigator;
+        self
     }
 
     pub fn with_source_snapshot(mut self, source_snapshot: AttributeSetSnapshot) -> Self {
@@ -68,10 +86,17 @@ impl EffectPayload {
         self
     }
 
+    /// Returns the entity whose ASC, attributes, and tags provide this effect's gameplay source.
     pub fn get_source(&self) -> Entity {
         self.source
     }
 
+    /// Returns the entity that initiated the action producing this effect.
+    pub fn get_instigator(&self) -> Entity {
+        self.instigator
+    }
+
+    /// Returns the optional physical entity that directly caused this effect.
     pub fn get_causer(&self) -> Option<Entity> {
         self.causer
     }

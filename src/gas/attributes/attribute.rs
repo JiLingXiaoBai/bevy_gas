@@ -2,7 +2,7 @@ use super::attribute_aggregator::Aggregator;
 use super::attribute_snapshot::AttributeSnapshot;
 use crate::modifiers::{ModifierOperation, ModifierSpec};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub(crate) struct Attribute {
     base: f32,
     current: f32,

@@ -247,11 +247,20 @@ effect_queue.push_application(target, effect, payload);
 ```rust
 pub struct EffectPayload {
     source: Entity,
+    instigator: Entity,
     causer: Option<Entity>,
     level: u32,
     source_snapshot: Option<AttributeSetSnapshot>,
 }
 ```
+
+- `source`：提供 ASC、技能规格、来源属性和来源标签的 Gameplay 数据来源。
+- `instigator`：发起产生该效果之行为的实体；默认等于 `source`，拥有者与实际发起者
+  不同时可通过 `with_instigator()` 覆盖。
+- `causer`：直接造成效果的可选物理实体，例如武器、投射物或爆炸区域。
+
+运行时代码不得使用 `instigator` 或 `causer` 代替 `source` 查询消耗、冷却、来源属性
+或来源标签。
 
 ### `EffectContext`
 
@@ -269,6 +278,7 @@ pub struct EffectContext<'w, 's> {
 
 impl EffectContext<'_, '_> {
     pub fn source(&self) -> Entity;
+    pub fn instigator(&self) -> Entity;
     pub fn causer(&self) -> Option<Entity>;
     pub fn level(&self) -> u32;
     pub fn source_snapshot(&self) -> Option<&AttributeSetSnapshot>;

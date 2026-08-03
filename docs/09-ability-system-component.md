@@ -56,7 +56,6 @@ pub struct AbilitySystemParams<'w, 's> {
         Option<&'static ActiveEffectPeriodTicks>,
     )>,
     pub active_ability_query: Query<'w, 's, &'static mut ActiveGameplayAbility>,
-    pub time: Res<'w, Time<Fixed>>,
 }
 ```
 

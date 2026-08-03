@@ -10,7 +10,6 @@ pub type ActiveAbilityHandle = Entity;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AbilityActivationStatus {
-    Activating,
     Active,
     Ending,
     Cancelled,
@@ -174,6 +173,7 @@ pub struct AbilityActivationContext {
 }
 
 impl AbilityActivationContext {
+    /// Creates a direct activation context using `source` as the default instigator.
     pub fn direct(source: Entity, chain: AbilityChainContext) -> Self {
         Self {
             chain: Some(chain),
@@ -184,8 +184,15 @@ impl AbilityActivationContext {
         }
     }
 
+    /// Sets the optional physical entity that directly caused this ability activation.
     pub fn with_causer(mut self, causer: Option<Entity>) -> Self {
         self.causer = causer;
+        self
+    }
+
+    /// Sets the entity that initiated this ability activation.
+    pub fn with_instigator(mut self, instigator: Entity) -> Self {
+        self.instigator = instigator;
         self
     }
 
@@ -220,6 +227,7 @@ impl AbilityActivationContext {
         self.instigator
     }
 
+    /// Returns the optional physical entity that directly caused this ability activation.
     pub fn get_causer(&self) -> Option<Entity> {
         self.causer
     }

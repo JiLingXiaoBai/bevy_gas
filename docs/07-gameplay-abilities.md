@@ -40,9 +40,14 @@ pub struct GameplayAbilitySpec {
     ability: Arc<GameplayAbility>,
     level: u32,
     input_id: Option<u16>,     // 可选的输入绑定
+    input_pressed: bool,       // 绑定输入当前是否处于按下状态
     active_count: u32,         // 当前活跃实例数
 }
 ```
+
+`input_pressed` 默认为 `false`。输入处理系统应在绑定输入按下、松开时分别通过
+`set_input_pressed(true)` 和 `set_input_pressed(false)` 更新它；可使用
+`is_input_pressed()` 查询当前状态。该字段只记录瞬时输入状态，不负责自动激活技能。
 
 ### `AbilitySpecHandle`
 
@@ -127,6 +132,11 @@ pub enum AbilityActivationReason {
 }
 ```
 
+`instigator` 默认等于技能来源实体，可通过 `with_instigator()` 指定实际发起者。
+`causer` 表示直接造成技能行为的可选物理实体。两者都会沿链式技能激活继承，并传播到
+技能产生的 `EffectPayload`；消耗、冷却、来源属性和来源标签仍始终从技能的 `source`
+读取。
+
 ### `AbilityChainContext`
 
 追踪链式技能激活，防止无限循环：
@@ -164,14 +174,13 @@ pub struct ActiveGameplayAbility {
 ### `AbilityActivationStatus`
 
 ```
-Activating ──► Active ──► Ending ──► (销毁)
-                  │
-                  └──► Cancelled ──► (销毁)
+Active ──► Ending ──► (销毁)
+   │
+   └──► Cancelled ──► (销毁)
 ```
 
 | 状态         | 说明                         |
 | ------------ | ---------------------------- |
-| `Activating` | 激活期间的初始状态           |
 | `Active`     | 运行中；任务正在 tick        |
 | `Ending`     | 正常关闭；任务停止，清理开始 |
 | `Cancelled`  | 强制关闭；任务停止，清理开始 |

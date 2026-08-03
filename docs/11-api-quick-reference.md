@@ -112,7 +112,7 @@
 | `AbilityTags`              | `struct`     | 技能标签配置                                          |
 | `ActiveGameplayAbility`    | `Component`  | 运行时活跃技能                                        |
 | `ActiveAbilityHandle`      | `type alias` | 活跃技能的 `Entity` 句柄                              |
-| `AbilityActivationStatus`  | `enum`       | Activating / Active / Ending / Cancelled              |
+| `AbilityActivationStatus`  | `enum`       | Active / Ending / Cancelled                           |
 | `AbilityActivationContext` | `struct`     | 激活元数据                                            |
 | `AbilityActivationReason`  | `enum`       | Direct / Input / Chained / TaskEvent / GameplayEffect |
 | `AbilityChainContext`      | `struct`     | 链追踪（深度 + 循环检测）                             |

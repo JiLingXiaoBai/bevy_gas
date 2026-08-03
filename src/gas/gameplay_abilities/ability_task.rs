@@ -324,7 +324,8 @@ fn effect_payload_from_activation_context(
     level: u32,
     activation_context: &AbilityActivationContext,
 ) -> EffectPayload {
-    let payload = EffectPayload::new(source, activation_context.get_causer(), level);
+    let payload = EffectPayload::new(source, activation_context.get_causer(), level)
+        .with_instigator(activation_context.get_instigator());
     if let Some(source_snapshot) = activation_context.get_source_snapshot() {
         payload.with_source_snapshot(source_snapshot.clone())
     } else {
