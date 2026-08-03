@@ -152,7 +152,8 @@
 
 | 项                              | 类型       | 说明                  |
 | ------------------------------- | ---------- | --------------------- |
-| `UniqueName`                    | `struct`   | 驻留字符串句柄（u32） |
-| `UniqueNamePool`                | `Resource` | 字符串驻留池          |
-| `Random`                        | `Resource` | 种子确定性 RNG        |
-| `GameplayAbilitySystemSettings` | `struct`   | 全局编译期常量        |
+| `UniqueName`                    | `struct`   | 驻留字符串句柄（u32）                 |
+| `UniqueNameError`               | `enum`     | 名称句柄空间耗尽错误                   |
+| `UniqueNamePool`                | `Resource` | 碰撞安全的字符串驻留池，注册返回 Result |
+| `Random`                        | `Resource` | 种子确定性 RNG                        |
+| `GameplayAbilitySystemSettings` | `struct`   | 全局编译期常量                        |

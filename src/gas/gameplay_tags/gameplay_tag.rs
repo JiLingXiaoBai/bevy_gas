@@ -30,7 +30,7 @@ impl<'w> GameplayTagRegister<'w> {
         &mut self,
         full_tag_name: &str,
     ) -> Result<GameplayTag, GameplayTagError> {
-        let unique_name = self.unique_name_pool.new_name(full_tag_name);
+        let unique_name = self.unique_name_pool.new_name(full_tag_name)?;
 
         if let Some(tag) = self.gameplay_tag_manager.get_tag(unique_name) {
             return Ok(tag);

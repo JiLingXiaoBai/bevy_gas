@@ -17,15 +17,17 @@ pub struct UniqueName(u32);
 #[derive(Resource)]
 pub struct UniqueNamePool {
     entry_pool: Vec<String>,
-    lookup_hash: HashMap<u64, u32>,
+    lookup_hash: HashMap<u64, HashBucket>,
 }
 
 impl UniqueNamePool {
-    pub fn new_name(&mut self, name: &str) -> UniqueName;
+    pub fn new_name(&mut self, name: &str) -> Result<UniqueName, UniqueNameError>;
     pub fn get_display_str(&self, name: &UniqueName) -> &str;
     pub fn clear(&mut self);
 }
 ```
+
+哈希值仅用于定位候选桶；桶内始终比较完整字符串，因此不同名称即使发生哈希碰撞，也会获得不同句柄。句柄空间耗尽时返回 `UniqueNameError::CapacityExceeded`，库代码不会为此触发 panic。调用方应显式处理注册失败。
 
 - 空字符串预留在索引 0
 - Debug 构建中，哈希冲突会触发 panic

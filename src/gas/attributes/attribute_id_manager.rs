@@ -1,6 +1,6 @@
 use super::ATTRIBUTE_SET_SIZE;
 use crate::settings::GameplayAbilitySystemSettings;
-use crate::{UniqueName, UniqueNamePool};
+use crate::{UniqueName, UniqueNameError, UniqueNamePool};
 use bevy::ecs::system::SystemParam;
 use bevy::platform::collections::HashMap;
 use bevy::prelude::{ResMut, Resource};
@@ -63,6 +63,8 @@ impl AttributeLocation {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AttributeIdError {
+    /// The attribute name could not be interned.
+    UniqueName(UniqueNameError),
     /// The combined hot and cold attribute capacity was exceeded.
     CapacityExceeded { max: usize },
     /// One storage region reached its configured capacity.
@@ -79,6 +81,9 @@ pub enum AttributeIdError {
 impl fmt::Display for AttributeIdError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            AttributeIdError::UniqueName(err) => {
+                write!(f, "attribute ID registration failed: {err}")
+            }
             AttributeIdError::CapacityExceeded { max } => {
                 write!(f, "attribute id capacity exceeded; max attributes: {max}")
             }
@@ -105,6 +110,12 @@ impl fmt::Display for AttributeIdError {
 }
 
 impl Error for AttributeIdError {}
+
+impl From<UniqueNameError> for AttributeIdError {
+    fn from(value: UniqueNameError) -> Self {
+        Self::UniqueName(value)
+    }
+}
 
 /// Global manager for attribute IDs and their hot or cold storage locations.
 #[derive(Resource, Clone)]
@@ -228,7 +239,7 @@ impl<'w> AttributeIdRegister<'w> {
         attribute_id_name: &str,
         region: AttributeRegion,
     ) -> Result<AttributeId, AttributeIdError> {
-        let unique_name = self.unique_name_pool.new_name(attribute_id_name);
+        let unique_name = self.unique_name_pool.new_name(attribute_id_name)?;
         self.attribute_id_manager
             .register_id_internal(unique_name, region)
     }

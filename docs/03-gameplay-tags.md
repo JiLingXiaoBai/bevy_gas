@@ -48,6 +48,8 @@ pub struct GameplayTagContainer {
 | `has_any(tags) -> bool`      | 检查是否**任意**指定标签存在                 |
 | `has_any_bits(bits) -> bool` | `has_any` 的位集版本                         |
 
+每个实体上的单个标签（包括由子标签继承得到的父标签）最多支持 `u16::MAX`，即 65,535 个并发引用。超过该上限属于内部不变量被破坏：Debug 构建会通过 `debug_assert!` 立即暴露问题；Release 构建会将计数保持在 `u16::MAX`，避免整数回绕或 library panic。因此玩法和效果配置不应产生超过此上限的重叠标签授予。
+
 ### `GameplayTagManager`
 
 全局 `Resource`，注册标签并追踪继承关系。
@@ -88,6 +90,8 @@ impl GameplayTagRegister<'_> {
 ```
 
 父标签会**递归自动注册**。例如，注册 `"Effect.Debuff.Stun"` 也会自动注册 `"Effect.Debuff"` 和 `"Effect"`。
+
+名称驻留失败会通过 `GameplayTagError::UniqueName` 传播，不会触发 panic；不同完整名称即使产生相同哈希值，也仍会注册为不同标签。
 
 ### `GameplayTagError`
 

@@ -63,7 +63,7 @@ impl AttributeIdRegister<'_> {
 }
 ```
 
-同一名称再次注册时必须使用相同区域，否则返回 `AttributeIdError::RegionMismatch`。热点或冷区单独达到容量时返回 `RegionCapacityExceeded`。
+同一名称再次注册时必须使用相同区域，否则返回 `AttributeIdError::RegionMismatch`。热点或冷区单独达到容量时返回 `RegionCapacityExceeded`。名称驻留失败通过 `AttributeIdError::UniqueName` 传播，不会触发 panic。
 
 ### `AttributeRegion` / `AttributeLocation`
 

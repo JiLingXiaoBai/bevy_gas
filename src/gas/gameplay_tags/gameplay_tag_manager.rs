@@ -1,6 +1,6 @@
 use super::{GameplayTag, GameplayTagBits, add_bit_with_tag};
 use crate::settings::GameplayAbilitySystemSettings;
-use crate::unique_names::UniqueName;
+use crate::unique_names::{UniqueName, UniqueNameError};
 use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
 use std::error::Error;
@@ -9,6 +9,7 @@ pub const MAX_TAG_COUNTS: usize = GameplayAbilitySystemSettings::GAMEPLAY_TAG_SI
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GameplayTagError {
+    UniqueName(UniqueNameError),
     CapacityExceeded { max: usize },
     InvalidTagIndex { index: usize },
 }
@@ -16,6 +17,9 @@ pub enum GameplayTagError {
 impl fmt::Display for GameplayTagError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            GameplayTagError::UniqueName(err) => {
+                write!(f, "gameplay tag registration failed: {err}")
+            }
             GameplayTagError::CapacityExceeded { max } => {
                 write!(f, "gameplay tag capacity exceeded; max tags: {max}")
             }
@@ -27,6 +31,12 @@ impl fmt::Display for GameplayTagError {
 }
 
 impl Error for GameplayTagError {}
+
+impl From<UniqueNameError> for GameplayTagError {
+    fn from(value: UniqueNameError) -> Self {
+        Self::UniqueName(value)
+    }
+}
 
 #[derive(Resource)]
 pub struct GameplayTagManager {

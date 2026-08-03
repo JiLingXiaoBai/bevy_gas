@@ -71,6 +71,7 @@ impl Plugin for GameplayAbilitySystemRuntimePlugin {
             .add_systems(
                 FixedUpdate,
                 (tick_effect_duration_system, tick_effect_period_system)
+                    .chain()
                     .in_set(GameplayAbilitySystemSet::EffectTicks),
             )
             .add_systems(
@@ -94,6 +95,7 @@ impl Plugin for GameplayAbilitySystemRuntimePlugin {
                     cleanup_finished_abilities_system,
                     reconcile_active_effect_target_index_system,
                 )
+                    .chain()
                     .in_set(GameplayAbilitySystemSet::Cleanup),
             )
             .add_systems(

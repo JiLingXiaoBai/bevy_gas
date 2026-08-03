@@ -57,6 +57,11 @@ impl Default for GameplayTagContainer {
 
 impl GameplayTagContainer {
     /// Adds a tag, incrementing reference counts for itself and all parents, and updating the Bitset.
+    ///
+    /// A single tag supports at most `u16::MAX` concurrent references on one
+    /// entity. Exceeding this limit violates an internal invariant: debug builds
+    /// report it with `debug_assert!`, while release builds keep the count
+    /// saturated to avoid wrapping or panicking.
     pub fn add_tag(&mut self, tag: &GameplayTag, manager: &Res<GameplayTagManager>) {
         if let Some(inherited_bits) = manager.get_inherited_bits(tag) {
             // 1. Update Reference Counts (for self and all parents)
@@ -69,7 +74,12 @@ impl GameplayTagContainer {
                     let bit_offset = lsb.trailing_zeros();
                     let index_usize = base_index as usize + bit_offset as usize;
                     debug_assert!(index_usize < self.ref_counts.len());
-                    self.ref_counts[index_usize] = self.ref_counts[index_usize].saturating_add(1);
+                    let count = &mut self.ref_counts[index_usize];
+                    debug_assert!(
+                        *count < u16::MAX,
+                        "gameplay tag reference count exceeded u16::MAX"
+                    );
+                    *count = count.saturating_add(1);
                     current_block ^= lsb;
                 }
             }
@@ -114,6 +124,7 @@ impl GameplayTagContainer {
         }
     }
 
+    /// Adds multiple tags with the same per-tag reference limit as [`Self::add_tag`].
     pub fn add_tags(&mut self, tags: &[GameplayTag], manager: &Res<GameplayTagManager>) {
         for tag in tags {
             self.add_tag(tag, manager);

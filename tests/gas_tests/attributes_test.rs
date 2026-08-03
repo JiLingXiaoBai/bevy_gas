@@ -369,7 +369,7 @@ fn attribute_id_registration_reports_capacity_exceeded() {
         let unique_names: Vec<_> = {
             let mut names = app.world_mut().resource_mut::<UniqueNamePool>();
             (0..=bevy_tools::ATTRIBUTE_SET_SIZE)
-                .map(|index| names.new_name(&format!("Attribute{index}")))
+                .map(|index| names.new_name(&format!("Attribute{index}")).unwrap())
                 .collect()
         };
 

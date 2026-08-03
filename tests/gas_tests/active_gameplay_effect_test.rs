@@ -28,7 +28,7 @@ fn test_app() -> App {
 fn register_tag(app: &mut App, name: &str) -> GameplayTag {
     let unique_name = {
         let mut names = app.world_mut().resource_mut::<UniqueNamePool>();
-        names.new_name(name)
+        names.new_name(name).unwrap()
     };
 
     app.world_mut()

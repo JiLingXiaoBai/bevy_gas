@@ -415,7 +415,8 @@ fn task_emit_event_triggers_observer_with_full_payload() {
     let event_id = app
         .world_mut()
         .resource_mut::<bevy_tools::UniqueNamePool>()
-        .new_name("Ability.Event.ComboWindow");
+        .new_name("Ability.Event.ComboWindow")
+        .unwrap();
     let active = spawn_active_ability(&mut app, source, target, handle);
     let task = AbilityTaskDef::instant(AbilityTaskOnFinishedDef::EmitEvent { event_id })
         .instantiate(active, source, target, handle, 9);
