@@ -34,7 +34,10 @@ impl ModifierMagnitudeCalculation for ContextPayloadMagnitude {
         context
             .source_snapshot()
             .and_then(|snapshot| {
-                snapshot.get_current_value(context.attribute_id_manager(), self.snapshot_attribute)
+                snapshot
+                    .get_current_value(context.attribute_id_manager(), self.snapshot_attribute)
+                    .ok()
+                    .flatten()
             })
             .unwrap_or(0.0)
     }
@@ -360,6 +363,66 @@ fn activating_ability_cancels_matching_active_abilities() {
             .unwrap()
             .get_active_count(),
         0
+    );
+}
+
+#[test]
+fn failed_activation_does_not_cancel_matching_active_abilities() {
+    let mut app = test_app();
+    let stance_tag = register_tag(&mut app, "Ability.Stance");
+    let required_tag = register_tag(&mut app, "State.BreakerReady");
+    let source = app
+        .world_mut()
+        .spawn((
+            AbilitySystemComponent::default(),
+            GameplayTagContainer::default(),
+        ))
+        .id();
+    let stance = Arc::new(GameplayAbility::new(
+        AbilityTags::new(
+            vec![stance_tag],
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+        ),
+        Vec::new(),
+        None,
+        None,
+        Vec::new(),
+        false,
+        false,
+    ));
+    let breaker = Arc::new(GameplayAbility::new(
+        AbilityTags::new(
+            Vec::new(),
+            vec![stance_tag],
+            Vec::new(),
+            vec![required_tag],
+            Vec::new(),
+        ),
+        Vec::new(),
+        None,
+        None,
+        Vec::new(),
+        false,
+        false,
+    ));
+    let stance_handle = give_ability(&mut app, source, stance);
+    let breaker_handle = give_ability(&mut app, source, breaker);
+
+    assert!(activate_ability(&mut app, source, source, stance_handle));
+    assert!(!activate_ability(&mut app, source, source, breaker_handle));
+    assert_eq!(active_ability_count(&mut app), 1);
+    assert_eq!(
+        app.world()
+            .entity(source)
+            .get::<AbilitySystemComponent>()
+            .unwrap()
+            .find_ability_spec(stance_handle)
+            .unwrap()
+            .get_active_count(),
+        1
     );
 }
 
@@ -758,7 +821,7 @@ fn chained_activation_inherits_context_and_activation_effects_use_payload() {
             .get_source_snapshot()
             .unwrap()
             .get_current_value(&manager, power),
-        Some(7.0)
+        Ok(Some(7.0))
     );
     assert_eq!(
         second_context.get_reason(),

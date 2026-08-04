@@ -106,11 +106,17 @@ pub enum AbilityActivationError {
     AbilityNotFound { source: Entity, handle: AbilitySpecHandle },
     MultipleInstancesNotAllowed { source: Entity, handle: AbilitySpecHandle },
     ActivationRequirementsNotMet { source: Entity, handle: AbilitySpecHandle },
-    CommitPreparationFailed { source: Entity, handle: AbilitySpecHandle },
-    StartFailed { source: Entity, handle: AbilitySpecHandle },
-    CommitExecutionFailed { source: Entity, handle: AbilitySpecHandle },
+    CommitPreparationFailed { source: Entity, handle: AbilitySpecHandle, error: AbilityCommitError },
+    StartFailed { source: Entity, handle: AbilitySpecHandle, error: GameplayTagError },
+    CancellationFailed { source: Entity, handle: AbilitySpecHandle, error: GameplayTagError },
+    CommitExecutionFailed { source: Entity, handle: AbilitySpecHandle, error: AbilityCommitError },
 }
 ```
+
+`AbilityCommitError` 进一步区分 Cost 配置、Cost/Cooldown 准备、支付能力以及执行错误。
+`AbilityActivationError::is_rejection()` 用于区分正常的激活拒绝与结构性错误；队列在边界
+分别使用 debug 和 error 级别记录。技能只会在全部激活检查和 Commit 准备通过后取消
+匹配的旧技能，因此失败的激活不会产生取消副作用。
 
 ### `AbilityActivationContext`
 

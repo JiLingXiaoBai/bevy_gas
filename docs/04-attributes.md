@@ -40,7 +40,7 @@ impl AttributeIdManager {
         unique_name: UniqueName,
         region: AttributeRegion,
     ) -> Result<AttributeId, AttributeIdError>;
-    pub fn location(&self, id: AttributeId) -> Option<AttributeLocation>;
+    pub fn location(&self, id: AttributeId) -> Result<AttributeLocation, AttributeIdError>;
     pub const fn hot_count(&self) -> usize;
     pub const fn cold_count(&self) -> usize;
 }
@@ -151,19 +151,21 @@ pub struct AttributeSet {
 
 `AttributeSet` 是属性修改的唯一入口。读取指定属性时会检查并清除对应 dirty bit；只有该 bit 原先被设置时才执行内部重算，重复读取干净属性不会再次求值。
 
+读取与写入采用不同语义：读取未初始化的合法属性返回 `Ok(None)`；即时或持续修饰器要求目标属性必须存在，未初始化时返回 `AttributeSetError::UninitializedAttribute`，不会静默跳过。无效 ID 则包装为 `AttributeSetError::AttributeId`。
+
 **主要方法：**
 
 | 方法                                                   | 说明                         |
 | ------------------------------------------------------ | ---------------------------- |
-| `initialize_attribute(manager, id, base, executor)`        | 初始化属性并可配置聚合器 executor |
+| `initialize_attribute(manager, id, base, executor) -> Result` | 初始化属性并可配置聚合器 executor |
 | `set_post_execute(callback)`                           | 设置修改后回调               |
-| `recalculate_attribute(manager, id)`                   | 只重算指定属性               |
+| `recalculate_attribute(manager, id) -> Result`         | 只重算指定属性               |
 | `recalculate_dirty()`                                  | 按冷热位图重算脏属性         |
-| `get_current_value(manager, id) -> Option<f32>`        | 获取属性的当前值             |
-| `apply_instant_modifier(manager, spec)`                | 应用即时修饰器（修改 base）  |
-| `apply_duration_modifier(manager, spec, handle)`       | 应用持续修饰器（加入聚合器） |
+| `get_current_value(manager, id) -> Result<Option<f32>, AttributeIdError>` | 获取属性的当前值 |
+| `apply_instant_modifier(manager, spec) -> Result<(), AttributeSetError>` | 应用即时修饰器；属性未初始化时失败 |
+| `apply_duration_modifier(manager, spec, handle) -> Result<(), AttributeSetError>` | 应用持续修饰器；属性未初始化时失败 |
 | `remove_modifiers(handle)`                             | 移除特定效果句柄的所有修饰器 |
-| `remove_modifiers_for_attributes(manager, handle, ids)` | 按属性 ID 精确移除修饰器    |
+| `remove_modifiers_for_attributes(manager, handle, ids) -> Result` | 按属性 ID 精确移除修饰器 |
 | `make_snapshot(source_entity) -> AttributeSetSnapshot` | 创建所有属性的完整快照       |
 
 ### `AttributePostExecute`
@@ -194,7 +196,7 @@ pub struct AttributeSetSnapshot {
 }
 ```
 
-快照用于 `EffectPayload` 中，在效果应用时捕获来源实体的属性，从而支持基于"快照时刻"值的计算。读取快照时传入统一管理器：`snapshot.get_current_value(manager, id)`。
+快照用于 `EffectPayload` 中，在效果应用时捕获来源实体的属性，从而支持基于"快照时刻"值的计算。读取快照时传入统一管理器：`snapshot.get_current_value(manager, id)`，返回 `Result<Option<f32>, AttributeIdError>`。其中 `Err` 表示 ID 与 Manager 不匹配，`Ok(None)` 表示该实体未初始化对应属性。
 
 ## 重算系统
 

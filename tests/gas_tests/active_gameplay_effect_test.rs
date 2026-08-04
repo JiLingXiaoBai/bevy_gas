@@ -69,7 +69,7 @@ fn apply_effect_system(
     mut result: ResMut<ApplyResult>,
 ) {
     let payload = EffectPayload::new(target.0, None, 1);
-    result.0 = apply_gameplay_effect(target.0, &effect.0, &mut params, &payload);
+    result.0 = apply_gameplay_effect(target.0, &effect.0, &mut params, &payload).is_ok();
 }
 
 #[test]
@@ -113,7 +113,9 @@ fn failed_effect_application_does_not_leave_duration_modifier() {
         .resource::<bevy_tools::AttributeIdManager>()
         .clone();
     let mut attributes = AttributeSet::default();
-    attributes.initialize_attribute(&manager, health, 10.0, None);
+    attributes
+        .initialize_attribute(&manager, health, 10.0, None)
+        .unwrap();
     let target = app.world_mut().spawn(attributes).id();
     let effect = Arc::new(GameplayEffect::new(
         vec![Modifier::new(
@@ -137,5 +139,8 @@ fn failed_effect_application_does_not_leave_duration_modifier() {
     assert!(!app.world().resource::<ApplyResult>().0);
     let mut attributes = app.world_mut().entity_mut(target);
     let mut attributes = attributes.get_mut::<AttributeSet>().unwrap();
-    assert_eq!(attributes.get_current_value(&manager, health), Some(10.0));
+    assert_eq!(
+        attributes.get_current_value(&manager, health),
+        Ok(Some(10.0))
+    );
 }

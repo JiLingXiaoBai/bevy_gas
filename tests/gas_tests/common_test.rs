@@ -89,12 +89,14 @@ pub fn modifier(attribute: AttributeId, operation: ModifierOperation, value: f32
 
 pub fn attribute_set(app: &App, attribute: AttributeId, base_value: f32) -> AttributeSet {
     let mut attributes = AttributeSet::default();
-    attributes.initialize_attribute(
-        app.world().resource::<AttributeIdManager>(),
-        attribute,
-        base_value,
-        None,
-    );
+    attributes
+        .initialize_attribute(
+            app.world().resource::<AttributeIdManager>(),
+            attribute,
+            base_value,
+            None,
+        )
+        .unwrap();
     attributes
 }
 
@@ -119,7 +121,11 @@ pub fn add_tag_to_entity(app: &mut App, entity: Entity, tag: GameplayTag) {
         .run_system_once(
             move |mut query: Query<&mut GameplayTagContainer>,
                   tag_manager: Res<GameplayTagManager>| {
-                query.get_mut(entity).unwrap().add_tag(&tag, &tag_manager);
+                query
+                    .get_mut(entity)
+                    .unwrap()
+                    .add_tag(&tag, &tag_manager)
+                    .unwrap();
             },
         )
         .unwrap();
@@ -133,7 +139,8 @@ pub fn remove_tag_from_entity(app: &mut App, entity: Entity, tag: GameplayTag) {
                 query
                     .get_mut(entity)
                     .unwrap()
-                    .remove_tag(&tag, &tag_manager);
+                    .remove_tag(&tag, &tag_manager)
+                    .unwrap();
             },
         )
         .unwrap();
@@ -145,7 +152,16 @@ pub fn apply_effect(
     source: Entity,
     effect: Arc<GameplayEffect>,
 ) -> bool {
-    apply_effect_with_payload(app, target, effect, EffectPayload::new(source, None, 1))
+    apply_effect_result(app, target, source, effect).is_ok()
+}
+
+pub fn apply_effect_result(
+    app: &mut App,
+    target: Entity,
+    source: Entity,
+    effect: Arc<GameplayEffect>,
+) -> Result<(), bevy_tools::GameplayEffectApplicationError> {
+    apply_effect_with_payload_result(app, target, effect, EffectPayload::new(source, None, 1))
 }
 
 pub fn apply_effect_with_payload(
@@ -154,6 +170,15 @@ pub fn apply_effect_with_payload(
     effect: Arc<GameplayEffect>,
     payload: EffectPayload,
 ) -> bool {
+    apply_effect_with_payload_result(app, target, effect, payload).is_ok()
+}
+
+pub fn apply_effect_with_payload_result(
+    app: &mut App,
+    target: Entity,
+    effect: Arc<GameplayEffect>,
+    payload: EffectPayload,
+) -> Result<(), bevy_tools::GameplayEffectApplicationError> {
     app.world_mut()
         .run_system_once(move |mut params: AbilitySystemParams| {
             apply_gameplay_effect(target, &effect, &mut params, &payload)
@@ -210,6 +235,7 @@ pub fn current_value(app: &mut App, entity: Entity, attribute: AttributeId) -> f
         .get_mut::<AttributeSet>()
         .unwrap()
         .get_current_value(&manager, attribute)
+        .unwrap()
         .unwrap()
 }
 

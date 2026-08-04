@@ -3,7 +3,7 @@ use bevy::ecs::system::RunSystemOnce;
 use bevy::prelude::*;
 use bevy_tools::{
     GameplayAbilitySystemSettings, GameplayTag, GameplayTagContainer, GameplayTagError,
-    GameplayTagManager, GameplayTagRegister, TagRequirements,
+    GameplayTagManager, GameplayTagRegister, TagRequirements, UniqueNamePool,
 };
 
 fn inherited_bits_contain(
@@ -11,7 +11,7 @@ fn inherited_bits_contain(
     tag: GameplayTag,
     expected: GameplayTag,
 ) -> bool {
-    let Some(bits) = manager.get_inherited_bits(&tag) else {
+    let Ok(bits) = manager.get_inherited_bits(&tag) else {
         return false;
     };
     let index = expected.get_bit_index_usize();
@@ -83,9 +83,21 @@ fn tag_requirements_match_inherited_bits_and_ignored_tags() {
         .entity(target)
         .get::<GameplayTagContainer>()
         .unwrap();
-    assert!(TagRequirements::new(vec![debuff], Vec::new()).passes(Some(tags)));
-    assert!(!TagRequirements::new(vec![buff], Vec::new()).passes(Some(tags)));
-    assert!(!TagRequirements::new(Vec::new(), vec![debuff]).passes(Some(tags)));
+    assert!(
+        TagRequirements::new(vec![debuff], Vec::new())
+            .unwrap()
+            .passes(Some(tags))
+    );
+    assert!(
+        !TagRequirements::new(vec![buff], Vec::new())
+            .unwrap()
+            .passes(Some(tags))
+    );
+    assert!(
+        !TagRequirements::new(Vec::new(), vec![debuff])
+            .unwrap()
+            .passes(Some(tags))
+    );
 }
 
 #[test]
@@ -116,8 +128,16 @@ fn non_empty_tag_requirements_fail_without_container() {
     let required = register_tag(&mut app, "State.Ready");
     let ignored = register_tag(&mut app, "State.Silenced");
 
-    assert!(!TagRequirements::new(vec![required], Vec::new()).passes(None));
-    assert!(!TagRequirements::new(Vec::new(), vec![ignored]).passes(None));
+    assert!(
+        !TagRequirements::new(vec![required], Vec::new())
+            .unwrap()
+            .passes(None)
+    );
+    assert!(
+        !TagRequirements::new(Vec::new(), vec![ignored])
+            .unwrap()
+            .passes(None)
+    );
 }
 
 #[test]
@@ -190,6 +210,41 @@ fn tag_registration_reports_capacity_exceeded() {
         result,
         Err(GameplayTagError::CapacityExceeded {
             max: GameplayAbilitySystemSettings::GAMEPLAY_TAG_SIZE
+        })
+    );
+}
+
+#[test]
+fn inherited_bits_report_manager_mismatch() {
+    let mut app = test_app();
+    let tag = register_tag(&mut app, "State.Ready");
+    let empty_manager = GameplayTagManager::default();
+
+    assert_eq!(
+        empty_manager.get_inherited_bits(&tag),
+        Err(GameplayTagError::InvalidTagIndex {
+            index: tag.get_bit_index_usize(),
+        })
+    );
+}
+
+#[test]
+fn tag_registration_rejects_invalid_parent_index() {
+    let mut app = test_app();
+    let name = app
+        .world_mut()
+        .resource_mut::<UniqueNamePool>()
+        .new_name("State.InvalidChild")
+        .unwrap();
+    let result = app
+        .world_mut()
+        .resource_mut::<GameplayTagManager>()
+        .register_tag_internal(name, Some(u16::MAX));
+
+    assert_eq!(
+        result,
+        Err(GameplayTagError::InvalidTagIndex {
+            index: u16::MAX as usize,
         })
     );
 }

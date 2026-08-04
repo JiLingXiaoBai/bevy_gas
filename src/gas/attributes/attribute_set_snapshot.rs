@@ -1,6 +1,6 @@
 use super::{
-    AttributeId, AttributeIdManager, AttributeRegion, AttributeSnapshot, COLD_ATTRIBUTE_SET_SIZE,
-    HOT_ATTRIBUTE_SET_SIZE,
+    AttributeId, AttributeIdError, AttributeIdManager, AttributeRegion, AttributeSnapshot,
+    COLD_ATTRIBUTE_SET_SIZE, HOT_ATTRIBUTE_SET_SIZE,
 };
 use bevy::prelude::*;
 
@@ -25,14 +25,29 @@ impl AttributeSetSnapshot {
     }
 
     /// Returns the captured current value for `id`.
-    pub fn get_current_value(&self, manager: &AttributeIdManager, id: AttributeId) -> Option<f32> {
+    ///
+    /// `Ok(None)` means the ID is valid but was not initialized in the source.
+    /// Returns [`AttributeIdError::MissingLocation`] if `id` is not registered.
+    pub fn get_current_value(
+        &self,
+        manager: &AttributeIdManager,
+        id: AttributeId,
+    ) -> Result<Option<f32>, AttributeIdError> {
         self.get_attribute(manager, id)
-            .map(AttributeSnapshot::current)
+            .map(|attribute| attribute.map(AttributeSnapshot::current))
     }
 
     /// Returns the captured base value for `id`.
-    pub fn get_base_value(&self, manager: &AttributeIdManager, id: AttributeId) -> Option<f32> {
-        self.get_attribute(manager, id).map(AttributeSnapshot::base)
+    ///
+    /// `Ok(None)` means the ID is valid but was not initialized in the source.
+    /// Returns [`AttributeIdError::MissingLocation`] if `id` is not registered.
+    pub fn get_base_value(
+        &self,
+        manager: &AttributeIdManager,
+        id: AttributeId,
+    ) -> Result<Option<f32>, AttributeIdError> {
+        self.get_attribute(manager, id)
+            .map(|attribute| attribute.map(AttributeSnapshot::base))
     }
 
     /// Returns the entity from which this snapshot was captured.
@@ -44,11 +59,11 @@ impl AttributeSetSnapshot {
         &self,
         manager: &AttributeIdManager,
         id: AttributeId,
-    ) -> Option<&AttributeSnapshot> {
+    ) -> Result<Option<&AttributeSnapshot>, AttributeIdError> {
         let location = manager.location(id)?;
-        match location.region() {
+        Ok(match location.region() {
             AttributeRegion::Hot => self.hot[location.slot()].as_ref(),
             AttributeRegion::Cold => self.cold[location.slot()].as_ref(),
-        }
+        })
     }
 }

@@ -101,12 +101,18 @@ pub fn process_gameplay_effect_application_queue_system(
             return;
         };
 
-        apply_gameplay_effect(
+        if let Err(error) = apply_gameplay_effect(
             request.get_target(),
             request.get_effect(),
             &mut params,
             request.get_payload(),
-        );
+        ) {
+            if error.is_rejection() {
+                debug!("queued gameplay effect was rejected: {error}");
+            } else {
+                error!("queued gameplay effect application failed: {error}");
+            }
+        }
     }
 }
 

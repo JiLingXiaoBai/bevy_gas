@@ -1,13 +1,14 @@
 use super::common_test::{
-    active_effect_handles, add_modifier, apply_effect, attribute_set, current_value,
-    empty_effect_tags, instant_add_effect, modifier, register_attribute, register_hot_attribute,
-    run_effect_duration_tick, spawn_attribute_set, test_app,
+    active_effect_handles, add_modifier, apply_effect, apply_effect_result, attribute_set,
+    current_value, empty_effect_tags, instant_add_effect, modifier, register_attribute,
+    register_hot_attribute, run_effect_duration_tick, spawn_attribute_set, test_app,
 };
 use bevy::ecs::system::RunSystemOnce;
 use bevy::prelude::*;
 use bevy_tools::{
-    AttributeIdManager, AttributeSet, EffectDurationTicks, GameplayEffect, ModifierMagnitude,
-    ModifierOperation, StackingPolicy, UniqueNamePool,
+    AttributeIdManager, AttributeSet, EffectDurationTicks, GameplayEffect,
+    GameplayEffectApplicationError, ModifierMagnitude, ModifierOperation, StackingPolicy,
+    UniqueNamePool,
 };
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -46,10 +47,18 @@ fn custom_aggregator_executor_runs_without_modifiers() {
         .resource::<bevy_tools::AttributeIdManager>()
         .clone();
     let mut attributes = AttributeSet::default();
-    attributes.initialize_attribute(&manager, health, 100.0, Some(count_evaluations));
+    attributes
+        .initialize_attribute(&manager, health, 100.0, Some(count_evaluations))
+        .unwrap();
 
-    assert_eq!(attributes.get_current_value(&manager, health), Some(100.0));
-    assert_eq!(attributes.get_current_value(&manager, health), Some(100.0));
+    assert_eq!(
+        attributes.get_current_value(&manager, health),
+        Ok(Some(100.0))
+    );
+    assert_eq!(
+        attributes.get_current_value(&manager, health),
+        Ok(Some(100.0))
+    );
     assert_eq!(EVALUATION_COUNT.load(Ordering::SeqCst), 1);
 }
 
@@ -80,28 +89,32 @@ fn attribute_id_manager_routes_ordinary_ids_to_independent_hot_and_cold_slots() 
     assert_eq!(manager.location(hot_mana).unwrap().slot(), 1);
 
     let mut attributes = AttributeSet::default();
-    attributes.initialize_attribute(&manager, hot_health, 100.0, None);
-    attributes.initialize_attribute(&manager, cold_strength, 25.0, None);
+    attributes
+        .initialize_attribute(&manager, hot_health, 100.0, None)
+        .unwrap();
+    attributes
+        .initialize_attribute(&manager, cold_strength, 25.0, None)
+        .unwrap();
 
     assert_eq!(
         attributes.get_current_value(&manager, hot_health),
-        Some(100.0)
+        Ok(Some(100.0))
     );
     assert_eq!(
         attributes.get_current_value(&manager, cold_strength),
-        Some(25.0)
+        Ok(Some(25.0))
     );
-    assert_eq!(attributes.get_current_value(&manager, hot_mana), None);
+    assert_eq!(attributes.get_current_value(&manager, hot_mana), Ok(None));
 
     let source = app.world_mut().spawn_empty().id();
     let snapshot = attributes.make_snapshot(source);
     assert_eq!(
         snapshot.get_current_value(&manager, hot_health),
-        Some(100.0)
+        Ok(Some(100.0))
     );
     assert_eq!(
         snapshot.get_current_value(&manager, cold_strength),
-        Some(25.0)
+        Ok(Some(25.0))
     );
 }
 
@@ -183,7 +196,9 @@ fn custom_executor_survives_removal_of_last_modifier() {
         .resource::<bevy_tools::AttributeIdManager>()
         .clone();
     let mut attributes = AttributeSet::default();
-    attributes.initialize_attribute(&manager, health, 100.0, Some(add_one_executor));
+    attributes
+        .initialize_attribute(&manager, health, 100.0, Some(add_one_executor))
+        .unwrap();
     let target = app.world_mut().spawn(attributes).id();
     let effect = Arc::new(GameplayEffect::new(
         vec![add_modifier(health, 20.0)],
@@ -211,8 +226,12 @@ fn sparse_aggregators_support_reverse_location_insertion_and_independent_removal
         .resource::<bevy_tools::AttributeIdManager>()
         .clone();
     let mut attributes = AttributeSet::default();
-    attributes.initialize_attribute(&manager, health, 100.0, None);
-    attributes.initialize_attribute(&manager, mana, 50.0, None);
+    attributes
+        .initialize_attribute(&manager, health, 100.0, None)
+        .unwrap();
+    attributes
+        .initialize_attribute(&manager, mana, 50.0, None)
+        .unwrap();
     let target = app.world_mut().spawn(attributes).id();
 
     let mana_effect = Arc::new(GameplayEffect::new(
@@ -288,13 +307,13 @@ fn override_modifier_takes_precedence_over_other_duration_modifiers() {
 }
 
 #[test]
-fn modifiers_targeting_uninitialized_attribute_do_not_create_values() {
+fn effect_rejects_uninitialized_attribute_before_applying_any_modifier() {
     let mut app = test_app();
     let health = register_attribute(&mut app, "Health");
     let mana = register_attribute(&mut app, "Mana");
     let target = spawn_attribute_set(&mut app, health, 10.0);
     let effect = Arc::new(GameplayEffect::new(
-        vec![add_modifier(mana, 5.0)],
+        vec![add_modifier(health, 5.0), add_modifier(mana, 5.0)],
         EffectDurationTicks::Instant,
         None,
         1.0,
@@ -302,7 +321,10 @@ fn modifiers_targeting_uninitialized_attribute_do_not_create_values() {
         empty_effect_tags(),
     ));
 
-    assert!(apply_effect(&mut app, target, target, effect));
+    assert_eq!(
+        apply_effect_result(&mut app, target, target, effect),
+        Err(GameplayEffectApplicationError::MissingAttribute { target, id: mana })
+    );
     assert_eq!(current_value(&mut app, target, health), 10.0);
     let manager = app
         .world()
@@ -314,8 +336,32 @@ fn modifiers_targeting_uninitialized_attribute_do_not_create_values() {
             .get_mut::<AttributeSet>()
             .unwrap()
             .get_current_value(&manager, mana)
+            .unwrap()
             .is_none()
     );
+}
+
+#[test]
+fn duration_effect_rejects_uninitialized_attribute_without_becoming_active() {
+    let mut app = test_app();
+    let health = register_attribute(&mut app, "Health");
+    let mana = register_attribute(&mut app, "Mana");
+    let target = spawn_attribute_set(&mut app, health, 10.0);
+    let effect = Arc::new(GameplayEffect::new(
+        vec![add_modifier(mana, 5.0)],
+        EffectDurationTicks::DurationTicks(ModifierMagnitude::Flat(3.0)),
+        None,
+        1.0,
+        StackingPolicy::non_stacking(),
+        empty_effect_tags(),
+    ));
+
+    assert_eq!(
+        apply_effect_result(&mut app, target, target, effect),
+        Err(GameplayEffectApplicationError::MissingAttribute { target, id: mana })
+    );
+    assert!(active_effect_handles(&app, target).is_empty());
+    assert_eq!(current_value(&mut app, target, health), 10.0);
 }
 
 #[test]
@@ -424,8 +470,8 @@ fn attribute_set_snapshot_captures_base_current_and_source_entity() {
         .make_snapshot(source);
 
     assert_eq!(snapshot.get_source_entity(), source);
-    assert_eq!(snapshot.get_base_value(&manager, health), Some(10.0));
-    assert_eq!(snapshot.get_current_value(&manager, health), Some(15.0));
+    assert_eq!(snapshot.get_base_value(&manager, health), Ok(Some(10.0)));
+    assert_eq!(snapshot.get_current_value(&manager, health), Ok(Some(15.0)));
 }
 
 #[test]
@@ -452,6 +498,18 @@ fn attribute_set_snapshot_is_not_changed_by_later_attribute_mutation() {
     ));
 
     assert_eq!(current_value(&mut app, source, health), 30.0);
-    assert_eq!(snapshot.get_base_value(&manager, health), Some(10.0));
-    assert_eq!(snapshot.get_current_value(&manager, health), Some(10.0));
+    assert_eq!(snapshot.get_base_value(&manager, health), Ok(Some(10.0)));
+    assert_eq!(snapshot.get_current_value(&manager, health), Ok(Some(10.0)));
+}
+
+#[test]
+fn attribute_location_reports_manager_mismatch() {
+    let mut app = test_app();
+    let health = register_attribute(&mut app, "Health");
+    let empty_manager = AttributeIdManager::default();
+
+    assert_eq!(
+        empty_manager.location(health),
+        Err(bevy_tools::AttributeIdError::MissingLocation { id: health })
+    );
 }

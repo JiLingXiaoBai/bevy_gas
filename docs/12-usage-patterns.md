@@ -122,7 +122,7 @@ let speed_buff = Arc::new(GameplayEffect::new(
         TagRequirements::new(
             vec![alive_tag],
             vec![stun_tag],
-        ),
+        )?,
         TagRequirements::default(),
         TagRequirements::default(),
         TagRequirements::default(),
@@ -222,8 +222,8 @@ let stun_immunity = Arc::new(GameplayEffect::new(
         TagRequirements::default(),
         TagRequirements::default(),
         vec![GameplayEffectImmunityQuery::new(
-            TagRequirements::new(vec![], vec![]),           // 任意来源
-            TagRequirements::new(vec![stun_tag], vec![]),   // 带 Stun 标签的效果
+            TagRequirements::new(vec![], vec![])?,           // 任意来源
+            TagRequirements::new(vec![stun_tag], vec![])?,   // 带 Stun 标签的效果
         )],
         vec![],
     ),
@@ -244,6 +244,8 @@ impl ModifierMagnitudeCalculation for FireballDamageCalc {
 
         let attack = snapshot
             .get_current_value(context.attribute_id_manager(), attack_id)
+            .ok()
+            .flatten()
             .unwrap_or(0.0);
         let level = context.level() as f32;
 
@@ -264,7 +266,7 @@ EffectTags::new(
     TagRequirements::new(        // target_removal：目标有 Dead 标签时移除
         vec![dead_tag],
         vec![],
-    ),
+    )?,
     /* ... */
 )
 ```

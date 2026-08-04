@@ -148,8 +148,17 @@ impl AttributeIdManager {
     }
 
     /// Returns the storage location assigned to `id`.
-    pub fn location(&self, id: AttributeId) -> Option<AttributeLocation> {
-        self.locations[id.to_index()]
+    ///
+    /// # Errors
+    ///
+    /// Returns [`AttributeIdError::MissingLocation`] if `id` is not registered
+    /// in this manager.
+    pub fn location(&self, id: AttributeId) -> Result<AttributeLocation, AttributeIdError> {
+        self.locations
+            .get(id.to_index())
+            .copied()
+            .flatten()
+            .ok_or(AttributeIdError::MissingLocation { id })
     }
 
     /// Returns the number of registered hot attributes.
@@ -170,10 +179,7 @@ impl AttributeIdManager {
     ) -> Result<AttributeId, AttributeIdError> {
         if let Some(&index) = self.name_to_index.get(&unique_name) {
             let id = AttributeId::new(index);
-            let Some(existing_location) = self.location(id) else {
-                debug_assert!(false, "registered attribute ID is missing its location");
-                return Err(AttributeIdError::MissingLocation { id });
-            };
+            let existing_location = self.location(id)?;
             if existing_location.region() != region {
                 return Err(AttributeIdError::RegionMismatch {
                     existing: existing_location.region(),

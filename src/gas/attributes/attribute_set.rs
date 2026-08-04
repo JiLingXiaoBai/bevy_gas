@@ -1,13 +1,15 @@
 use super::attribute::Attribute;
 use super::attribute_aggregator_set::AttributeAggregatorSet;
 use super::{
-    Aggregator, AttributeId, AttributeIdManager, AttributeLocation, AttributeRegion,
-    AttributeSetSnapshot,
+    Aggregator, AttributeId, AttributeIdError, AttributeIdManager, AttributeLocation,
+    AttributeRegion, AttributeSetSnapshot,
 };
 use crate::gameplay_effects::ActiveEffectHandle;
 use crate::modifiers::ModifierSpec;
 use crate::settings::GameplayAbilitySystemSettings;
 use bevy::prelude::*;
+use std::error::Error;
+use std::fmt;
 
 /// Maximum number of registered attributes across both storage regions.
 pub const ATTRIBUTE_SET_SIZE: usize = GameplayAbilitySystemSettings::ATTRIBUTE_SET_SIZE;
@@ -21,6 +23,43 @@ const COLD_DIRTY_WORDS: usize = COLD_ATTRIBUTE_SET_SIZE.div_ceil(64);
 
 /// Callback invoked after an instant modifier changes an initialized attribute.
 pub type AttributePostExecute = fn(&mut AttributeSet, &AttributeIdManager, AttributeId, f32, f32);
+
+/// Describes why an operation on an [`AttributeSet`] could not be completed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AttributeSetError {
+    /// The attribute ID is invalid for the supplied manager.
+    AttributeId(AttributeIdError),
+    /// The attribute ID is valid, but this set has not initialized its slot.
+    UninitializedAttribute { id: AttributeId },
+}
+
+impl fmt::Display for AttributeSetError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::AttributeId(error) => write!(f, "attribute lookup failed: {error}"),
+            Self::UninitializedAttribute { id } => write!(
+                f,
+                "attribute {} is not initialized in this AttributeSet",
+                id.to_index()
+            ),
+        }
+    }
+}
+
+impl Error for AttributeSetError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::AttributeId(error) => Some(error),
+            Self::UninitializedAttribute { .. } => None,
+        }
+    }
+}
+
+impl From<AttributeIdError> for AttributeSetError {
+    fn from(value: AttributeIdError) -> Self {
+        Self::AttributeId(value)
+    }
+}
 
 #[derive(Component)]
 pub struct AttributeSet {
@@ -47,21 +86,24 @@ impl Default for AttributeSet {
 
 impl AttributeSet {
     /// Initializes the storage slot assigned to `id` by the global manager.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`AttributeIdError::MissingLocation`] if `id` is not registered
+    /// in `manager`.
     pub fn initialize_attribute(
         &mut self,
         manager: &AttributeIdManager,
         id: AttributeId,
         base_value: f32,
         executor: Option<fn(&Aggregator, f32) -> f32>,
-    ) {
-        let Some(location) = manager.location(id) else {
-            debug_assert!(false, "attribute ID is missing from the global manager");
-            return;
-        };
+    ) -> Result<(), AttributeIdError> {
+        let location = manager.location(id)?;
         self.aggregators.remove(location);
         self.aggregators.set_executor(location, executor);
         *self.attribute_slot_mut(location) = Some(Attribute::new(base_value));
         self.mark_dirty(location);
+        Ok(())
     }
 
     /// Sets the callback invoked after instant modifier execution.
@@ -70,12 +112,18 @@ impl AttributeSet {
     }
 
     /// Recalculates one initialized attribute if its dirty bit is set.
-    pub fn recalculate_attribute(&mut self, manager: &AttributeIdManager, id: AttributeId) {
-        let Some(location) = manager.location(id) else {
-            debug_assert!(false, "attribute ID is missing from the global manager");
-            return;
-        };
+    ///
+    /// # Errors
+    ///
+    /// Returns [`AttributeIdError::MissingLocation`] if `id` is not registered.
+    pub fn recalculate_attribute(
+        &mut self,
+        manager: &AttributeIdManager,
+        id: AttributeId,
+    ) -> Result<(), AttributeIdError> {
+        let location = manager.location(id)?;
         self.recalculate_location(location);
+        Ok(())
     }
 
     /// Recalculates all attributes selected by the hot and cold dirty masks.
@@ -95,58 +143,93 @@ impl AttributeSet {
     }
 
     /// Returns the current value for an initialized attribute.
+    ///
+    /// `Ok(None)` means the ID is valid but this set has not initialized it.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`AttributeIdError::MissingLocation`] if `id` is not registered.
     pub fn get_current_value(
         &mut self,
         manager: &AttributeIdManager,
         id: AttributeId,
-    ) -> Option<f32> {
+    ) -> Result<Option<f32>, AttributeIdError> {
         let location = manager.location(id)?;
         let was_dirty = self.take_dirty(location);
         let (attribute, aggregators) = self.attribute_and_aggregators_mut(location);
-        let attribute = attribute.as_mut()?;
+        let Some(attribute) = attribute.as_mut() else {
+            return Ok(None);
+        };
         if was_dirty {
             attribute.recalculate(aggregators.get(location));
         }
-        Some(attribute.get_current_value())
+        Ok(Some(attribute.get_current_value()))
     }
 
     /// Applies an instant modifier and invokes the post-execute callback.
-    pub fn apply_instant_modifier(&mut self, manager: &AttributeIdManager, spec: &ModifierSpec) {
+    ///
+    /// # Errors
+    ///
+    /// Returns [`AttributeSetError::AttributeId`] if the modifier attribute is
+    /// not registered, or [`AttributeSetError::UninitializedAttribute`] if this
+    /// set has not initialized it.
+    pub fn apply_instant_modifier(
+        &mut self,
+        manager: &AttributeIdManager,
+        spec: &ModifierSpec,
+    ) -> Result<(), AttributeSetError> {
         let id = spec.get_id();
-        let Some(location) = manager.location(id) else {
-            debug_assert!(false, "attribute ID is missing from the global manager");
-            return;
-        };
-        let old_value = self.get_current_value(manager, id);
-        if let Some(attribute) = self.attribute_slot_mut(location) {
+        let location = self.initialized_attribute_location(manager, id)?;
+        let was_dirty = self.take_dirty(location);
+        let old_value = {
+            let (attribute, aggregators) = self.attribute_and_aggregators_mut(location);
+            let Some(attribute) = attribute.as_mut() else {
+                return Err(AttributeSetError::UninitializedAttribute { id });
+            };
+            if was_dirty {
+                attribute.recalculate(aggregators.get(location));
+            }
+            let old_value = attribute.get_current_value();
             attribute.modify_base_value(spec);
-            self.mark_dirty(location);
-        }
+            old_value
+        };
+        self.mark_dirty(location);
 
-        if let (Some(old_value), Some(new_value), Some(post_execute)) = (
-            old_value,
-            self.get_current_value(manager, id),
-            self.post_execute,
-        ) {
+        let Some(new_value) = self.get_current_value(manager, id)? else {
+            return Err(AttributeSetError::UninitializedAttribute { id });
+        };
+        if let Some(post_execute) = self.post_execute {
             post_execute(self, manager, id, old_value, new_value);
         }
+        Ok(())
     }
 
     /// Applies a duration modifier associated with an active effect handle.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`AttributeSetError::AttributeId`] if the modifier attribute is
+    /// not registered, or [`AttributeSetError::UninitializedAttribute`] if this
+    /// set has not initialized it.
     pub fn apply_duration_modifier(
         &mut self,
         manager: &AttributeIdManager,
         spec: &ModifierSpec,
         handle: ActiveEffectHandle,
-    ) {
-        let Some(location) = manager.location(spec.get_id()) else {
-            debug_assert!(false, "attribute ID is missing from the global manager");
-            return;
-        };
-        if self.attribute_slot_mut(location).is_some() {
-            self.aggregators.apply_modifier_spec(location, spec, handle);
-            self.mark_dirty(location);
-        }
+    ) -> Result<(), AttributeSetError> {
+        let location = self.initialized_attribute_location(manager, spec.get_id())?;
+        self.aggregators.apply_modifier_spec(location, spec, handle);
+        self.mark_dirty(location);
+        Ok(())
+    }
+
+    /// Verifies that `id` is registered and initialized in this set.
+    pub(crate) fn validate_initialized_attribute(
+        &self,
+        manager: &AttributeIdManager,
+        id: AttributeId,
+    ) -> Result<(), AttributeSetError> {
+        self.initialized_attribute_location(manager, id).map(drop)
     }
 
     /// Removes modifiers with `handle` from every initialized attribute.
@@ -159,22 +242,28 @@ impl AttributeSet {
     }
 
     /// Removes modifiers with `handle` from the supplied attribute IDs.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`AttributeIdError::MissingLocation`] before mutation if any ID
+    /// is not registered.
     pub fn remove_modifiers_for_attributes(
         &mut self,
         manager: &AttributeIdManager,
         handle: ActiveEffectHandle,
         ids: impl IntoIterator<Item = AttributeId>,
-    ) {
-        for id in ids {
-            let Some(location) = manager.location(id) else {
-                debug_assert!(false, "attribute ID is missing from the global manager");
-                continue;
-            };
+    ) -> Result<(), AttributeIdError> {
+        let locations = ids
+            .into_iter()
+            .map(|id| manager.location(id))
+            .collect::<Result<Vec<_>, _>>()?;
+        for location in locations {
             let removed = self.aggregators.remove_modifier_by_handle(location, handle);
             if removed {
                 self.mark_dirty(location);
             }
         }
+        Ok(())
     }
 
     /// Captures the current hot and cold attribute values for `source_entity`.
@@ -200,6 +289,25 @@ impl AttributeSet {
             AttributeRegion::Hot => &mut self.hot_attributes[location.slot()],
             AttributeRegion::Cold => &mut self.cold_attributes[location.slot()],
         }
+    }
+
+    fn attribute_slot(&self, location: AttributeLocation) -> &Option<Attribute> {
+        match location.region() {
+            AttributeRegion::Hot => &self.hot_attributes[location.slot()],
+            AttributeRegion::Cold => &self.cold_attributes[location.slot()],
+        }
+    }
+
+    fn initialized_attribute_location(
+        &self,
+        manager: &AttributeIdManager,
+        id: AttributeId,
+    ) -> Result<AttributeLocation, AttributeSetError> {
+        let location = manager.location(id)?;
+        if self.attribute_slot(location).is_none() {
+            return Err(AttributeSetError::UninitializedAttribute { id });
+        }
+        Ok(location)
     }
 
     fn mark_dirty(&mut self, location: AttributeLocation) {

@@ -137,13 +137,19 @@ pub fn process_ability_activation_queue_system(
             return;
         };
 
-        let _ = try_activate_ability_by_handle(
+        if let Err(error) = try_activate_ability_by_handle(
             request.get_source(),
             request.get_target(),
             request.get_handle(),
             request.get_context().clone(),
             &mut params,
-        );
+        ) {
+            if error.is_rejection() {
+                debug!("queued ability activation was rejected: {error}");
+            } else {
+                error!("queued ability activation failed: {error}");
+            }
+        }
     }
 }
 

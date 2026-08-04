@@ -38,10 +38,10 @@ pub struct GameplayTagContainer {
 
 | 方法                         | 说明                                         |
 | ---------------------------- | -------------------------------------------- |
-| `add_tag(tag, manager)`      | 添加标签 + 所有父标签；递增引用计数；OR 位集 |
-| `remove_tag(tag, manager)`   | 递减引用计数；仅当计数归零时清除位           |
-| `add_tags(tags, manager)`    | 批量添加                                     |
-| `remove_tags(tags, manager)` | 批量移除                                     |
+| `add_tag(tag, manager) -> Result`      | 添加标签 + 所有父标签；递增引用计数；OR 位集 |
+| `remove_tag(tag, manager) -> Result`   | 递减引用计数；仅当计数归零时清除位           |
+| `add_tags(tags, manager) -> Result`    | 批量添加                                     |
+| `remove_tags(tags, manager) -> Result` | 批量移除                                     |
 | `has_tag(tag) -> bool`       | O(1) 单标签检查                              |
 | `has_all(tags) -> bool`      | 检查是否**全部**指定标签都存在               |
 | `has_all_bits(bits) -> bool` | `has_all` 的位集版本                         |
@@ -70,7 +70,7 @@ pub struct GameplayTagManager {
 | 方法                                                      | 说明                                |
 | --------------------------------------------------------- | ----------------------------------- |
 | `get_tag(unique_name) -> Option<GameplayTag>`             | 通过 `UniqueName` 查找标签          |
-| `get_inherited_bits(tag) -> Option<&GameplayTagBits>`     | 获取预计算的位集（自身 + 所有祖先） |
+| `get_inherited_bits(tag) -> Result<&GameplayTagBits, GameplayTagError>` | 获取预计算的位集（自身 + 所有祖先） |
 | `check_has_active_descendants(index, ref_counts) -> bool` | DFS 检查是否有活跃的子标签          |
 
 ### `GameplayTagRegister`
@@ -91,6 +91,9 @@ impl GameplayTagRegister<'_> {
 
 父标签会**递归自动注册**。例如，注册 `"Effect.Debuff.Stun"` 也会自动注册 `"Effect.Debuff"` 和 `"Effect"`。
 
+内部注册 API 收到无效的父标签索引时返回 `GameplayTagError::InvalidTagIndex`，不会把
+子标签静默注册成根标签。
+
 名称驻留失败会通过 `GameplayTagError::UniqueName` 传播，不会触发 panic；不同完整名称即使产生相同哈希值，也仍会注册为不同标签。
 
 ### `GameplayTagError`
@@ -110,11 +113,17 @@ pub enum GameplayTagError {
 
 **辅助函数：**
 
-| 函数                                                                        | 说明                           |
-| --------------------------------------------------------------------------- | ------------------------------ |
-| `tag_bits_from_tags(tags) -> Option<GameplayTagBits>`                       | 从标签切片构建位集（不含继承） |
-| `tag_bits_from_tags_with_manager(tags, manager) -> Option<GameplayTagBits>` | 构建含完整继承的位集           |
-| `add_bit_with_tag(bits, tag) -> Option<()>`                                 | 在位集中设置单个位             |
+| 函数                                                                                         | 说明                                         |
+| -------------------------------------------------------------------------------------------- | -------------------------------------------- |
+| `tag_bits_from_tags(tags) -> Result<GameplayTagBits, GameplayTagError>`                       | 从标签切片构建位集（不含继承）               |
+| `tag_bits_from_tags_with_manager(tags, manager) -> Result<GameplayTagBits, GameplayTagError>` | 构建含完整继承的位集                         |
+| `add_bit_with_tag(bits, tag) -> Result<(), GameplayTagError>`                                 | 设置单个位；索引无效时返回 `InvalidTagIndex` |
+
+当标签索引超出容量，或标签未在传入的 `GameplayTagManager` 中注册时，上述函数返回
+`GameplayTagError::InvalidTagIndex`。
+
+`GameplayTagContainer` 的添加和移除 API 同样传播该错误，不再静默忽略来自错误
+Manager 的标签。
 
 ## 引用计数
 

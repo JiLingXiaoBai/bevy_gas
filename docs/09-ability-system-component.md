@@ -86,9 +86,10 @@ pub fn can_activate_ability(
 ```rust
 pub fn commit_ability(
     source: Entity,
-    handle: AbilitySpecHandle,
+    ability: &Arc<GameplayAbility>,
+    level: u32,
     params: &mut AbilitySystemParams,
-) -> Result<(), AbilityActivationError>;
+) -> Result<(), AbilityCommitError>;
 ```
 
 ### `end_ability` / `cancel_ability`

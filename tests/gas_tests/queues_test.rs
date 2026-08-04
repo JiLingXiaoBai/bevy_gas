@@ -30,7 +30,10 @@ impl ModifierMagnitudeCalculation for QueuedEffectContextMagnitude {
         context
             .source_snapshot()
             .and_then(|snapshot| {
-                snapshot.get_current_value(context.attribute_id_manager(), self.snapshot_attribute)
+                snapshot
+                    .get_current_value(context.attribute_id_manager(), self.snapshot_attribute)
+                    .ok()
+                    .flatten()
             })
             .unwrap_or(0.0)
     }

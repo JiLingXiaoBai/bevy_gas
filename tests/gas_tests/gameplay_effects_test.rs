@@ -1,14 +1,17 @@
 use super::common_test::{
-    active_effect_handles, add_modifier, add_tag_to_entity, apply_effect, attribute_set,
-    current_value, effect_tags, empty_effect_tags, register_attribute, register_tag,
+    active_effect_handles, add_modifier, add_tag_to_entity, apply_effect, apply_effect_result,
+    attribute_set, current_value, effect_tags, empty_effect_tags, register_attribute, register_tag,
     run_effect_duration_tick, run_effect_period_tick, run_effect_tag_requirements_update,
     spawn_attribute_set, test_app,
 };
+use bevy::ecs::system::RunSystemOnce;
 use bevy_tools::{
-    ActiveGameplayEffect, EffectDurationTicks, EffectPeriodTicks, EffectTags, GameplayEffect,
+    AbilitySystemParams, ActiveGameplayEffect, AttributeSet, EffectDurationTicks, EffectPayload,
+    EffectPeriodTicks, EffectTags, GameplayEffect, GameplayEffectApplicationError,
     GameplayEffectImmunityQuery, GameplayTag, GameplayTagContainer, ModifierMagnitude,
     StackDurationPolicy, StackExpirationPolicy, StackMagnitudePolicy, StackOverflowPolicy,
-    StackPeriodPolicy, StackingPolicy, StackingType, TagRequirements,
+    StackPeriodPolicy, StackingPolicy, StackingType, TagRequirements, execute_gameplay_effect_plan,
+    prepare_gameplay_effect,
 };
 use std::sync::Arc;
 
@@ -202,6 +205,86 @@ fn probability_zero_blocks_application_and_one_allows_it() {
 }
 
 #[test]
+fn invalid_probability_returns_a_specific_application_error() {
+    let mut app = test_app();
+    let health = register_attribute(&mut app, "Health");
+    let target = spawn_attribute_set(&mut app, health, 10.0);
+    let effect = Arc::new(GameplayEffect::new(
+        vec![add_modifier(health, 10.0)],
+        EffectDurationTicks::Instant,
+        None,
+        f32::NAN,
+        StackingPolicy::non_stacking(),
+        empty_effect_tags(),
+    ));
+
+    assert!(matches!(
+        apply_effect_result(&mut app, target, target, effect),
+        Err(GameplayEffectApplicationError::InvalidProbability { probability })
+            if probability.is_nan()
+    ));
+}
+
+#[test]
+fn execution_preflight_preserves_effects_when_target_state_changed() {
+    let mut app = test_app();
+    let health = register_attribute(&mut app, "Health");
+    let removable = register_tag(&mut app, "Effect.Removable");
+    let target = spawn_attribute_set(&mut app, health, 10.0);
+    let existing = Arc::new(GameplayEffect::new(
+        Vec::new(),
+        EffectDurationTicks::Infinite,
+        None,
+        1.0,
+        StackingPolicy::non_stacking(),
+        effect_tags(vec![removable], Vec::new()),
+    ));
+    assert!(apply_effect(&mut app, target, target, existing));
+    let effect = Arc::new(GameplayEffect::new(
+        vec![add_modifier(health, 5.0)],
+        EffectDurationTicks::Instant,
+        None,
+        1.0,
+        StackingPolicy::non_stacking(),
+        EffectTags::new(
+            Vec::new(),
+            Vec::new(),
+            TagRequirements::default(),
+            TagRequirements::default(),
+            TagRequirements::default(),
+            TagRequirements::default(),
+            TagRequirements::default(),
+            TagRequirements::default(),
+            Vec::new(),
+            vec![removable],
+        ),
+    ));
+    let payload = EffectPayload::new(target, None, 1);
+    let plan = app
+        .world_mut()
+        .run_system_once(move |mut params: AbilitySystemParams| {
+            prepare_gameplay_effect(target, &effect, &mut params, &payload)
+        })
+        .unwrap()
+        .unwrap();
+
+    app.world_mut().entity_mut(target).remove::<AttributeSet>();
+    let mut plan = Some(plan);
+    let result = app
+        .world_mut()
+        .run_system_once(move |mut params: AbilitySystemParams| {
+            execute_gameplay_effect_plan(plan.take().unwrap(), &mut params)
+        })
+        .unwrap();
+
+    assert_eq!(
+        result,
+        Err(GameplayEffectApplicationError::MissingAttributeSet { target })
+    );
+    assert_eq!(active_effect_handles(&app, target).len(), 1);
+}
+
+#[test]
 fn non_positive_or_nan_duration_ticks_reject_application() {
     let mut app = test_app();
     let health = register_attribute(&mut app, "Health");
@@ -319,8 +402,8 @@ fn active_immunity_blocks_matching_incoming_effect() {
     add_tag_to_entity(&mut app, source, source_tag);
 
     let immunity = GameplayEffectImmunityQuery::new(
-        TagRequirements::new(vec![source_tag], Vec::new()),
-        TagRequirements::new(vec![incoming_tag], Vec::new()),
+        TagRequirements::new(vec![source_tag], Vec::new()).unwrap(),
+        TagRequirements::new(vec![incoming_tag], Vec::new()).unwrap(),
     );
     let immunity_effect = Arc::new(GameplayEffect::new(
         Vec::new(),
@@ -374,7 +457,7 @@ fn ongoing_tag_requirements_inhibit_and_restore_active_effect() {
         StackingPolicy::non_stacking(),
         tags_with_requirements(
             vec![granted],
-            TagRequirements::new(vec![enabled], Vec::new()),
+            TagRequirements::new(vec![enabled], Vec::new()).unwrap(),
             TagRequirements::default(),
         ),
     ));
@@ -430,7 +513,7 @@ fn removal_tag_requirement_cleans_up_active_effect() {
         tags_with_requirements(
             Vec::new(),
             TagRequirements::default(),
-            TagRequirements::new(vec![cleanse], Vec::new()),
+            TagRequirements::new(vec![cleanse], Vec::new()).unwrap(),
         ),
     ));
 

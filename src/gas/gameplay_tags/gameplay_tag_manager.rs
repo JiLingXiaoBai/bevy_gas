@@ -82,18 +82,21 @@ impl GameplayTagManager {
             });
         }
 
-        // Create inherited bits: Start with parent's bits or new empty bits
-        let mut inherited_bits = parent_tag_index
-            .and_then(|p_index| self.tag_inherited_bits.get(p_index as usize).cloned())
-            .unwrap_or_default();
+        // Create inherited bits: Start with parent's bits or new empty bits.
+        let mut inherited_bits = match parent_tag_index {
+            Some(parent_index) => self
+                .tag_inherited_bits
+                .get(parent_index as usize)
+                .copied()
+                .ok_or(GameplayTagError::InvalidTagIndex {
+                    index: parent_index as usize,
+                })?,
+            None => GameplayTagBits::default(),
+        };
 
         // Set the current tag's own bit in the inherited bits
         let self_tag = GameplayTag::new(new_index);
-        add_bit_with_tag(&mut inherited_bits, &self_tag).ok_or(
-            GameplayTagError::InvalidTagIndex {
-                index: self_tag.get_bit_index_usize(),
-            },
-        )?;
+        add_bit_with_tag(&mut inherited_bits, &self_tag)?;
 
         // Update the Manager data structures
         if new_index as usize == self.tag_parent_index.len() {
@@ -102,9 +105,7 @@ impl GameplayTagManager {
             self.tag_children.push(Vec::new());
         }
         self.tag_name_to_index.insert(unique_name, new_index);
-        if let Some(p_index) = parent_tag_index
-            && (p_index as usize) < self.tag_children.len()
-        {
+        if let Some(p_index) = parent_tag_index {
             self.tag_children[p_index as usize].push(new_index);
         }
         self.next_tag_index += 1;
@@ -112,8 +113,21 @@ impl GameplayTagManager {
         Ok(self_tag)
     }
 
-    pub fn get_inherited_bits(&self, tag: &GameplayTag) -> Option<&GameplayTagBits> {
-        self.tag_inherited_bits.get(tag.get_bit_index_usize())
+    /// Returns the cached bitset containing `tag` and all its parents.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`GameplayTagError::InvalidTagIndex`] if `tag` is not registered
+    /// in this manager.
+    pub fn get_inherited_bits(
+        &self,
+        tag: &GameplayTag,
+    ) -> Result<&GameplayTagBits, GameplayTagError> {
+        self.tag_inherited_bits
+            .get(tag.get_bit_index_usize())
+            .ok_or(GameplayTagError::InvalidTagIndex {
+                index: tag.get_bit_index_usize(),
+            })
     }
     pub fn check_has_active_descendants(&self, tag_index: usize, ref_counts: &[u16]) -> bool {
         let mut stack: Vec<u16> = Vec::new();

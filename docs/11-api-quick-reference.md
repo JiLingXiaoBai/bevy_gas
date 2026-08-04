@@ -23,9 +23,9 @@
 | `GameplayTagRegister`             | `SystemParam` | 按点分隔名称注册标签    |
 | `GameplayTagError`                | `enum`        | 标签注册错误            |
 | `GameplayTagBits`                 | `type alias`  | `[u64; MAX_TAG_BLOCKS]` |
-| `tag_bits_from_tags`              | `fn`          | 从标签切片构建位集      |
-| `tag_bits_from_tags_with_manager` | `fn`          | 构建含继承的位集        |
-| `add_bit_with_tag`                | `fn`          | 设置单个位              |
+| `tag_bits_from_tags`              | `fn`          | 构建精确位集，失败时返回 `GameplayTagError` |
+| `tag_bits_from_tags_with_manager` | `fn`          | 构建含继承的位集，失败时返回 `GameplayTagError` |
+| `add_bit_with_tag`                | `fn`          | 设置单个位，索引无效时返回 `InvalidTagIndex` |
 
 ### 属性
 
@@ -35,6 +35,7 @@
 | `AttributeIdManager`                | `Resource`    | 属性 ID、冷热槽位及计数管理器 |
 | `AttributeIdRegister`               | `SystemParam` | 按名称注册属性 ID             |
 | `AttributeIdError`                  | `enum`        | 注册错误                      |
+| `AttributeSetError`                 | `enum`        | 属性写入时的 ID 或未初始化错误 |
 | `AttributeLocation`                 | `struct`      | 属性的区域及区域内槽位       |
 | `AttributeRegion`                   | `enum`        | `Hot` / `Cold` 存储分类      |
 | `AttributeSet`                      | `Component`   | 每实体属性集合                |
@@ -84,6 +85,7 @@
 | `ActiveEffectPeriodTicks`                          | `Component`  | 周期 tick 追踪                               |
 | `ActiveGameplayEffectTargetIndex`                  | `Resource`   | O(1) 目标 → 效果查找                         |
 | `GameplayEffectApplicationPlan`                    | `struct`     | 准备好的效果应用计划                         |
+| `GameplayEffectApplicationError`                   | `enum`       | 效果准备或执行失败的具体原因                 |
 | `GameplayEffectApplicationKind`                    | `enum`       | Instant / StackExisting / CreateActive       |
 | `GameplayEffectApplicationQueue`                   | `Resource`   | 延迟效果应用队列                             |
 | `GameplayEffectApplicationRequest`                 | `struct`     | 单个队列中的应用请求                         |
@@ -118,6 +120,7 @@
 | `AbilityChainContext`      | `struct`     | 链追踪（深度 + 循环检测）                             |
 | `AbilityChainError`        | `enum`       | 链验证错误                                            |
 | `AbilityActivationError`   | `enum`       | 激活失败原因                                          |
+| `AbilityCommitError`       | `enum`       | Cost/Cooldown 准备与执行失败原因                      |
 
 ### 技能任务
 

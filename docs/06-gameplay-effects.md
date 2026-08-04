@@ -71,13 +71,14 @@ pub struct EffectTags {
 pub struct TagRequirements {
     require_all: Vec<GameplayTag>,       // 必须全部存在
     ignore_any: Vec<GameplayTag>,        // 任一存在则阻止
-    require_all_bits: Option<GameplayTagBits>,   // 预缓存位集
-    ignore_any_bits: Option<GameplayTagBits>,    // 预缓存位集
+    require_all_bits: GameplayTagBits,   // 预缓存位集
+    ignore_any_bits: GameplayTagBits,    // 预缓存位集
 }
 
 impl TagRequirements {
+    pub fn new(...) -> Result<Self, GameplayTagError>;
     pub fn passes(&self, tags: Option<&GameplayTagContainer>) -> bool;
-    pub fn passes_tag_slice(&self, tags: &[GameplayTag], manager: &Res<GameplayTagManager>) -> bool;
+    pub fn passes_tag_slice(&self, tags: &[GameplayTag], manager: &Res<GameplayTagManager>) -> Result<bool, GameplayTagError>;
     pub fn passes_tag_bits(&self, tag_bits: &GameplayTagBits) -> bool;
     pub fn is_empty(&self) -> bool;
 }
@@ -97,7 +98,7 @@ impl GameplayEffectImmunityQuery {
         source_tags: Option<&GameplayTagContainer>,
         effect_asset_tags: &[GameplayTag],
         tag_manager: &Res<GameplayTagManager>,
-    ) -> bool;
+    ) -> Result<bool, GameplayTagError>;
 }
 ```
 
@@ -150,18 +151,30 @@ pub fn apply_gameplay_effect(
     effect: &Arc<GameplayEffect>,
     params: &mut AbilitySystemParams,
     payload: &EffectPayload,
-);
+) -> Result<(), GameplayEffectApplicationError>;
 ```
 
 ### 两阶段 API
 
 ```rust
 // 阶段 1：准备（检查条件、查找可堆叠、收集待移除）
-let plan = prepare_gameplay_effect(target, effect, params, &payload);
+let plan = prepare_gameplay_effect(target, effect, params, &payload)?;
 
 // 阶段 2：执行
-execute_gameplay_effect_plan(plan, params);
+execute_gameplay_effect_plan(plan, params)?;
 ```
+
+准备和执行阶段都会验证目标组件、每个 modifier 对应的属性是否已初始化、Attribute ID、
+GameplayTag，以及所有待移除效果的清理条件。只有完整预检通过后才开始修改 World，
+避免多 modifier 效果只应用一部分，或新效果执行失败时已经移除了旧效果。
+
+`GameplayEffectApplicationError` 区分概率拒绝、标签条件、免疫、无效持续时间、
+缺少目标组件、目标未初始化属性、堆叠溢出、无效标签和无效属性 ID。
+`MissingAttribute { target, id }` 表示目标有 `AttributeSet`，但没有 modifier 所需的属性。
+`is_rejection()` 可用于区分正常的 Gameplay 拒绝与配置/状态错误。
+
+FixedUpdate 系统遇到不可恢复的执行错误时会记录一次错误并移除对应 Active Effect，
+避免每个 tick 重试同一个永久错误而产生日志风暴。
 
 ### `prepare_gameplay_effect` 检查顺序
 
@@ -169,8 +182,9 @@ execute_gameplay_effect_plan(plan, params);
 2. **应用条件** — 来源 + 目标标签要求
 3. **应用免疫** — 检查目标是否免疫
 4. **生成 Spec** — 通过 `EffectContext` 解析幅度
-5. **查找可堆叠** — 查找已有的可堆叠活跃效果
+5. **执行条件预检** — 检查目标组件、属性初始化状态、标签和 ID
 6. **收集待移除** — 查找匹配 `remove_effects_with_tags` 的效果
+7. **查找可堆叠** — 查找已有的可堆叠活跃效果
 
 ### `GameplayEffectApplicationKind`
 
