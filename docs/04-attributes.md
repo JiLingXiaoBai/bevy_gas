@@ -138,7 +138,7 @@ struct AttributeAggregatorEntry {
 ```rust
 #[derive(Component)]
 pub struct AttributeSet {
-    hot_attributes: Box<[Option<Attribute>; 32]>,
+    hot_attributes: [Option<Attribute>; 32],
     cold_attributes: Box<[Option<Attribute>; 224]>,
     aggregators: AttributeAggregatorSet,
     hot_dirty: [u64; 1],
@@ -147,7 +147,7 @@ pub struct AttributeSet {
 }
 ```
 
-两个数值区域都通过 `AttributeIdManager` O(1) 定位。热点修改只设置热点位图，重算时不会扫描或访问冷属性；冷区同理。Aggregator 不做冷热分区，而是使用单个稀疏有序 Vec，因为属性读取频率不等于 Aggregator 访问频率。未初始化槽位仍使用 `None` 表示，避免把默认值 `0.0` 与“不拥有该属性”混淆。
+两个数值区域都通过 `AttributeIdManager` O(1) 定位。32 个热点槽位直接内联在组件中，避免高频访问时额外的堆分配和指针间接访问；容量较大的冷区继续使用 `Box`，控制 ECS 表内组件大小。热点修改只设置热点位图，重算时不会扫描或访问冷属性；冷区同理。Aggregator 不做冷热分区，而是使用单个稀疏有序 Vec，因为属性读取频率不等于 Aggregator 访问频率。未初始化槽位仍使用 `None` 表示，避免把默认值 `0.0` 与“不拥有该属性”混淆。
 
 `AttributeSet` 是属性修改的唯一入口。读取指定属性时会检查并清除对应 dirty bit；只有该 bit 原先被设置时才执行内部重算，重复读取干净属性不会再次求值。
 
@@ -190,7 +190,7 @@ pub struct AttributeSnapshot {
 
 #[derive(Component, Clone)]
 pub struct AttributeSetSnapshot {
-    hot: Box<[Option<AttributeSnapshot>; 32]>,
+    hot: [Option<AttributeSnapshot>; 32],
     cold: Box<[Option<AttributeSnapshot>; 224]>,
     source_entity: Entity,
 }

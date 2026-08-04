@@ -6,14 +6,14 @@ use bevy::prelude::*;
 
 #[derive(Component, Clone)]
 pub struct AttributeSetSnapshot {
-    hot: Box<[Option<AttributeSnapshot>; HOT_ATTRIBUTE_SET_SIZE]>,
+    hot: [Option<AttributeSnapshot>; HOT_ATTRIBUTE_SET_SIZE],
     cold: Box<[Option<AttributeSnapshot>; COLD_ATTRIBUTE_SET_SIZE]>,
     source_entity: Entity,
 }
 
 impl AttributeSetSnapshot {
     pub(crate) fn new(
-        hot: Box<[Option<AttributeSnapshot>; HOT_ATTRIBUTE_SET_SIZE]>,
+        hot: [Option<AttributeSnapshot>; HOT_ATTRIBUTE_SET_SIZE],
         cold: Box<[Option<AttributeSnapshot>; COLD_ATTRIBUTE_SET_SIZE]>,
         source_entity: Entity,
     ) -> Self {

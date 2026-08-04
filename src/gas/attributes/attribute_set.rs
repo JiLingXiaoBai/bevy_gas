@@ -63,7 +63,7 @@ impl From<AttributeIdError> for AttributeSetError {
 
 #[derive(Component)]
 pub struct AttributeSet {
-    hot_attributes: Box<[Option<Attribute>; HOT_ATTRIBUTE_SET_SIZE]>,
+    hot_attributes: [Option<Attribute>; HOT_ATTRIBUTE_SET_SIZE],
     cold_attributes: Box<[Option<Attribute>; COLD_ATTRIBUTE_SET_SIZE]>,
     aggregators: AttributeAggregatorSet,
     hot_dirty: [u64; HOT_DIRTY_WORDS],
@@ -74,7 +74,7 @@ pub struct AttributeSet {
 impl Default for AttributeSet {
     fn default() -> Self {
         Self {
-            hot_attributes: Box::new(std::array::from_fn(|_| None)),
+            hot_attributes: std::array::from_fn(|_| None),
             cold_attributes: Box::new(std::array::from_fn(|_| None)),
             aggregators: AttributeAggregatorSet::default(),
             hot_dirty: [0; HOT_DIRTY_WORDS],
@@ -270,11 +270,11 @@ impl AttributeSet {
     pub fn make_snapshot(&mut self, source_entity: Entity) -> AttributeSetSnapshot {
         self.recalculate_dirty();
 
-        let hot = Box::new(std::array::from_fn(|index| {
+        let hot = std::array::from_fn(|index| {
             self.hot_attributes[index]
                 .as_ref()
                 .map(Attribute::make_snapshot)
-        }));
+        });
         let cold = Box::new(std::array::from_fn(|index| {
             self.cold_attributes[index]
                 .as_ref()
