@@ -3,7 +3,7 @@
 ## 概述
 
 `gameplay_targeting` 将“寻找目标”与技能和效果执行解耦。目标定义是一组经过验证、
-按顺序执行的操作；运行时通过同步 API 或有上限的 `TargetingRequestQueue` 生成
+按顺序执行的操作；运行时通过同步 API 或 FIFO `TargetingRequestQueue` 生成
 `AbilityTargetData`。
 
 目标抓取只负责产生候选结果。`GameplayEffect` 仍然一次作用于一个实体，多目标技能会
@@ -132,7 +132,8 @@ let request_id = targeting_queue.push_request(
 使用 `TargetingContinuation::EmitResult` 时只触发结果事件，不自动激活技能，适合 AI、
 UI 或游戏专用逻辑消费。
 
-队列默认每个 FixedUpdate 最多处理 32 个请求。超过上限的请求保留到下一 tick，不会丢弃。
+队列在当前 `FixedUpdate` 中按 FIFO 顺序处理全部待处理请求，不会因为请求数量而隐式推迟
+到后续 tick。
 
 ## 多目标效果
 

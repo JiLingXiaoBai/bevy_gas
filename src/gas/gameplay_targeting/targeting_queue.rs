@@ -4,7 +4,6 @@ use super::{
 };
 use crate::ability_system::AbilityActivationQueue;
 use crate::gameplay_abilities::{AbilityActivationContext, AbilitySpecHandle};
-use crate::settings::GameplayAbilitySystemSettings;
 use bevy::prelude::*;
 use std::collections::VecDeque;
 use std::sync::Arc;
@@ -115,11 +114,10 @@ impl TargetingResultEvent {
     }
 }
 
-/// FIFO queue for bounded targeting work in `FixedUpdate`.
+/// FIFO queue for targeting work in `FixedUpdate`.
 #[derive(Resource)]
 pub struct TargetingRequestQueue {
     requests: VecDeque<TargetingRequest>,
-    max_requests_per_tick: usize,
     next_request_id: u64,
 }
 
@@ -127,8 +125,6 @@ impl Default for TargetingRequestQueue {
     fn default() -> Self {
         Self {
             requests: VecDeque::new(),
-            max_requests_per_tick:
-                GameplayAbilitySystemSettings::TARGETING_REQUEST_QUEUE_MAX_PER_TICK,
             next_request_id: 1,
         }
     }
@@ -170,16 +166,6 @@ impl TargetingRequestQueue {
         self.requests.clear();
     }
 
-    /// Returns the maximum requests processed per fixed tick.
-    pub fn max_requests_per_tick(&self) -> usize {
-        self.max_requests_per_tick
-    }
-
-    /// Sets the positive maximum requests processed per fixed tick.
-    pub fn set_max_requests_per_tick(&mut self, max_requests_per_tick: usize) {
-        self.max_requests_per_tick = max_requests_per_tick.max(1);
-    }
-
     fn pop(&mut self) -> Option<TargetingRequest> {
         self.requests.pop_front()
     }
@@ -192,11 +178,7 @@ pub fn process_targeting_request_queue_system(
     mut activation_queue: ResMut<AbilityActivationQueue>,
     query: TargetingCandidateQuery,
 ) {
-    let max_requests = targeting_queue.max_requests_per_tick();
-    for _ in 0..max_requests {
-        let Some(request) = targeting_queue.pop() else {
-            return;
-        };
+    while let Some(request) = targeting_queue.pop() {
         let result = acquire_targets(request.source, request.input, &request.definition, &query);
 
         if let Ok(target_data) = &result

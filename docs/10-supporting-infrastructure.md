@@ -74,11 +74,10 @@ impl GameplayAbilitySystemSettings {
     pub const HOT_ATTRIBUTE_SET_SIZE: usize = 32;
     pub const COLD_ATTRIBUTE_SET_SIZE: usize = 224;
     pub const GAMEPLAY_TAG_SIZE: usize = 512;
-    pub const ABILITY_ACTIVATION_QUEUE_MAX_PER_TICK: usize = 128;
-    pub const GAMEPLAY_EFFECT_APPLICATION_QUEUE_MAX_PER_TICK: usize = 256;
-    pub const TARGETING_REQUEST_QUEUE_MAX_PER_TICK: usize = 32;
     pub const ABILITY_CHAIN_MAX_DEPTH: u8 = 8;
 }
 ```
 
-要调整这些值，修改 `src/gas/settings.rs` 中的常量并重新编译。
+要调整这些容量和深度值，修改 `src/gas/settings.rs` 中的常量并重新编译。技能激活、效果
+应用和目标请求队列不设置每 tick 消费上限，而是在各自的处理阶段按 FIFO 顺序全量消费，
+避免请求量改变 Gameplay 结算 tick。

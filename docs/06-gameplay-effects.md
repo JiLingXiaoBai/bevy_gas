@@ -240,7 +240,6 @@ pub struct ActiveGameplayEffect {
 #[derive(Resource)]
 pub struct GameplayEffectApplicationQueue {
     requests: VecDeque<GameplayEffectApplicationRequest>,
-    max_applications_per_tick: usize,  // 默认：256
 }
 ```
 
@@ -250,7 +249,9 @@ pub struct GameplayEffectApplicationQueue {
 effect_queue.push_application(target, effect, payload);
 ```
 
-队列由 `process_gameplay_effect_application_queue_system` 消费（仅在有工作时运行）。
+队列由 `process_gameplay_effect_application_queue_system` 消费（仅在有工作时运行）。系统在
+当前 `FixedUpdate` 中按 FIFO 顺序处理全部待处理请求，不会根据请求数量将效果隐式推迟到
+后续 tick。
 
 ## `EffectContext` 与 `EffectPayload`
 

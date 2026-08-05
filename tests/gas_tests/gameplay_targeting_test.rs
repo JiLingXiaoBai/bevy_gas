@@ -250,14 +250,15 @@ fn targeting_queue_activates_ability_with_complete_target_data() {
 }
 
 #[test]
-fn targeting_queue_limit_defers_requests_without_dropping_them() {
+fn targeting_queue_processes_entire_batch() {
+    const REQUEST_COUNT: usize = 33;
+
     let mut app = test_app();
     let source = app.world_mut().spawn(GlobalTransform::IDENTITY).id();
     let definition = targeting_definition(vec![TargetingOperation::SelectSelf]);
     {
         let mut queue = app.world_mut().resource_mut::<TargetingRequestQueue>();
-        queue.set_max_requests_per_tick(1);
-        for _ in 0..2 {
+        for _ in 0..REQUEST_COUNT {
             queue.push_request(
                 source,
                 TargetingInput::new(Vec3::ZERO, Vec3::X),
@@ -267,8 +268,6 @@ fn targeting_queue_limit_defers_requests_without_dropping_them() {
         }
     }
 
-    run_fixed_update(&mut app);
-    assert_eq!(app.world().resource::<TargetingRequestQueue>().len(), 1);
     run_fixed_update(&mut app);
     assert!(app.world().resource::<TargetingRequestQueue>().is_empty());
 }

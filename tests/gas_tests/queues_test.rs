@@ -1,9 +1,8 @@
 use super::common_test::{
     ability_task_count, attribute_set, current_value, empty_effect_tags, give_ability,
     instant_add_effect, modifier, register_attribute, run_ability_activation_queue,
-    run_ability_tasks, run_effect_application_queue, set_ability_queue_limit,
-    set_effect_queue_limit, spawn_ability_task, spawn_active_ability, spawn_attribute_set,
-    test_app,
+    run_ability_tasks, run_effect_application_queue, spawn_ability_task, spawn_active_ability,
+    spawn_attribute_set, test_app,
 };
 use bevy::prelude::*;
 use bevy_tools::{
@@ -62,32 +61,28 @@ fn capture_ability_task_event(
 }
 
 #[test]
-fn effect_application_queue_respects_per_tick_limit() {
+fn effect_application_queue_processes_entire_batch() {
+    const REQUEST_COUNT: usize = 257;
+
     let mut app = test_app();
     let health = register_attribute(&mut app, "Health");
     let target = spawn_attribute_set(&mut app, health, 0.0);
     let effect = instant_add_effect(health, 1.0);
-    set_effect_queue_limit(&mut app, 1);
 
     {
         let mut queue = app
             .world_mut()
             .resource_mut::<GameplayEffectApplicationQueue>();
-        queue.push_application(target, effect.clone(), EffectPayload::new(target, None, 1));
-        queue.push_application(target, effect, EffectPayload::new(target, None, 1));
+        for _ in 0..REQUEST_COUNT {
+            queue.push_application(target, effect.clone(), EffectPayload::new(target, None, 1));
+        }
     }
 
     run_effect_application_queue(&mut app);
-    assert_eq!(current_value(&mut app, target, health), 1.0);
     assert_eq!(
-        app.world()
-            .resource::<GameplayEffectApplicationQueue>()
-            .len(),
-        1
+        current_value(&mut app, target, health),
+        REQUEST_COUNT as f32
     );
-
-    run_effect_application_queue(&mut app);
-    assert_eq!(current_value(&mut app, target, health), 2.0);
     assert!(
         app.world()
             .resource::<GameplayEffectApplicationQueue>()
@@ -96,70 +91,35 @@ fn effect_application_queue_respects_per_tick_limit() {
 }
 
 #[test]
-fn ability_activation_queue_respects_per_tick_limit() {
+fn ability_activation_queue_processes_entire_batch() {
+    const REQUEST_COUNT: usize = 129;
+
     let mut app = test_app();
-    let first = Arc::new(GameplayAbility::new(
+    let ability = Arc::new(GameplayAbility::new(
         bevy_tools::AbilityTags::default(),
         Vec::new(),
         None,
         None,
         Vec::new(),
         true,
-        false,
-    ));
-    let second = Arc::new(GameplayAbility::new(
-        bevy_tools::AbilityTags::default(),
-        Vec::new(),
-        None,
-        None,
-        Vec::new(),
         true,
-        false,
     ));
     let source = app
         .world_mut()
         .spawn(AbilitySystemComponent::default())
         .id();
-    let first_handle = give_ability(&mut app, source, first);
-    let second_handle = give_ability(&mut app, source, second);
-    set_ability_queue_limit(&mut app, 1);
+    let handle = give_ability(&mut app, source, ability);
 
     {
         let mut queue = app.world_mut().resource_mut::<AbilityActivationQueue>();
-        let first_context =
-            AbilityActivationContext::direct(source, queue.new_root_chain(first_handle));
-        let second_context =
-            AbilityActivationContext::direct(source, queue.new_root_chain(second_handle));
-        queue.push_activation(source, source, first_handle, first_context);
-        queue.push_activation(source, source, second_handle, second_context);
+        for _ in 0..REQUEST_COUNT {
+            let context = AbilityActivationContext::direct(source, queue.new_root_chain(handle));
+            queue.push_activation(source, source, handle, context);
+        }
     }
 
     run_ability_activation_queue(&mut app);
-    assert_eq!(app.world().resource::<AbilityActivationQueue>().len(), 1);
-
-    run_ability_activation_queue(&mut app);
     assert!(app.world().resource::<AbilityActivationQueue>().is_empty());
-}
-
-#[test]
-fn queue_limits_clamp_zero_to_one() {
-    let mut app = test_app();
-
-    set_effect_queue_limit(&mut app, 0);
-    set_ability_queue_limit(&mut app, 0);
-
-    assert_eq!(
-        app.world()
-            .resource::<GameplayEffectApplicationQueue>()
-            .max_applications_per_tick(),
-        1
-    );
-    assert_eq!(
-        app.world()
-            .resource::<AbilityActivationQueue>()
-            .max_activations_per_tick(),
-        1
-    );
 }
 
 #[test]

@@ -5,21 +5,19 @@ use bevy_tools::attributes::{
 };
 use bevy_tools::gameplay_abilities::{AbilitySpecHandle, AbilityTask, ActiveGameplayAbility};
 use bevy_tools::gameplay_effects::{
-    EffectDurationTicks, EffectPayload, EffectTags, GameplayEffect, GameplayEffectApplicationQueue,
-    TagRequirements,
+    EffectDurationTicks, EffectPayload, EffectTags, GameplayEffect, TagRequirements,
 };
 use bevy_tools::gameplay_tags::{
     GameplayTag, GameplayTagContainer, GameplayTagManager, GameplayTagRegister,
 };
 use bevy_tools::modifiers::{Modifier, ModifierMagnitude, ModifierOperation};
 use bevy_tools::{
-    AbilityActivationContext, AbilityActivationQueue, AbilityChainContext, AbilitySystemComponent,
-    AbilitySystemParams, ActiveGameplayEffectTargetIndex, GameplayAbilitySystemPlugin,
-    apply_gameplay_effect, cleanup_finished_abilities_system,
-    process_ability_activation_queue_system, process_gameplay_effect_application_queue_system,
-    reconcile_active_effect_target_index_system, tick_ability_tasks_system,
-    tick_effect_duration_system, tick_effect_period_system, try_activate_ability_by_handle,
-    update_active_effect_tag_requirements_system,
+    AbilityActivationContext, AbilityChainContext, AbilitySystemComponent, AbilitySystemParams,
+    ActiveGameplayEffectTargetIndex, GameplayAbilitySystemPlugin, apply_gameplay_effect,
+    cleanup_finished_abilities_system, process_ability_activation_queue_system,
+    process_gameplay_effect_application_queue_system, reconcile_active_effect_target_index_system,
+    tick_ability_tasks_system, tick_effect_duration_system, tick_effect_period_system,
+    try_activate_ability_by_handle, update_active_effect_tag_requirements_system,
 };
 use std::sync::Arc;
 
@@ -308,18 +306,6 @@ pub fn run_active_effect_index_reconcile(app: &mut App) {
 
 pub fn run_fixed_update(app: &mut App) {
     app.world_mut().run_schedule(FixedUpdate);
-}
-
-pub fn set_ability_queue_limit(app: &mut App, max_per_tick: usize) {
-    app.world_mut()
-        .resource_mut::<AbilityActivationQueue>()
-        .set_max_activations_per_tick(max_per_tick);
-}
-
-pub fn set_effect_queue_limit(app: &mut App, max_per_tick: usize) {
-    app.world_mut()
-        .resource_mut::<GameplayEffectApplicationQueue>()
-        .set_max_applications_per_tick(max_per_tick);
 }
 
 pub fn spawn_active_ability(

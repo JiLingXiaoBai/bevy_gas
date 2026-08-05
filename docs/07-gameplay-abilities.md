@@ -213,7 +213,6 @@ Active ──► Ending ──► (销毁)
 #[derive(Resource)]
 pub struct AbilityActivationQueue {
     requests: VecDeque<AbilityActivationRequest>,
-    max_activations_per_tick: usize,  // 默认：128
     next_chain_id: u64,
 }
 ```
@@ -223,6 +222,9 @@ pub struct AbilityActivationQueue {
 ```rust
 activation_queue.push_activation(source, target, handle, context);
 ```
+
+队列在当前 `FixedUpdate` 中按 FIFO 顺序处理全部待处理请求，不会根据请求数量将技能激活
+隐式推迟到后续 tick。
 
 链式激活（带循环/深度保护）：
 

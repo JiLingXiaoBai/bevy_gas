@@ -120,7 +120,7 @@
 | `TargetingRequestId`                    | `struct`    | 队列请求的稳定标识                        |
 | `TargetingContinuation`                 | `enum`      | 只发结果或继续激活技能                    |
 | `TargetingResultEvent`                  | `Event`     | 请求完成后的结果事件                      |
-| `TargetingRequestQueue`                 | `Resource`  | 有每 tick 上限的 FIFO 请求队列            |
+| `TargetingRequestQueue`                 | `Resource`  | 每 tick 全量消费的 FIFO 请求队列           |
 | `acquire_targets`                       | `fn`        | 同步执行目标操作管线                      |
 | `process_targeting_request_queue_system`| `fn`        | 系统：处理请求并分派 continuation         |
 | `targeting_request_queue_has_work`      | `fn`        | 队列系统的运行条件                        |

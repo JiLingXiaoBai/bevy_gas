@@ -74,25 +74,22 @@ RecalculateAttributes
 
 ### RuntimePlugin 初始化的 Resource
 
-| Resource                          | 类型       | 默认容量      |
-| --------------------------------- | ---------- | ------------- |
-| `AttributeIdManager`              | `Resource` | ID 256；热点 32 / 冷区 224 |
-| `AbilityActivationQueue`          | `Resource` | 每 tick 128 个 |
-| `GameplayEffectApplicationQueue`  | `Resource` | 每 tick 256 个 |
-| `TargetingRequestQueue`            | `Resource` | 每 tick 32 个 |
-| `ActiveGameplayEffectTargetIndex` | `Resource` | —             |
+| Resource                          | 类型       | 默认行为                     |
+| --------------------------------- | ---------- | ---------------------------- |
+| `AttributeIdManager`              | `Resource` | ID 256；热点 32 / 冷区 224   |
+| `AbilityActivationQueue`          | `Resource` | 每个 tick 按 FIFO 全量消费   |
+| `GameplayEffectApplicationQueue`  | `Resource` | 每个 tick 按 FIFO 全量消费   |
+| `TargetingRequestQueue`           | `Resource` | 每个 tick 按 FIFO 全量消费   |
+| `ActiveGameplayEffectTargetIndex` | `Resource` | —                            |
 
 ## 全局设置
 
 定义在 `GameplayAbilitySystemSettings` 中：
 
-| 常量                                             | 值  | 说明                             |
-| ------------------------------------------------ | --- | -------------------------------- |
-| `ATTRIBUTE_SET_SIZE`                             | 256 | 每个 `AttributeSet` 的最大属性数 |
-| `HOT_ATTRIBUTE_SET_SIZE`                         | 32  | 热点属性区域容量                 |
-| `COLD_ATTRIBUTE_SET_SIZE`                        | 224 | 冷属性区域容量                   |
-| `GAMEPLAY_TAG_SIZE`                              | 512 | 最大 Gameplay 标签数             |
-| `ABILITY_ACTIVATION_QUEUE_MAX_PER_TICK`          | 128 | 每 tick 处理的最大技能激活数     |
-| `GAMEPLAY_EFFECT_APPLICATION_QUEUE_MAX_PER_TICK` | 256 | 每 tick 处理的最大效果应用数     |
-| `TARGETING_REQUEST_QUEUE_MAX_PER_TICK`            | 32  | 每 tick 处理的最大目标请求数     |
-| `ABILITY_CHAIN_MAX_DEPTH`                        | 8   | 链式技能激活的最大深度           |
+| 常量                      | 值  | 说明                             |
+| ------------------------- | --- | -------------------------------- |
+| `ATTRIBUTE_SET_SIZE`      | 256 | 每个 `AttributeSet` 的最大属性数 |
+| `HOT_ATTRIBUTE_SET_SIZE`  | 32  | 热点属性区域容量                 |
+| `COLD_ATTRIBUTE_SET_SIZE` | 224 | 冷属性区域容量                   |
+| `GAMEPLAY_TAG_SIZE`       | 512 | 最大 Gameplay 标签数             |
+| `ABILITY_CHAIN_MAX_DEPTH` | 8   | 链式技能激活的最大深度           |

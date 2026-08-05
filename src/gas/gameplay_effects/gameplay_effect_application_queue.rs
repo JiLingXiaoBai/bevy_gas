@@ -1,6 +1,5 @@
 use super::{EffectPayload, GameplayEffect, apply_gameplay_effect};
 use crate::ability_system::AbilitySystemParams;
-use crate::settings::GameplayAbilitySystemSettings;
 use bevy::prelude::*;
 use std::collections::VecDeque;
 use std::sync::Arc;
@@ -34,20 +33,9 @@ impl GameplayEffectApplicationRequest {
     }
 }
 
-#[derive(Resource)]
+#[derive(Resource, Default)]
 pub struct GameplayEffectApplicationQueue {
     requests: VecDeque<GameplayEffectApplicationRequest>,
-    max_applications_per_tick: usize,
-}
-
-impl Default for GameplayEffectApplicationQueue {
-    fn default() -> Self {
-        Self {
-            requests: VecDeque::new(),
-            max_applications_per_tick:
-                GameplayAbilitySystemSettings::GAMEPLAY_EFFECT_APPLICATION_QUEUE_MAX_PER_TICK,
-        }
-    }
 }
 
 impl GameplayEffectApplicationQueue {
@@ -81,26 +69,13 @@ impl GameplayEffectApplicationQueue {
     pub fn clear(&mut self) {
         self.requests.clear();
     }
-
-    pub fn max_applications_per_tick(&self) -> usize {
-        self.max_applications_per_tick
-    }
-
-    pub fn set_max_applications_per_tick(&mut self, max_applications_per_tick: usize) {
-        self.max_applications_per_tick = max_applications_per_tick.max(1);
-    }
 }
 
 pub fn process_gameplay_effect_application_queue_system(
     mut effect_queue: ResMut<GameplayEffectApplicationQueue>,
     mut params: AbilitySystemParams,
 ) {
-    let max_applications = effect_queue.max_applications_per_tick();
-    for _ in 0..max_applications {
-        let Some(request) = effect_queue.pop() else {
-            return;
-        };
-
+    while let Some(request) = effect_queue.pop() {
         if let Err(error) = apply_gameplay_effect(
             request.get_target(),
             request.get_effect(),
