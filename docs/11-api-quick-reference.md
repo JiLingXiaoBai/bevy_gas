@@ -22,6 +22,10 @@
 | `GameplayTagManager`              | `Resource`    | 全局标签注册表          |
 | `GameplayTagRegister`             | `SystemParam` | 按点分隔名称注册标签    |
 | `GameplayTagError`                | `enum`        | 标签注册错误            |
+| `MAX_TAG_COUNTS`                  | `const`       | 可注册标签总容量        |
+| `BLOCK_SIZE_EXPONENT`             | `const`       | 位块索引右移量（6）     |
+| `TAG_BITS_PER_BLOCK`              | `const`       | 每个标签位块的位数（64）|
+| `MAX_TAG_BLOCKS`                  | `const`       | `GameplayTagBits` 的 u64 块数 |
 | `GameplayTagBits`                 | `type alias`  | `[u64; MAX_TAG_BLOCKS]` |
 | `tag_bits_from_tags`              | `fn`          | 构建精确位集，失败时返回 `GameplayTagError` |
 | `tag_bits_from_tags_with_manager` | `fn`          | 构建含继承的位集，失败时返回 `GameplayTagError` |
@@ -42,6 +46,9 @@
 | `AttributePostExecute`              | `type alias`  | 修改后回调                    |
 | `AttributeSnapshot`                 | `struct`      | 不可变属性值快照              |
 | `AttributeSetSnapshot`              | `Component`   | 不可变完整属性集快照          |
+| `ATTRIBUTE_SET_SIZE`                | `const`       | 总属性容量                    |
+| `HOT_ATTRIBUTE_SET_SIZE`            | `const`       | 热点属性槽位容量              |
+| `COLD_ATTRIBUTE_SET_SIZE`           | `const`       | 冷属性槽位容量                |
 | `recalculate_attribute_sets_system` | `fn`          | 系统：重算脏属性集            |
 
 ### 修饰器
@@ -79,16 +86,13 @@
 | `StackExpirationPolicy`                            | `enum`       | RemoveAllStacks / RemoveSingleStack          |
 | `EffectPayload`                                    | `struct`     | 效果执行元数据                               |
 | `EffectContext`                                    | `struct`     | 计算用的世界查询包装                         |
-| `ActiveGameplayEffect`                             | `Component`  | 运行时活跃效果                               |
-| `ActiveEffectHandle`                               | `type alias` | 活跃效果的 `Entity` 句柄                     |
-| `ActiveEffectDurationTicks`                        | `Component`  | 剩余持续时间 tick                            |
-| `ActiveEffectPeriodTicks`                          | `Component`  | 周期 tick 追踪                               |
-| `ActiveGameplayEffectTargetIndex`                  | `Resource`   | O(1) 目标 → 效果查找                         |
+| `ActiveGameplayEffects`                            | `Component`  | 目标持有的稳定槽位效果容器                   |
+| `ActiveGameplayEffect`                             | `struct`     | 容器中的运行时效果                           |
+| `ActiveEffectHandle`                               | `struct`     | target + slot + generation 稳定句柄          |
+| `ActiveEffectDurationTicks`                        | `struct`     | 容器内的剩余持续时间 tick                    |
+| `ActiveEffectPeriodTicks`                          | `struct`     | 容器内的周期 tick 状态                       |
 | `GameplayEffectApplicationPlan`                    | `struct`     | 准备好的效果应用计划                         |
 | `GameplayEffectApplicationError`                   | `enum`       | 效果准备或执行失败的具体原因                 |
-| `GameplayEffectApplicationKind`                    | `enum`       | Instant / StackExisting / CreateActive       |
-| `GameplayEffectApplicationQueue`                   | `Resource`   | 延迟效果应用队列                             |
-| `GameplayEffectApplicationRequest`                 | `struct`     | 单个队列中的应用请求                         |
 | `prepare_gameplay_effect`                          | `fn`         | 阶段 1：准备应用                             |
 | `execute_gameplay_effect_plan`                     | `fn`         | 阶段 2：执行计划                             |
 | `apply_gameplay_effect`                            | `fn`         | 便捷：准备 + 执行                            |
@@ -99,10 +103,18 @@
 | `tick_effect_duration_system`                      | `fn`         | 系统：持续时间倒计时                         |
 | `tick_effect_period_system`                        | `fn`         | 系统：周期性执行                             |
 | `update_active_effect_tag_requirements_system`     | `fn`         | 系统：抑制/移除检查                          |
-| `cleanup_active_gameplay_effect`                   | `fn`         | 移除效果 + 清理                              |
-| `reconcile_active_effect_target_index_system`      | `fn`         | 系统：索引维护                               |
-| `process_gameplay_effect_application_queue_system` | `fn`         | 系统：消费队列                               |
-| `gameplay_effect_application_queue_has_work`       | `fn`         | 队列系统的运行条件                           |
+| `resolve_active_effect_tag_requirements`           | `fn`         | 同步执行确定性固定点收敛                     |
+
+### Gameplay 执行
+
+| 项                                          | 类型       | 说明                                  |
+| ------------------------------------------- | ---------- | ------------------------------------- |
+| `GameplayExecutionQueue`                    | `Resource` | 技能与效果共享的跨类型 FIFO           |
+| `GameplayExecutionRequest`                  | `enum`     | ActivateAbility / ApplyGameplayEffect |
+| `AbilityActivationRequest`                  | `struct`   | 捕获后的技能激活请求                  |
+| `GameplayEffectApplicationRequest`          | `struct`   | 捕获后的效果应用请求                  |
+| `process_gameplay_execution_queue_system`   | `fn`       | 系统：完整 drain 并按需收敛 Tag 条件  |
+| `gameplay_execution_queue_has_work`         | `fn`       | 统一 FIFO 的运行条件                   |
 
 ### Gameplay 目标抓取
 
@@ -117,9 +129,10 @@
 | `TargetingDefinitionError`              | `enum`      | 非法管线配置                              |
 | `TargetingInput`                        | `struct`    | 捕获的原点、方向和显式目标                |
 | `TargetingError`                        | `enum`      | 运行时抓取失败                            |
+| `TargetingCandidateQuery`               | `type alias` | 目标选择使用的只读 ECS Query              |
 | `TargetingRequestId`                    | `struct`    | 队列请求的稳定标识                        |
 | `TargetingContinuation`                 | `enum`      | 只发结果或继续激活技能                    |
-| `TargetingResultEvent`                  | `Event`     | 请求完成后的结果事件                      |
+| `TargetingResultEvent`                  | `Event`     | 请求完成后由 `Commands::trigger` 触发的 Observer Event |
 | `TargetingRequestQueue`                 | `Resource`  | 每 tick 全量消费的 FIFO 请求队列           |
 | `acquire_targets`                       | `fn`        | 同步执行目标操作管线                      |
 | `process_targeting_request_queue_system`| `fn`        | 系统：处理请求并分派 continuation         |
@@ -152,7 +165,7 @@
 | `AbilityTask`               | `Component` | 运行时任务实体                  |
 | `AbilityTaskKind`           | `enum`      | Instant / WaitTicks             |
 | `AbilityTaskOnFinished`     | `enum`      | 运行时完成动作                  |
-| `AbilityTaskEvent`          | `Event`     | EmitEvent 完成时发出            |
+| `AbilityTaskEvent`          | `Event`     | EmitEvent 完成时触发的 Observer Event |
 | `tick_ability_tasks_system` | `fn`        | 系统：推进所有任务              |
 
 ### 技能系统组件
@@ -161,16 +174,12 @@
 | ----------------------------------------- | ------------- | ---------------------- |
 | `AbilitySystemComponent`                  | `Component`   | 每实体 ASC             |
 | `AbilitySystemParams`                     | `SystemParam` | 聚合的 GAS 查询 + 资源 |
-| `AbilityActivationQueue`                  | `Resource`    | 延迟激活队列           |
-| `AbilityActivationRequest`                | `struct`      | 单个队列中的激活请求   |
-| `try_activate_ability_by_handle`          | `fn`          | 主激活入口             |
+| `try_activate_ability_by_handle`          | `fn`          | 独立的同步激活调用路径        |
 | `can_activate_ability`                    | `fn`          | 检查而不激活           |
 | `commit_ability`                          | `fn`          | 执行消耗 + 冷却        |
 | `end_ability`                             | `fn`          | 将状态设为 Ending      |
 | `cancel_ability`                          | `fn`          | 将状态设为 Cancelled   |
 | `cleanup_finished_abilities_system`       | `fn`          | 系统：销毁已完成技能   |
-| `process_ability_activation_queue_system` | `fn`          | 系统：消费队列         |
-| `ability_activation_queue_has_work`       | `fn`          | 队列系统的运行条件     |
 
 ### 支撑
 

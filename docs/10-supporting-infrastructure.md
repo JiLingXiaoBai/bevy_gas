@@ -30,7 +30,7 @@ impl UniqueNamePool {
 哈希值仅用于定位候选桶；桶内始终比较完整字符串，因此不同名称即使发生哈希碰撞，也会获得不同句柄。句柄空间耗尽时返回 `UniqueNameError::CapacityExceeded`，库代码不会为此触发 panic。调用方应显式处理注册失败。
 
 - 空字符串预留在索引 0
-- Debug 构建中，哈希冲突会触发 panic
+- 哈希冲突进入碰撞桶，并通过完整字符串比较消歧
 - 使用 `FixedHasher` 确保确定性哈希
 
 ## 随机数 (`randoms/`)
@@ -58,7 +58,7 @@ impl Random {
 }
 ```
 
-- 默认种子 (`123456`) 确保可复现的游戏过程
+- 在相同 `rand` 版本、相同种子和相同调用顺序下，默认种子 (`123456`) 可复现随机序列
 - 更改种子可用于不同对局或程序化生成
 - 内部用于效果概率掷骰
 
@@ -78,6 +78,7 @@ impl GameplayAbilitySystemSettings {
 }
 ```
 
-要调整这些容量和深度值，修改 `src/gas/settings.rs` 中的常量并重新编译。技能激活、效果
-应用和目标请求队列不设置每 tick 消费上限，而是在各自的处理阶段按 FIFO 顺序全量消费，
-避免请求量改变 Gameplay 结算 tick。
+要调整这些容量和深度值，修改 `src/gas/settings.rs` 中的常量并重新编译。技能激活与效果
+应用共享一个 `GameplayExecutionQueue`，并在 `GameplayResolve` 按跨类型 FIFO 全量消费；
+目标请求则先在 `Targeting` 阶段完整处理。两者都不设置每 tick 消费上限，避免请求量改变
+Gameplay 结算 tick。

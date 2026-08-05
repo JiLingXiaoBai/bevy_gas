@@ -1,4 +1,5 @@
 use super::{GameplayTag, GameplayTagError, GameplayTagManager, MAX_TAG_COUNTS};
+use crate::gameplay_effects::ActiveGameplayEffects;
 use bevy::prelude::{Component, Res};
 
 pub const BLOCK_SIZE_EXPONENT: usize = 6; // 2^6 =64
@@ -78,6 +79,7 @@ pub fn add_bit_with_tag(
 }
 
 #[derive(Component)]
+#[require(ActiveGameplayEffects)]
 pub struct GameplayTagContainer {
     tag_bits: GameplayTagBits,
     ref_counts: Box<[u16]>,

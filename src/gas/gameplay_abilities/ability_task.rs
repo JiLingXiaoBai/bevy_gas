@@ -2,8 +2,8 @@ use super::{
     AbilityActivationContext, AbilityActivationStatus, AbilitySpecHandle, ActiveAbilityHandle,
     ActiveGameplayAbility,
 };
-use crate::ability_system::AbilityActivationQueue;
-use crate::gameplay_effects::{EffectPayload, GameplayEffect, GameplayEffectApplicationQueue};
+use crate::gameplay_effects::{EffectPayload, GameplayEffect};
+use crate::gameplay_execution::GameplayExecutionQueue;
 use crate::unique_names::UniqueName;
 use bevy::prelude::*;
 use std::sync::Arc;
@@ -126,7 +126,7 @@ impl AbilityTaskDef {
 }
 
 impl AbilityTaskOnFinishedDef {
-    fn instantiate(
+    pub(crate) fn instantiate(
         &self,
         source: Entity,
         target: Entity,
@@ -268,97 +268,133 @@ pub fn tick_ability_tasks_system(
     mut commands: Commands,
     mut task_query: Query<(Entity, &mut AbilityTask)>,
     mut active_ability_query: Query<&mut ActiveGameplayAbility>,
-    mut activation_queue: ResMut<AbilityActivationQueue>,
-    mut effect_queue: ResMut<GameplayEffectApplicationQueue>,
+    mut execution_queue: ResMut<GameplayExecutionQueue>,
 ) {
-    for (task_entity, mut task) in task_query.iter_mut() {
-        let Ok(active_ability) = active_ability_query.get(task.get_active_ability()) else {
-            commands.entity(task_entity).despawn();
-            continue;
+    let mut task_entities: Vec<_> = task_query
+        .iter_mut()
+        .map(|(task_entity, _)| task_entity)
+        .collect();
+    task_entities.sort_by_key(|entity| entity.to_bits());
+
+    for task_entity in task_entities {
+        let (active_handle, active_context, on_finished) = {
+            let Ok((_, mut task)) = task_query.get_mut(task_entity) else {
+                continue;
+            };
+            let Ok(active_ability) = active_ability_query.get(task.get_active_ability()) else {
+                commands.entity(task_entity).despawn();
+                continue;
+            };
+
+            let active_status = active_ability.get_status();
+            let active_context = active_ability.get_activation_context().clone();
+
+            if !matches!(active_status, AbilityActivationStatus::Active) {
+                commands.entity(task_entity).despawn();
+                continue;
+            }
+
+            if !task.tick() {
+                continue;
+            }
+
+            (
+                task.get_active_ability(),
+                active_context,
+                task.get_on_finished().clone(),
+            )
         };
 
-        let active_status = active_ability.get_status();
-        let active_context = active_ability.get_activation_context().clone();
-
-        if !matches!(active_status, AbilityActivationStatus::Active) {
-            commands.entity(task_entity).despawn();
-            continue;
-        }
-
-        if !task.tick() {
-            continue;
-        }
-
-        match task.get_on_finished().clone() {
-            AbilityTaskOnFinished::None => {}
-            AbilityTaskOnFinished::EndAbility => {
-                if let Ok(mut active_ability) =
-                    active_ability_query.get_mut(task.get_active_ability())
-                {
-                    active_ability.set_status(AbilityActivationStatus::Ending);
-                }
-            }
-            AbilityTaskOnFinished::EmitEvent {
-                source,
-                target,
-                spec_handle,
-                event_id,
-                level,
-            } => {
-                commands.trigger(AbilityTaskEvent::new(
-                    source,
-                    target,
-                    task.get_active_ability(),
-                    spec_handle,
-                    event_id,
-                    level,
-                ));
-            }
-            AbilityTaskOnFinished::ActivateAbility {
-                source,
-                target,
-                handle,
-            } => {
-                if let Err(err) = activation_queue.push_chained_activation(
-                    source,
-                    target,
-                    handle,
-                    task.get_active_ability(),
-                    &active_context,
-                ) {
-                    error!("failed to queue chained ability activation: {err}");
-                }
-            }
-            AbilityTaskOnFinished::ApplyGameplayEffect {
-                source,
-                target,
-                effect,
-                level,
-            } => {
-                let payload =
-                    effect_payload_from_activation_context(source, level, &active_context);
-                effect_queue.push_application(target, effect, payload);
-            }
-            AbilityTaskOnFinished::ApplyGameplayEffectToTargets {
-                source,
-                fallback_target,
-                effect,
-                level,
-            } => {
-                let payload =
-                    effect_payload_from_activation_context(source, level, &active_context);
-                if let Some(target_data) = active_context.get_target_data() {
-                    for target in target_data.entities() {
-                        effect_queue.push_application(target, effect.clone(), payload.clone());
-                    }
-                } else {
-                    effect_queue.push_application(fallback_target, effect, payload);
-                }
-            }
+        if matches!(
+            dispatch_ability_task_completion(
+                active_handle,
+                on_finished,
+                &active_context,
+                &mut commands,
+                &mut execution_queue,
+            ),
+            AbilityTaskCompletion::EndAbility
+        ) && let Ok(mut active_ability) = active_ability_query.get_mut(active_handle)
+        {
+            active_ability.set_status(AbilityActivationStatus::Ending);
         }
 
         commands.entity(task_entity).despawn();
     }
+}
+
+pub(crate) enum AbilityTaskCompletion {
+    Continue,
+    EndAbility,
+}
+
+pub(crate) fn dispatch_ability_task_completion(
+    active_ability: ActiveAbilityHandle,
+    on_finished: AbilityTaskOnFinished,
+    active_context: &AbilityActivationContext,
+    commands: &mut Commands,
+    execution_queue: &mut GameplayExecutionQueue,
+) -> AbilityTaskCompletion {
+    match on_finished {
+        AbilityTaskOnFinished::None => {}
+        AbilityTaskOnFinished::EndAbility => return AbilityTaskCompletion::EndAbility,
+        AbilityTaskOnFinished::EmitEvent {
+            source,
+            target,
+            spec_handle,
+            event_id,
+            level,
+        } => {
+            commands.trigger(AbilityTaskEvent::new(
+                source,
+                target,
+                active_ability,
+                spec_handle,
+                event_id,
+                level,
+            ));
+        }
+        AbilityTaskOnFinished::ActivateAbility {
+            source,
+            target,
+            handle,
+        } => {
+            if let Err(error) = execution_queue.push_chained_activation(
+                source,
+                target,
+                handle,
+                active_ability,
+                active_context,
+            ) {
+                error!("failed to queue chained ability activation: {error}");
+            }
+        }
+        AbilityTaskOnFinished::ApplyGameplayEffect {
+            source,
+            target,
+            effect,
+            level,
+        } => {
+            let payload = effect_payload_from_activation_context(source, level, active_context);
+            execution_queue.push_application(target, effect, payload);
+        }
+        AbilityTaskOnFinished::ApplyGameplayEffectToTargets {
+            source,
+            fallback_target,
+            effect,
+            level,
+        } => {
+            let payload = effect_payload_from_activation_context(source, level, active_context);
+            if let Some(target_data) = active_context.get_target_data() {
+                for target in target_data.entities() {
+                    execution_queue.push_application(target, effect.clone(), payload.clone());
+                }
+            } else {
+                execution_queue.push_application(fallback_target, effect, payload);
+            }
+        }
+    }
+    AbilityTaskCompletion::Continue
 }
 
 fn effect_payload_from_activation_context(

@@ -4,7 +4,7 @@ use super::{
     Aggregator, AttributeId, AttributeIdError, AttributeIdManager, AttributeLocation,
     AttributeRegion, AttributeSetSnapshot,
 };
-use crate::gameplay_effects::ActiveEffectHandle;
+use crate::gameplay_effects::{ActiveEffectHandle, ActiveGameplayEffects};
 use crate::modifiers::ModifierSpec;
 use crate::settings::GameplayAbilitySystemSettings;
 use bevy::prelude::*;
@@ -62,6 +62,7 @@ impl From<AttributeIdError> for AttributeSetError {
 }
 
 #[derive(Component)]
+#[require(ActiveGameplayEffects)]
 pub struct AttributeSet {
     hot_attributes: [Option<Attribute>; HOT_ATTRIBUTE_SET_SIZE],
     cold_attributes: Box<[Option<Attribute>; COLD_ATTRIBUTE_SET_SIZE]>,

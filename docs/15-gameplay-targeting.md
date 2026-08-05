@@ -6,8 +6,9 @@
 按顺序执行的操作；运行时通过同步 API 或 FIFO `TargetingRequestQueue` 生成
 `AbilityTargetData`。
 
-目标抓取只负责产生候选结果。`GameplayEffect` 仍然一次作用于一个实体，多目标技能会
-按照目标数据的确定顺序逐个写入效果队列。
+目标抓取只负责产生候选结果。`GameplayEffect` 仍然一次作用于一个实体：技能定义中的
+`activation_effects` 会在该技能激活请求内部按目标顺序直接应用；
+`ApplyGameplayEffectToTargets` task 则按相同顺序向统一 Gameplay FIFO 写入多个效果请求。
 
 ## 实体要求
 
@@ -122,12 +123,27 @@ let request_id = targeting_queue.push_request(
 );
 ```
 
-成功后，系统会：
+生产该请求的系统应位于 `Targeting` 之前，通常注册到公共生产阶段：
+
+```rust
+app.add_systems(
+    FixedUpdate,
+    queue_targeting_requests.in_set(GameplayAbilitySystemSet::RequestProducers),
+);
+```
+
+每个请求无论成功或失败都会通过 `Commands::trigger()` 触发包含同一
+`TargetingRequestId` 的 `TargetingResultEvent`。成功且 continuation 为 `ActivateAbility` 时，
+系统还会：
 
 1. 把完整 `AbilityTargetData` 附加到 `AbilityActivationContext`；
 2. 以 `primary_entity()` 作为旧 API 的单一 `target`；
-3. 向 `AbilityActivationQueue` 写入激活请求；
-4. 触发包含同一 `TargetingRequestId` 的 `TargetingResultEvent`。
+3. 向统一的 `GameplayExecutionQueue` 写入激活请求；
+4. 随后触发成功结果事件。
+
+失败时不会写入技能激活，但 Observer 仍会收到 `Err(TargetingError)`。direct continuation 在
+结果事件的 deferred Observer 运行前已经入队，因此 Observer 不能撤销它；需要先审核、确认
+或允许取消时，应使用 `EmitResult`，再由 Observer 决定是否生产 Gameplay 请求。
 
 使用 `TargetingContinuation::EmitResult` 时只触发结果事件，不自动激活技能，适合 AI、
 UI 或游戏专用逻辑消费。
@@ -135,9 +151,14 @@ UI 或游戏专用逻辑消费。
 队列在当前 `FixedUpdate` 中按 FIFO 顺序处理全部待处理请求，不会因为请求数量而隐式推迟
 到后续 tick。
 
+整批请求的 direct continuation 会先按 Targeting FIFO 写入 Gameplay 队列，系统返回后才应用
+deferred result triggers。因此 Observer 派生的请求排在该批所有 direct continuation 之后，
+不会与每个 Targeting 请求逐个交错。
+
 ## 多目标效果
 
-技能的 `activation_effects` 在存在 Target Data 时会应用给其中每个实体。任务可使用：
+技能的 `activation_effects` 在存在 Target Data 时，会在当前技能激活请求内部按顺序直接应用给
+每个实体。任务也可使用：
 
 ```rust
 AbilityTaskOnFinishedDef::ApplyGameplayEffectToTargets {
@@ -147,28 +168,31 @@ AbilityTaskOnFinishedDef::ApplyGameplayEffectToTargets {
 
 如果激活上下文没有 Target Data，该任务回退到 `ActiveGameplayAbility` 的旧单目标字段。
 每个目标独立执行效果的应用要求、免疫、概率和堆叠检查，因此一个目标拒绝效果不会阻止
-其他目标进入效果队列。
+后续目标。只有 task 路径会为每个目标创建独立的统一 FIFO 请求；`activation_effects` 仍属于
+当前技能激活请求的内部执行步骤。
 
 ## FixedUpdate 时序
 
 ```text
-EffectTicks / AbilityTasks
+EffectTicks → AbilityTasks → RequestProducers
             │
             ▼
         Targeting
             │
             ▼
-Effect Queue → Ability Queue
+ PreGameplayConvergence
             │
             ▼
-          Cleanup
+ GameplayResolve（效果 + 技能统一 FIFO）
             │
             ▼
- RecalculateAttributes
+Requirement → Cleanup → RecalculateAttributes
 ```
 
-任务可以在当前 tick 之前产生目标请求；Targeting 成功后又可以在同一 tick 将技能激活
-写入 Ability Queue。
+`AbilityTasks` 和 `RequestProducers` 中的系统可为当前 tick 产生目标请求；Targeting 成功后会
+在同一 tick 将技能激活写入统一 FIFO。技能的 startup task 位于后续 `GameplayResolve`，此时
+新建的 Targeting 请求只能等下一 tick。startup Instant 直接追加到 Gameplay FIFO 的效果或
+技能请求仍由当前 drain 消费。
 
 ## 确定性
 
@@ -176,7 +200,8 @@ Effect Queue → Ability Queue
 - 距离排序使用 `f32::total_cmp()`，距离相同时以 Entity bits 打破平局。
 - `Limit` 因此不依赖 Bevy Query 的遍历顺序。
 - 多目标效果按照 `AbilityTargetData` 中的顺序入队。
-- 坐标、方向、半径和角度会检查有限值；锥形方向不能为零向量。
+- 请求 origin、锥形 direction 以及定义中的半径、距离和角度会检查有限值；锥形方向不能为
+  零向量。候选实体 `GlobalTransform::translation()` 当前不会统一复验有限值。
 
 当前空间计算仍使用 `f32`，不保证不同 CPU/平台上的位级锁步。严格锁步项目应在游戏层
 使用量化或定点坐标。

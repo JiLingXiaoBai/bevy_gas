@@ -1,28 +1,69 @@
 use crate::attributes::{AttributeIdManager, AttributeSet, AttributeSetSnapshot};
 use crate::gameplay_abilities::{
     AbilityActivationContext, AbilityActivationStatus, AbilityChainError, AbilitySpecHandle,
-    AbilityTaskDef, ActiveAbilityHandle, ActiveGameplayAbility, GameplayAbility,
-    GameplayAbilitySpec,
+    AbilityTaskCompletion, AbilityTaskDef, ActiveAbilityHandle, ActiveGameplayAbility,
+    GameplayAbility, GameplayAbilitySpec, dispatch_ability_task_completion,
 };
 use crate::gameplay_effects::{
-    ActiveEffectDurationTicks, ActiveEffectPeriodTicks, ActiveGameplayEffect,
-    ActiveGameplayEffectTargetIndex, EffectContext, GameplayEffectApplicationError,
-    GameplayEffectApplicationPlan, validate_gameplay_effect_plan,
+    ActiveEffectRequirementSync, ActiveGameplayEffects, EffectContext,
+    GameplayEffectApplicationError, GameplayEffectApplicationPlan, apply_gameplay_effect_in_batch,
+    execute_gameplay_effect_plan_in_batch, resolve_active_effect_tag_requirements,
+    resolve_active_effect_tag_requirements_if_dirty, validate_gameplay_effect_plan,
 };
+use crate::gameplay_execution::{GameplayExecutionQueue, drain_gameplay_execution_queue};
 use crate::gameplay_tags::{
     GameplayTag, GameplayTagContainer, GameplayTagError, GameplayTagManager,
     tag_bits_from_tags_with_manager,
 };
 use crate::randoms::Random;
-use crate::{
-    EffectPayload, apply_gameplay_effect, execute_gameplay_effect_plan, prepare_gameplay_effect,
-};
+use crate::{EffectPayload, prepare_gameplay_effect};
 use bevy::ecs::system::SystemParam;
 use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
 use std::error::Error;
 use std::fmt;
 use std::sync::Arc;
+
+#[derive(Resource, Default)]
+#[doc(hidden)]
+pub struct PendingActiveGameplayAbilities {
+    entries: Vec<(ActiveAbilityHandle, ActiveGameplayAbility)>,
+}
+
+impl PendingActiveGameplayAbilities {
+    fn insert(&mut self, handle: ActiveAbilityHandle, ability: ActiveGameplayAbility) {
+        self.entries.push((handle, ability));
+    }
+
+    fn get_mut(&mut self, handle: ActiveAbilityHandle) -> Option<&mut ActiveGameplayAbility> {
+        self.entries
+            .iter_mut()
+            .find_map(|(entry_handle, ability)| (*entry_handle == handle).then_some(ability))
+    }
+
+    fn iter(&self) -> impl Iterator<Item = (ActiveAbilityHandle, &ActiveGameplayAbility)> {
+        self.entries
+            .iter()
+            .map(|(handle, ability)| (*handle, ability))
+    }
+
+    fn remove(&mut self, handle: ActiveAbilityHandle) {
+        self.entries
+            .retain(|(entry_handle, _)| *entry_handle != handle);
+    }
+
+    fn clear(&mut self) {
+        self.entries.clear();
+    }
+
+    pub(crate) fn retain_unapplied(
+        &mut self,
+        active_ability_query: &Query<(Entity, &mut ActiveGameplayAbility)>,
+    ) {
+        self.entries
+            .retain(|(handle, _)| active_ability_query.get(*handle).is_err());
+    }
+}
 
 #[derive(SystemParam)]
 pub struct AbilitySystemParams<'w, 's> {
@@ -34,26 +75,26 @@ pub struct AbilitySystemParams<'w, 's> {
     pub tag_container_query: Query<'w, 's, &'static mut GameplayTagContainer>,
     pub asc_query: Query<'w, 's, &'static mut AbilitySystemComponent>,
     pub attr_set_snapshot_query: Query<'w, 's, &'static AttributeSetSnapshot>,
-    pub active_effect_target_index: ResMut<'w, ActiveGameplayEffectTargetIndex>,
-    pub active_effect_query: Query<
-        'w,
-        's,
-        (
-            Entity,
-            &'static mut ActiveGameplayEffect,
-            Option<&'static mut ActiveEffectDurationTicks>,
-            Option<&'static mut ActiveEffectPeriodTicks>,
-        ),
-    >,
+    pub active_effect_query: Query<'w, 's, &'static mut ActiveGameplayEffects>,
     pub active_ability_query: Query<'w, 's, (Entity, &'static mut ActiveGameplayAbility)>,
+    pub(crate) active_effect_requirement_sync: ResMut<'w, ActiveEffectRequirementSync>,
+    pub(crate) pending_active_abilities: ResMut<'w, PendingActiveGameplayAbilities>,
 }
 
 #[derive(Component, Default)]
+#[require(ActiveGameplayEffects)]
 pub struct AbilitySystemComponent {
     next_ability_handle: u32,
     abilities: Vec<GameplayAbilitySpec>,
     ability_indices: HashMap<AbilitySpecHandle, usize>,
     blocked_ability_tags: GameplayTagContainer,
+}
+
+struct AbilityStartContext {
+    source: Entity,
+    target: Entity,
+    spec_handle: AbilitySpecHandle,
+    activation_context: AbilityActivationContext,
 }
 
 impl AbilitySystemComponent {
@@ -121,15 +162,13 @@ impl AbilitySystemComponent {
 
     fn start_ability(
         &mut self,
-        source: Entity,
-        target: Entity,
-        spec_handle: AbilitySpecHandle,
-        activation_context: AbilityActivationContext,
+        context: AbilityStartContext,
         commands: &mut Commands,
         tag_manager: &Res<GameplayTagManager>,
+        pending_active_abilities: &mut PendingActiveGameplayAbilities,
     ) -> Result<ActiveAbilityHandle, GameplayTagError> {
         let blocked_tags = self
-            .find_ability_spec(spec_handle)
+            .find_ability_spec(context.spec_handle)
             .map(|spec| {
                 spec.get_ability()
                     .get_tags()
@@ -140,19 +179,21 @@ impl AbilitySystemComponent {
         self.blocked_ability_tags
             .add_tags(&blocked_tags, tag_manager)?;
 
-        if let Some(spec) = self.find_ability_spec_mut(spec_handle) {
+        if let Some(spec) = self.find_ability_spec_mut(context.spec_handle) {
             spec.increment_active_count();
         }
 
-        let mut entity_cmds = commands.spawn(ActiveGameplayAbility::new(
-            source,
-            spec_handle,
-            target,
+        let active_ability = ActiveGameplayAbility::new(
+            context.source,
+            context.spec_handle,
+            context.target,
             AbilityActivationStatus::Active,
-            activation_context,
-        ));
+            context.activation_context,
+        );
+        let mut entity_cmds = commands.spawn(active_ability.clone());
         let active_handle = entity_cmds.id();
-        entity_cmds.set_parent_in_place(source);
+        entity_cmds.set_parent_in_place(context.source);
+        pending_active_abilities.insert(active_handle, active_ability);
 
         Ok(active_handle)
     }
@@ -394,11 +435,47 @@ fn ability_activation_failed(err: AbilityActivationError) -> Result<(), AbilityA
     Err(err)
 }
 
+/// Activates an ability through an independent synchronous call path and drains all startup Instant
+/// follow-up requests before returning.
+///
+/// This function does not consume or order itself against the global [`GameplayExecutionQueue`].
+/// Runtime producer systems should enqueue activations instead of mixing this immediate API with
+/// already queued mutations in the same logical phase. "Synchronous" describes logical resolution,
+/// not transactional rollback or an immediate flush of entity changes queued through [`Commands`].
+///
+/// # Errors
+///
+/// Returns [`AbilityActivationError`] when validation, commit, cancellation, or startup fails.
 pub fn try_activate_ability_by_handle(
     source: Entity,
     target: Entity,
     handle: AbilitySpecHandle,
     activation_context: AbilityActivationContext,
+    params: &mut AbilitySystemParams,
+) -> Result<(), AbilityActivationError> {
+    resolve_active_effect_tag_requirements(params);
+    params
+        .pending_active_abilities
+        .retain_unapplied(&params.active_ability_query);
+    let mut execution_queue = GameplayExecutionQueue::default();
+    let result = execute_ability_activation_in_batch(
+        source,
+        target,
+        handle,
+        activation_context,
+        &mut execution_queue,
+        params,
+    );
+    drain_gameplay_execution_queue(&mut execution_queue, params);
+    result
+}
+
+pub(crate) fn execute_ability_activation_in_batch(
+    source: Entity,
+    target: Entity,
+    handle: AbilitySpecHandle,
+    activation_context: AbilityActivationContext,
+    execution_queue: &mut GameplayExecutionQueue,
     params: &mut AbilitySystemParams,
 ) -> Result<(), AbilityActivationError> {
     if let Some(chain) = activation_context.get_chain()
@@ -498,12 +575,15 @@ pub fn try_activate_ability_by_handle(
             );
         };
         match asc.start_ability(
-            source,
-            target,
-            handle,
-            activation_context.clone(),
+            AbilityStartContext {
+                source,
+                target,
+                spec_handle: handle,
+                activation_context: activation_context.clone(),
+            },
             &mut params.commands,
             &params.tag_manager,
+            &mut params.pending_active_abilities,
         ) {
             Ok(active_handle) => active_handle,
             Err(error) => {
@@ -526,18 +606,21 @@ pub fn try_activate_ability_by_handle(
             )
         {
             asc.discard_started_ability(active_handle, handle, &mut params.commands);
+            params.pending_active_abilities.remove(active_handle);
             return ability_activation_failed(AbilityActivationError::StartFailed {
                 source,
                 handle,
                 error: rollback_error,
             });
         }
+        params.pending_active_abilities.remove(active_handle);
         return ability_activation_failed(AbilityActivationError::CommitExecutionFailed {
             source,
             handle,
             error,
         });
     }
+    resolve_active_effect_tag_requirements_if_dirty(params);
 
     let activation_targets = activation_context
         .get_target_data()
@@ -548,56 +631,94 @@ pub fn try_activate_ability_by_handle(
         for &activation_target in &activation_targets {
             let payload =
                 effect_payload_from_activation_context(source, level, &activation_context);
-            if let Err(error) = apply_gameplay_effect(activation_target, effect, params, &payload) {
+            if let Err(error) =
+                apply_gameplay_effect_in_batch(activation_target, effect, params, &payload)
+            {
                 if error.is_rejection() {
                     debug!("ability activation effect was rejected: {error}");
                 } else {
                     error!("ability activation effect failed: {error}");
                 }
             }
+            resolve_active_effect_tag_requirements_if_dirty(params);
         }
     }
 
-    spawn_startup_ability_tasks(
-        active_handle,
-        source,
-        target,
-        handle,
-        level,
+    let startup_ends_ability = start_startup_ability_tasks(
         ability.get_startup_tasks(),
-        &mut params.commands,
+        StartupAbilityTaskContext {
+            active_handle,
+            source,
+            target,
+            spec_handle: handle,
+            level,
+            activation_context: &activation_context,
+        },
+        execution_queue,
+        params,
     );
 
-    if ability.should_end_on_activation() {
-        params
-            .commands
-            .entity(active_handle)
-            .insert(ActiveGameplayAbility::new(
-                source,
-                handle,
-                target,
-                AbilityActivationStatus::Ending,
-                activation_context,
-            ));
+    if startup_ends_ability || ability.should_end_on_activation() {
+        finish_ability_with_status(
+            source,
+            active_handle,
+            AbilityActivationStatus::Ending,
+            params,
+        );
     }
 
     Ok(())
 }
 
-fn spawn_startup_ability_tasks(
+struct StartupAbilityTaskContext<'a> {
     active_handle: ActiveAbilityHandle,
     source: Entity,
     target: Entity,
     spec_handle: AbilitySpecHandle,
     level: u32,
+    activation_context: &'a AbilityActivationContext,
+}
+
+fn start_startup_ability_tasks(
     startup_tasks: &[AbilityTaskDef],
-    commands: &mut Commands,
-) {
+    context: StartupAbilityTaskContext,
+    execution_queue: &mut GameplayExecutionQueue,
+    params: &mut AbilitySystemParams,
+) -> bool {
+    let mut ends_ability = false;
     for task_def in startup_tasks {
-        let mut task_cmds =
-            commands.spawn(task_def.instantiate(active_handle, source, target, spec_handle, level));
-        task_cmds.set_parent_in_place(active_handle);
+        match task_def {
+            AbilityTaskDef::Instant { on_finished } => {
+                let completion = dispatch_ability_task_completion(
+                    context.active_handle,
+                    on_finished.instantiate(
+                        context.source,
+                        context.target,
+                        context.spec_handle,
+                        context.level,
+                    ),
+                    context.activation_context,
+                    &mut params.commands,
+                    execution_queue,
+                );
+                ends_ability |= matches!(completion, AbilityTaskCompletion::EndAbility);
+                if ends_ability {
+                    break;
+                }
+            }
+            AbilityTaskDef::WaitTicks { .. } => {
+                let mut task_commands = params.commands.spawn(task_def.instantiate(
+                    context.active_handle,
+                    context.source,
+                    context.target,
+                    context.spec_handle,
+                    context.level,
+                ));
+                task_commands.set_parent_in_place(context.active_handle);
+            }
+        }
     }
+    ends_ability
 }
 
 pub fn end_ability(
@@ -776,11 +897,12 @@ fn execute_ability_commit_plans(
     }
 
     if let Some(plan) = plans.cost_plan {
-        execute_gameplay_effect_plan(plan, params).map_err(AbilityCommitError::CostExecution)?;
+        execute_gameplay_effect_plan_in_batch(plan, params)
+            .map_err(AbilityCommitError::CostExecution)?;
     }
 
     if let Some(plan) = plans.cooldown_plan {
-        execute_gameplay_effect_plan(plan, params)
+        execute_gameplay_effect_plan_in_batch(plan, params)
             .map_err(AbilityCommitError::CooldownExecution)?;
     }
 
@@ -816,14 +938,27 @@ fn finish_ability_with_status(
     status: AbilityActivationStatus,
     params: &mut AbilitySystemParams,
 ) -> bool {
-    let Ok((_, mut active_ability)) = params.active_ability_query.get_mut(active_handle) else {
-        return false;
-    };
-    if active_ability.get_source() != source {
-        return false;
+    let mut updated = false;
+    if let Ok((_, mut active_ability)) = params.active_ability_query.get_mut(active_handle)
+        && active_ability.get_source() == source
+    {
+        active_ability.set_status(status);
+        updated = true;
     }
-    active_ability.set_status(status);
-    true
+
+    let pending_update = params
+        .pending_active_abilities
+        .get_mut(active_handle)
+        .filter(|active_ability| active_ability.get_source() == source)
+        .map(|active_ability| {
+            active_ability.set_status(status);
+            active_ability.clone()
+        });
+    if let Some(active_ability) = pending_update {
+        params.commands.entity(active_handle).insert(active_ability);
+        updated = true;
+    }
+    updated
 }
 
 pub fn cleanup_finished_abilities_system(
@@ -831,7 +966,9 @@ pub fn cleanup_finished_abilities_system(
     active_ability_query: Query<(Entity, &ActiveGameplayAbility)>,
     mut asc_query: Query<&mut AbilitySystemComponent>,
     tag_manager: Res<GameplayTagManager>,
+    mut pending_active_abilities: ResMut<PendingActiveGameplayAbilities>,
 ) {
+    pending_active_abilities.clear();
     for (active_handle, active_ability) in active_ability_query.iter() {
         if !matches!(
             active_ability.get_status(),
@@ -869,15 +1006,34 @@ fn cancel_active_abilities_with_tags(
         return Ok(());
     }
 
-    let active_handles: Vec<_> = {
+    let mut active_instances: Vec<_> = params
+        .active_ability_query
+        .iter()
+        .filter(|(_, active)| {
+            active.get_source() == source
+                && matches!(active.get_status(), AbilityActivationStatus::Active)
+        })
+        .map(|(active_handle, active)| (active_handle, active.clone()))
+        .collect();
+    active_instances.extend(
+        params
+            .pending_active_abilities
+            .iter()
+            .filter(|(_, active)| {
+                active.get_source() == source
+                    && matches!(active.get_status(), AbilityActivationStatus::Active)
+            })
+            .map(|(active_handle, active)| (active_handle, active.clone())),
+    );
+    active_instances.sort_by_key(|(active_handle, _)| active_handle.to_bits());
+    active_instances.dedup_by_key(|(active_handle, _)| *active_handle);
+
+    let active_instances = {
         let Ok(asc) = params.asc_query.get(source) else {
             return Ok(());
         };
-        let mut active_handles = Vec::new();
-        for (active_handle, active) in params.active_ability_query.iter() {
-            if active.get_source() != source {
-                continue;
-            }
+        let mut matching_instances = Vec::new();
+        for (active_handle, active) in active_instances {
             let Some(spec) = asc.find_ability_spec(active.get_spec_handle()) else {
                 continue;
             };
@@ -888,17 +1044,26 @@ fn cancel_active_abilities_with_tags(
                         .get_block_abilities_with_tags(),
                     &params.tag_manager,
                 )?;
-                active_handles.push(active_handle);
+                matching_instances.push((active_handle, active));
             }
         }
-        active_handles
+        matching_instances
     };
 
-    for active_handle in active_handles {
-        let Ok((_, active_ability)) = params.active_ability_query.get_mut(active_handle) else {
-            continue;
-        };
-        let active_ability = active_ability.clone();
+    for (active_handle, active_ability) in active_instances {
+        if let Ok((_, mut active)) = params.active_ability_query.get_mut(active_handle) {
+            active.set_status(AbilityActivationStatus::Cancelled);
+        }
+        let pending_update = params
+            .pending_active_abilities
+            .get_mut(active_handle)
+            .map(|active| {
+                active.set_status(AbilityActivationStatus::Cancelled);
+                active.clone()
+            });
+        if let Some(active) = pending_update {
+            params.commands.entity(active_handle).insert(active);
+        }
         if let Ok(mut asc) = params.asc_query.get_mut(source) {
             asc.finish_active_ability(
                 active_handle,
@@ -906,6 +1071,7 @@ fn cancel_active_abilities_with_tags(
                 &mut params.commands,
                 &params.tag_manager,
             )?;
+            params.pending_active_abilities.remove(active_handle);
         }
     }
     Ok(())

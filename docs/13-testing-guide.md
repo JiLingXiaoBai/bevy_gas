@@ -81,9 +81,12 @@ fn test_my_feature() {
 ```rust
 // 推进 N 个 tick
 for _ in 0..n_ticks {
-    app.update();
+    app.world_mut().run_schedule(FixedUpdate);
 }
 ```
+
+集成测试直接运行 `FixedUpdate` schedule，从而保证每次循环恰好推进一个 Gameplay tick；
+`app.update()` 会受 Bevy 固定时间累积影响，不适合断言精确 tick 边界。
 
 ### 关键测试领域
 

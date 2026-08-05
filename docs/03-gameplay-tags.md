@@ -2,7 +2,7 @@
 
 ## 概述
 
-Gameplay 标签是一个**层级化、基于位集**的标签系统，提供 O(1) 查询性能。父标签自动传播到子标签（例如 `Effect.Debuff.Stun` 蕴含 `Effect.Debuff` 和 `Effect`）。
+Gameplay 标签是一个**层级化、基于位集**的标签系统，提供 O(1) 查询性能。添加子标签时会同时设置其祖先标签（例如 `Effect.Debuff.Stun` 蕴含 `Effect.Debuff` 和 `Effect`）。
 
 **容量：** `GAMEPLAY_TAG_SIZE = 512` 个标签（可在 `settings.rs` 中配置）。
 
@@ -100,6 +100,7 @@ impl GameplayTagRegister<'_> {
 
 ```rust
 pub enum GameplayTagError {
+    UniqueName(UniqueNameError),
     CapacityExceeded { max: usize },
     InvalidTagIndex { index: usize },
 }
@@ -133,7 +134,13 @@ Manager 的标签。
 
 ```rust
 fn register_initial_tags(mut register: GameplayTagRegister) {
-    let stun = register.request_or_register_tag("Effect.Debuff.Stun").unwrap();
+    let _stun = match register.request_or_register_tag("Effect.Debuff.Stun") {
+        Ok(tag) => tag,
+        Err(error) => {
+            error!("failed to register gameplay tag: {error}");
+            return;
+        }
+    };
     // "Effect" 和 "Effect.Debuff" 作为父标签自动注册
 }
 

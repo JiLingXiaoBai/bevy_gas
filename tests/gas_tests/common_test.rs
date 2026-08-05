@@ -13,9 +13,8 @@ use bevy_tools::gameplay_tags::{
 use bevy_tools::modifiers::{Modifier, ModifierMagnitude, ModifierOperation};
 use bevy_tools::{
     AbilityActivationContext, AbilityChainContext, AbilitySystemComponent, AbilitySystemParams,
-    ActiveGameplayEffectTargetIndex, GameplayAbilitySystemPlugin, apply_gameplay_effect,
-    cleanup_finished_abilities_system, process_ability_activation_queue_system,
-    process_gameplay_effect_application_queue_system, reconcile_active_effect_target_index_system,
+    ActiveEffectHandle, ActiveGameplayEffects, GameplayAbilitySystemPlugin, apply_gameplay_effect,
+    cleanup_finished_abilities_system, process_gameplay_execution_queue_system,
     tick_ability_tasks_system, tick_effect_duration_system, tick_effect_period_system,
     try_activate_ability_by_handle, update_active_effect_tag_requirements_system,
 };
@@ -237,11 +236,12 @@ pub fn current_value(app: &mut App, entity: Entity, attribute: AttributeId) -> f
         .unwrap()
 }
 
-pub fn active_effect_handles(app: &App, target: Entity) -> Vec<Entity> {
+pub fn active_effect_handles(app: &App, target: Entity) -> Vec<ActiveEffectHandle> {
     app.world()
-        .resource::<ActiveGameplayEffectTargetIndex>()
-        .handles_for(target)
-        .to_vec()
+        .entity(target)
+        .get::<ActiveGameplayEffects>()
+        .map(|effects| effects.handles(target).collect())
+        .unwrap_or_default()
 }
 
 pub fn give_ability(
@@ -280,27 +280,15 @@ pub fn run_ability_tasks(app: &mut App) {
         .unwrap();
 }
 
-pub fn run_ability_activation_queue(app: &mut App) {
+pub fn run_gameplay_execution_queue(app: &mut App) {
     app.world_mut()
-        .run_system_once(process_ability_activation_queue_system)
-        .unwrap();
-}
-
-pub fn run_effect_application_queue(app: &mut App) {
-    app.world_mut()
-        .run_system_once(process_gameplay_effect_application_queue_system)
+        .run_system_once(process_gameplay_execution_queue_system)
         .unwrap();
 }
 
 pub fn run_finished_ability_cleanup(app: &mut App) {
     app.world_mut()
         .run_system_once(cleanup_finished_abilities_system)
-        .unwrap();
-}
-
-pub fn run_active_effect_index_reconcile(app: &mut App) {
-    app.world_mut()
-        .run_system_once(reconcile_active_effect_target_index_system)
         .unwrap();
 }
 

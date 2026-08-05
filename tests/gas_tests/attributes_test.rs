@@ -377,7 +377,7 @@ fn removing_missing_modifier_handle_does_not_change_current_value() {
         StackingPolicy::non_stacking(),
         empty_effect_tags(),
     ));
-    let missing_handle = app.world_mut().spawn_empty().id();
+    let missing_handle = bevy_tools::ActiveEffectHandle::new(target, u32::MAX, 1);
 
     assert!(apply_effect(&mut app, target, target, effect));
     app.world_mut()

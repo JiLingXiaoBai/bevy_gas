@@ -11,7 +11,7 @@
 | 03  | [Gameplay 标签](./03-gameplay-tags.md)                 | 层级位集标签、引用计数、注册                |
 | 04  | [属性系统](./04-attributes.md)                         | 属性系统、延迟重算、快照                   |
 | 05  | [修饰器与聚合器](./05-modifiers-and-aggregator.md)     | 修饰器操作、幅度类型、求值顺序              |
-| 06  | [Gameplay 效果](./06-gameplay-effects.md)              | Buff/Debuff 系统、堆叠、抑制、免疫、队列    |
+| 06  | [Gameplay 效果](./06-gameplay-effects.md)              | Buff/Debuff、堆叠、抑制、免疫与条件收敛     |
 | 07  | [Gameplay 技能](./07-gameplay-abilities.md)            | 技能定义、激活流程、链式激活                |
 | 08  | [技能任务](./08-ability-tasks.md)                      | 时间线编排、任务类型、事件系统              |
 | 09  | [技能系统组件 (ASC)](./09-ability-system-component.md) | ASC、AbilitySystemParams、激活 API          |
@@ -21,6 +21,7 @@
 | 13  | [测试指南](./13-testing-guide.md)                      | 测试组织、模式、提交前检查清单              |
 | 14  | [扩展系统](./14-extending-the-system.md)               | 如何新增操作、策略、任务、系统              |
 | 15  | [Gameplay 目标抓取](./15-gameplay-targeting.md)         | 目标管线、队列、多目标技能、确定性           |
+| 16  | [Gameplay 执行模块](./16-gameplay-execution.md)         | 统一请求、跨类型 FIFO、阶段边界与收敛        |
 
 ## 快速开始
 
@@ -32,21 +33,31 @@ fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
         .add_plugins(GameplayAbilitySystemPlugin)
-        .add_systems(Startup, setup)
+        .add_systems(
+            Startup,
+            (register_initial_tags, register_initial_attributes).chain(),
+        )
         .run();
 }
 
-fn setup(mut tag_register: GameplayTagRegister, mut attr_register: AttributeIdRegister) {
-    // 注册标签
-    let stun = tag_register.request_or_register_tag("Effect.Debuff.Stun").unwrap();
+fn register_initial_tags(mut register: GameplayTagRegister) {
+    if let Err(error) = register.request_or_register_tag("Effect.Debuff.Stun") {
+        error!("failed to register gameplay tag: {error}");
+    }
+}
 
-    // 注册属性
-    let health = attr_register
-        .request_or_register_attribute_id("Health", AttributeRegion::Hot)
-        .unwrap();
-    let max_health = attr_register
-        .request_or_register_attribute_id("MaxHealth", AttributeRegion::Cold)
-        .unwrap();
+fn register_initial_attributes(mut register: AttributeIdRegister) {
+    if let Err(error) =
+        register.request_or_register_attribute_id("Health", AttributeRegion::Hot)
+    {
+        error!("failed to register Health: {error}");
+        return;
+    }
+    if let Err(error) =
+        register.request_or_register_attribute_id("MaxHealth", AttributeRegion::Cold)
+    {
+        error!("failed to register MaxHealth: {error}");
+    }
 }
 ```
 
@@ -62,6 +73,7 @@ fn setup(mut tag_register: GameplayTagRegister, mut attr_register: AttributeIdRe
 | **AbilitySystemParams**    | `SystemParam` | 聚合所有 GAS 查询与资源的系统参数  |
 | **TargetingDefinition**    | `Arc<struct>` | 有序的目标选择、过滤、排序管线      |
 | **AbilityTargetData**      | `struct`      | 确定性排序的目标抓取结果            |
+| **GameplayExecutionQueue** | `Resource`    | 技能与效果共享的确定性 FIFO         |
 
 ## 数据流
 
@@ -71,9 +83,11 @@ GameplayAbility (定义)
     ├──► 冷却 GameplayEffect ──► 激活时应用到来源
     ├──► 消耗 GameplayEffect ──► 激活时应用到来源
     ├──► 激活效果列表          ──► 激活时应用到目标
-    └──► AbilityTaskDef[]     ──► 生成为 AbilityTask 实体
+    └──► AbilityTaskDef[]
             │
-            ├──► ApplyGameplayEffectToTarget ──► 向目标队列效果
+            ├──► Instant                        ──► 激活 batch 内派发
+            ├──► WaitTicks                      ──► 生成 AbilityTask 实体
+            ├──► ApplyGameplayEffectToTarget(s) ──► 写入统一 Gameplay FIFO
             ├──► ActivateAbility             ──► 链式激活另一个技能
             ├──► EmitEvent                   ──► 触发 AbilityTaskEvent
             └──► EndAbility                  ──► 结束当前技能
@@ -91,7 +105,7 @@ GameplayEffect (定义)
     │       ├── removal tags         → 触发移除
     │       └── immunity queries     → 阻止传入效果
     └──► StackingPolicy
-            ├── StackingType         → None / BySource / ByTarget
+            ├── StackingType         → None / AggregateBySource / AggregateByTarget
             ├── StackLimit           → 最大堆叠数
             └── 子策略               → 幅度、持续时间、周期、溢出、过期
 ```

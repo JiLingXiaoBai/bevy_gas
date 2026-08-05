@@ -1,18 +1,38 @@
 use super::common_test::{
     ability_task_count, active_ability_count, active_effect_handles, add_modifier,
     add_tag_to_entity, apply_effect, apply_effect_with_payload, current_value, empty_effect_tags,
-    give_ability, register_attribute, register_tag, run_active_effect_index_reconcile,
-    run_fixed_update, spawn_attribute_set, test_app,
+    give_ability, register_attribute, register_tag, run_fixed_update, spawn_attribute_set,
+    test_app,
 };
+use bevy::ecs::system::RunSystemOnce;
 use bevy::prelude::*;
 use bevy_tools::{
-    AbilityActivationContext, AbilityActivationQueue, AbilitySystemComponent, AbilityTaskDef,
-    AbilityTaskOnFinishedDef, AttributeId, AttributeSet, EffectContext, EffectDurationTicks,
-    EffectPayload, GameplayAbility, GameplayEffect, GameplayEffectApplicationQueue, GameplayTag,
+    AbilityActivationContext, AbilitySystemComponent, AbilityTaskDef, AbilityTaskOnFinishedDef,
+    AttributeId, AttributeSet, EffectContext, EffectDurationTicks, EffectPayload, GameplayAbility,
+    GameplayAbilitySystemSet, GameplayEffect, GameplayExecutionQueue, GameplayTag,
     GameplayTagContainer, Modifier, ModifierMagnitude, ModifierMagnitudeCalculation,
     ModifierOperation, StackingPolicy,
 };
 use std::sync::Arc;
+
+#[derive(Resource)]
+struct OneShotEffectRequest {
+    target: Entity,
+    effect: Arc<GameplayEffect>,
+    submitted: bool,
+}
+
+fn submit_one_shot_effect_request(
+    mut request: ResMut<OneShotEffectRequest>,
+    mut execution_queue: ResMut<GameplayExecutionQueue>,
+) {
+    if request.submitted {
+        return;
+    }
+    let payload = EffectPayload::new(request.target, None, 1);
+    execution_queue.push_application(request.target, request.effect.clone(), payload);
+    request.submitted = true;
+}
 
 struct LevelMagnitude {
     scale: f32,
@@ -74,7 +94,7 @@ fn fixed_update_processes_queued_effect_before_next_duration_tick() {
     ));
 
     app.world_mut()
-        .resource_mut::<GameplayEffectApplicationQueue>()
+        .resource_mut::<GameplayExecutionQueue>()
         .push_application(target, effect, EffectPayload::new(target, None, 1));
 
     run_fixed_update(&mut app);
@@ -108,7 +128,7 @@ fn fixed_update_activation_tasks_and_cleanup_run_in_plugin_order() {
     let handle = give_ability(&mut app, source, ability);
 
     {
-        let mut queue = app.world_mut().resource_mut::<AbilityActivationQueue>();
+        let mut queue = app.world_mut().resource_mut::<GameplayExecutionQueue>();
         let context = AbilityActivationContext::direct(source, queue.new_root_chain(handle));
         queue.push_activation(source, source, handle, context);
     }
@@ -130,6 +150,107 @@ fn fixed_update_activation_tasks_and_cleanup_run_in_plugin_order() {
             .get_active_count(),
         0
     );
+}
+
+#[test]
+fn startup_instant_task_executes_during_activation_tick() {
+    let mut app = test_app();
+    let health = register_attribute(&mut app, "Health");
+    let source = app
+        .world_mut()
+        .spawn(AbilitySystemComponent::default())
+        .id();
+    let target = spawn_attribute_set(&mut app, health, 10.0);
+    let effect = Arc::new(GameplayEffect::new(
+        vec![add_modifier(health, 5.0)],
+        EffectDurationTicks::Instant,
+        None,
+        1.0,
+        StackingPolicy::non_stacking(),
+        empty_effect_tags(),
+    ));
+    let ability = Arc::new(GameplayAbility::new(
+        bevy_tools::AbilityTags::default(),
+        vec![AbilityTaskDef::instant(
+            AbilityTaskOnFinishedDef::ApplyGameplayEffectToTarget { effect },
+        )],
+        None,
+        None,
+        Vec::new(),
+        false,
+        false,
+    ));
+    let handle = give_ability(&mut app, source, ability);
+
+    {
+        let mut queue = app.world_mut().resource_mut::<GameplayExecutionQueue>();
+        let context = AbilityActivationContext::direct(source, queue.new_root_chain(handle));
+        queue.push_activation(source, target, handle, context);
+    }
+
+    run_fixed_update(&mut app);
+    assert_eq!(current_value(&mut app, target, health), 15.0);
+    assert_eq!(ability_task_count(&mut app), 0);
+}
+
+#[test]
+fn request_producer_phase_is_consumed_in_same_fixed_tick() {
+    let mut app = test_app();
+    let health = register_attribute(&mut app, "Health");
+    let target = spawn_attribute_set(&mut app, health, 10.0);
+    app.insert_resource(OneShotEffectRequest {
+        target,
+        effect: Arc::new(GameplayEffect::new(
+            vec![add_modifier(health, 5.0)],
+            EffectDurationTicks::Instant,
+            None,
+            1.0,
+            StackingPolicy::non_stacking(),
+            empty_effect_tags(),
+        )),
+        submitted: false,
+    });
+    app.add_systems(
+        FixedUpdate,
+        submit_one_shot_effect_request.in_set(GameplayAbilitySystemSet::RequestProducers),
+    );
+
+    run_fixed_update(&mut app);
+    assert_eq!(current_value(&mut app, target, health), 15.0);
+    assert!(app.world().resource::<GameplayExecutionQueue>().is_empty());
+}
+
+#[test]
+fn request_produced_after_resolver_waits_for_next_fixed_tick() {
+    let mut app = test_app();
+    let health = register_attribute(&mut app, "Health");
+    let target = spawn_attribute_set(&mut app, health, 10.0);
+    app.insert_resource(OneShotEffectRequest {
+        target,
+        effect: Arc::new(GameplayEffect::new(
+            vec![add_modifier(health, 5.0)],
+            EffectDurationTicks::Instant,
+            None,
+            1.0,
+            StackingPolicy::non_stacking(),
+            empty_effect_tags(),
+        )),
+        submitted: false,
+    });
+    app.add_systems(
+        FixedUpdate,
+        submit_one_shot_effect_request
+            .after(GameplayAbilitySystemSet::GameplayResolve)
+            .before(GameplayAbilitySystemSet::UpdateEffectTagRequirements),
+    );
+
+    run_fixed_update(&mut app);
+    assert_eq!(current_value(&mut app, target, health), 10.0);
+    assert_eq!(app.world().resource::<GameplayExecutionQueue>().len(), 1);
+
+    run_fixed_update(&mut app);
+    assert_eq!(current_value(&mut app, target, health), 15.0);
+    assert!(app.world().resource::<GameplayExecutionQueue>().is_empty());
 }
 
 #[test]
@@ -229,7 +350,7 @@ fn calculated_magnitude_can_read_source_tags() {
 }
 
 #[test]
-fn reconcile_removes_externally_despawned_active_effect_from_target_index() {
+fn stale_active_effect_handle_cannot_remove_reused_slot() {
     let mut app = test_app();
     let power = register_attribute(&mut app, "Power");
     let target = spawn_attribute_set(&mut app, power, 10.0);
@@ -242,10 +363,35 @@ fn reconcile_removes_externally_despawned_active_effect_from_target_index() {
         empty_effect_tags(),
     ));
 
-    assert!(apply_effect(&mut app, target, target, effect));
-    let handle = active_effect_handles(&app, target)[0];
-    app.world_mut().entity_mut(handle).despawn();
+    assert!(apply_effect(&mut app, target, target, effect.clone()));
+    let stale_handle = active_effect_handles(&app, target)[0];
+    let removed = app
+        .world_mut()
+        .run_system_once(move |mut params: bevy_tools::AbilitySystemParams| {
+            bevy_tools::remove_active_effect(stale_handle, &mut params)
+        })
+        .unwrap()
+        .unwrap();
+    assert!(removed);
 
-    run_active_effect_index_reconcile(&mut app);
-    assert!(active_effect_handles(&app, target).is_empty());
+    assert!(apply_effect(&mut app, target, target, effect));
+    let replacement_handle = active_effect_handles(&app, target)[0];
+    assert_eq!(stale_handle.get_slot(), replacement_handle.get_slot());
+    assert_ne!(
+        stale_handle.get_generation(),
+        replacement_handle.get_generation()
+    );
+
+    let removed = app
+        .world_mut()
+        .run_system_once(move |mut params: bevy_tools::AbilitySystemParams| {
+            bevy_tools::remove_active_effect(stale_handle, &mut params)
+        })
+        .unwrap()
+        .unwrap();
+    assert!(!removed);
+    assert_eq!(
+        active_effect_handles(&app, target),
+        vec![replacement_handle]
+    );
 }

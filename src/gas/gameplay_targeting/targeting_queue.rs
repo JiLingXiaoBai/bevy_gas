@@ -2,8 +2,8 @@ use super::{
     AbilityTargetData, TargetingCandidateQuery, TargetingDefinition, TargetingError,
     acquire_targets,
 };
-use crate::ability_system::AbilityActivationQueue;
 use crate::gameplay_abilities::{AbilityActivationContext, AbilitySpecHandle};
+use crate::gameplay_execution::GameplayExecutionQueue;
 use bevy::prelude::*;
 use std::collections::VecDeque;
 use std::sync::Arc;
@@ -175,7 +175,7 @@ impl TargetingRequestQueue {
 pub fn process_targeting_request_queue_system(
     mut commands: Commands,
     mut targeting_queue: ResMut<TargetingRequestQueue>,
-    mut activation_queue: ResMut<AbilityActivationQueue>,
+    mut execution_queue: ResMut<GameplayExecutionQueue>,
     query: TargetingCandidateQuery,
 ) {
     while let Some(request) = targeting_queue.pop() {
@@ -185,7 +185,7 @@ pub fn process_targeting_request_queue_system(
             && let TargetingContinuation::ActivateAbility { handle, context } = request.continuation
         {
             let target = target_data.primary_entity().unwrap_or(request.source);
-            activation_queue.push_activation(
+            execution_queue.push_activation(
                 request.source,
                 target,
                 handle,

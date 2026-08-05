@@ -221,7 +221,7 @@ fn targeting_queue_activates_ability_with_complete_target_data() {
     let context = {
         let mut queue = app
             .world_mut()
-            .resource_mut::<bevy_tools::AbilityActivationQueue>();
+            .resource_mut::<bevy_tools::GameplayExecutionQueue>();
         AbilityActivationContext::direct(source, queue.new_root_chain(handle))
     };
     app.world_mut()
@@ -327,7 +327,7 @@ fn multi_target_task_applies_effect_to_every_acquired_entity() {
     let context = {
         let mut queue = app
             .world_mut()
-            .resource_mut::<bevy_tools::AbilityActivationQueue>();
+            .resource_mut::<bevy_tools::GameplayExecutionQueue>();
         AbilityActivationContext::direct(source, queue.new_root_chain(handle))
     };
     app.world_mut()
@@ -339,7 +339,6 @@ fn multi_target_task_applies_effect_to_every_acquired_entity() {
             TargetingContinuation::activate_ability(handle, context),
         );
 
-    run_fixed_update(&mut app);
     run_fixed_update(&mut app);
 
     assert_approx_eq(current_value(&mut app, first, health), 90.0);

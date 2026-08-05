@@ -1,17 +1,17 @@
 use super::common_test::{
     ability_task_count, attribute_set, current_value, empty_effect_tags, give_ability,
-    instant_add_effect, modifier, register_attribute, run_ability_activation_queue,
-    run_ability_tasks, run_effect_application_queue, spawn_ability_task, spawn_active_ability,
-    spawn_attribute_set, test_app,
+    instant_add_effect, modifier, register_attribute, run_ability_tasks,
+    run_gameplay_execution_queue, spawn_ability_task, spawn_active_ability, spawn_attribute_set,
+    test_app,
 };
 use bevy::prelude::*;
 use bevy_tools::{
-    AbilityActivationContext, AbilityActivationQueue, AbilityActivationStatus, AbilityChainContext,
-    AbilitySpecHandle, AbilitySystemComponent, AbilityTask, AbilityTaskDef, AbilityTaskEvent,
-    AbilityTaskOnFinished, AbilityTaskOnFinishedDef, ActiveGameplayAbility, AttributeId,
-    EffectContext, EffectDurationTicks, EffectPayload, GameplayAbility, GameplayEffect,
-    GameplayEffectApplicationQueue, Modifier, ModifierMagnitude, ModifierMagnitudeCalculation,
-    ModifierOperation, StackingPolicy, UniqueName,
+    AbilityActivationContext, AbilityActivationStatus, AbilityChainContext, AbilitySpecHandle,
+    AbilitySystemComponent, AbilityTask, AbilityTaskDef, AbilityTaskEvent, AbilityTaskOnFinished,
+    AbilityTaskOnFinishedDef, ActiveGameplayAbility, AttributeId, EffectContext,
+    EffectDurationTicks, EffectPayload, GameplayAbility, GameplayEffect, GameplayExecutionQueue,
+    Modifier, ModifierMagnitude, ModifierMagnitudeCalculation, ModifierOperation, StackingPolicy,
+    UniqueName,
 };
 use std::sync::Arc;
 
@@ -61,7 +61,7 @@ fn capture_ability_task_event(
 }
 
 #[test]
-fn effect_application_queue_processes_entire_batch() {
+fn gameplay_queue_processes_entire_effect_batch() {
     const REQUEST_COUNT: usize = 257;
 
     let mut app = test_app();
@@ -70,28 +70,22 @@ fn effect_application_queue_processes_entire_batch() {
     let effect = instant_add_effect(health, 1.0);
 
     {
-        let mut queue = app
-            .world_mut()
-            .resource_mut::<GameplayEffectApplicationQueue>();
+        let mut queue = app.world_mut().resource_mut::<GameplayExecutionQueue>();
         for _ in 0..REQUEST_COUNT {
             queue.push_application(target, effect.clone(), EffectPayload::new(target, None, 1));
         }
     }
 
-    run_effect_application_queue(&mut app);
+    run_gameplay_execution_queue(&mut app);
     assert_eq!(
         current_value(&mut app, target, health),
         REQUEST_COUNT as f32
     );
-    assert!(
-        app.world()
-            .resource::<GameplayEffectApplicationQueue>()
-            .is_empty()
-    );
+    assert!(app.world().resource::<GameplayExecutionQueue>().is_empty());
 }
 
 #[test]
-fn ability_activation_queue_processes_entire_batch() {
+fn gameplay_queue_processes_entire_activation_batch() {
     const REQUEST_COUNT: usize = 129;
 
     let mut app = test_app();
@@ -111,19 +105,19 @@ fn ability_activation_queue_processes_entire_batch() {
     let handle = give_ability(&mut app, source, ability);
 
     {
-        let mut queue = app.world_mut().resource_mut::<AbilityActivationQueue>();
+        let mut queue = app.world_mut().resource_mut::<GameplayExecutionQueue>();
         for _ in 0..REQUEST_COUNT {
             let context = AbilityActivationContext::direct(source, queue.new_root_chain(handle));
             queue.push_activation(source, source, handle, context);
         }
     }
 
-    run_ability_activation_queue(&mut app);
-    assert!(app.world().resource::<AbilityActivationQueue>().is_empty());
+    run_gameplay_execution_queue(&mut app);
+    assert!(app.world().resource::<GameplayExecutionQueue>().is_empty());
 }
 
 #[test]
-fn effect_application_queue_processes_requests_fifo() {
+fn gameplay_queue_processes_effect_requests_fifo() {
     let mut app = test_app();
     let health = register_attribute(&mut app, "Health");
     let target = spawn_attribute_set(&mut app, health, 0.0);
@@ -145,19 +139,17 @@ fn effect_application_queue_processes_requests_fifo() {
     ));
 
     {
-        let mut queue = app
-            .world_mut()
-            .resource_mut::<GameplayEffectApplicationQueue>();
+        let mut queue = app.world_mut().resource_mut::<GameplayExecutionQueue>();
         queue.push_application(target, first, EffectPayload::new(target, None, 1));
         queue.push_application(target, second, EffectPayload::new(target, None, 1));
     }
 
-    run_effect_application_queue(&mut app);
+    run_gameplay_execution_queue(&mut app);
     assert_eq!(current_value(&mut app, target, health), 2.0);
 }
 
 #[test]
-fn ability_activation_queue_processes_requests_fifo() {
+fn gameplay_queue_processes_activation_requests_fifo() {
     let mut app = test_app();
     let marker = register_attribute(&mut app, "Marker");
     let attributes = attribute_set(&app, marker, 0.0);
@@ -203,7 +195,7 @@ fn ability_activation_queue_processes_requests_fifo() {
     let second_handle = give_ability(&mut app, source, second);
 
     {
-        let mut queue = app.world_mut().resource_mut::<AbilityActivationQueue>();
+        let mut queue = app.world_mut().resource_mut::<GameplayExecutionQueue>();
         let first_context =
             AbilityActivationContext::direct(source, queue.new_root_chain(first_handle));
         let second_context =
@@ -212,8 +204,55 @@ fn ability_activation_queue_processes_requests_fifo() {
         queue.push_activation(source, source, second_handle, second_context);
     }
 
-    run_ability_activation_queue(&mut app);
+    run_gameplay_execution_queue(&mut app);
     assert_eq!(current_value(&mut app, source, marker), 2.0);
+}
+
+#[test]
+fn gameplay_execution_queue_preserves_cross_type_fifo() {
+    let mut app = test_app();
+    let marker = register_attribute(&mut app, "Marker");
+    let attributes = attribute_set(&app, marker, 0.0);
+    let source = app
+        .world_mut()
+        .spawn((AbilitySystemComponent::default(), attributes))
+        .id();
+    let activation_effect = Arc::new(GameplayEffect::new(
+        vec![modifier(marker, ModifierOperation::Override, 2.0)],
+        EffectDurationTicks::Instant,
+        None,
+        1.0,
+        StackingPolicy::non_stacking(),
+        empty_effect_tags(),
+    ));
+    let queued_effect = Arc::new(GameplayEffect::new(
+        vec![modifier(marker, ModifierOperation::Override, 1.0)],
+        EffectDurationTicks::Instant,
+        None,
+        1.0,
+        StackingPolicy::non_stacking(),
+        empty_effect_tags(),
+    ));
+    let ability = Arc::new(GameplayAbility::new(
+        bevy_tools::AbilityTags::default(),
+        Vec::new(),
+        None,
+        None,
+        vec![activation_effect],
+        true,
+        false,
+    ));
+    let handle = give_ability(&mut app, source, ability);
+
+    {
+        let mut queue = app.world_mut().resource_mut::<GameplayExecutionQueue>();
+        let context = AbilityActivationContext::direct(source, queue.new_root_chain(handle));
+        queue.push_activation(source, source, handle, context);
+        queue.push_application(source, queued_effect, EffectPayload::new(source, None, 1));
+    }
+
+    run_gameplay_execution_queue(&mut app);
+    assert_eq!(current_value(&mut app, source, marker), 1.0);
 }
 
 #[test]
@@ -253,15 +292,10 @@ fn task_can_enqueue_gameplay_effect_application() {
     );
 
     run_ability_tasks(&mut app);
-    assert_eq!(
-        app.world()
-            .resource::<GameplayEffectApplicationQueue>()
-            .len(),
-        1
-    );
+    assert_eq!(app.world().resource::<GameplayExecutionQueue>().len(), 1);
     assert_eq!(current_value(&mut app, target, health), 10.0);
 
-    run_effect_application_queue(&mut app);
+    run_gameplay_execution_queue(&mut app);
     assert_eq!(current_value(&mut app, target, health), 15.0);
 }
 
@@ -323,7 +357,7 @@ fn task_effect_application_inherits_activation_context_payload() {
     );
 
     run_ability_tasks(&mut app);
-    run_effect_application_queue(&mut app);
+    run_gameplay_execution_queue(&mut app);
 
     assert_eq!(current_value(&mut app, target, damage), 11.0);
 }
@@ -360,10 +394,10 @@ fn task_can_enqueue_ability_activation() {
     );
 
     run_ability_tasks(&mut app);
-    assert_eq!(app.world().resource::<AbilityActivationQueue>().len(), 1);
+    assert_eq!(app.world().resource::<GameplayExecutionQueue>().len(), 1);
 
-    run_ability_activation_queue(&mut app);
-    assert!(app.world().resource::<AbilityActivationQueue>().is_empty());
+    run_gameplay_execution_queue(&mut app);
+    assert!(app.world().resource::<GameplayExecutionQueue>().is_empty());
 }
 
 #[test]

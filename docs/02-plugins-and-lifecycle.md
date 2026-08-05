@@ -23,6 +23,12 @@ fn main() {
         .add_systems(Startup, register_initial_tags)
         .run();
 }
+
+fn register_initial_tags(mut register: GameplayTagRegister) {
+    if let Err(error) = register.request_or_register_tag("Effect.Debuff.Stun") {
+        error!("failed to register gameplay tag: {error}");
+    }
+}
 ```
 
 ## FixedUpdate 系统管线
@@ -30,27 +36,36 @@ fn main() {
 `GameplayAbilitySystemRuntimePlugin` 通过有序 `SystemSet` 组织 FixedUpdate 中的系统：
 
 ```
-UpdateEffectTagRequirements
-        │
-        ▼
    EffectTicks
-   (持续时间 + 周期)
+   (Duration → Requirement → Period → Requirement)
         │
         ▼
    AbilityTasks
-   (推进任务进度)
+   (推进等待任务并生产请求)
+        │
+        ▼
+ RequestProducers
+   (游戏层请求生产阶段)
         │
         ▼
     Targeting
    (目标请求管线)
         │
         ▼
-     Queues
-   (效果应用 + 技能激活)
+PreGameplayConvergence
+   (外部 Tag 变化收敛)
+        │
+        ▼
+ GameplayResolve
+   (统一 FIFO：效果 + 技能)
+        │
+        ▼
+UpdateEffectTagRequirements
+   (执行后再次收敛)
         │
         ▼
      Cleanup
-   (已完成技能 + 索引清理)
+   (已完成技能)
         │
         ▼
 RecalculateAttributes
@@ -59,28 +74,39 @@ RecalculateAttributes
 
 ### SystemSet 详情
 
-| SystemSet                     | 包含的系统                                                  | 职责                             |
-| ----------------------------- | ----------------------------------------------------------- | -------------------------------- |
-| `UpdateEffectTagRequirements` | `update_active_effect_tag_requirements_system`              | 检查效果的持续/移除标签条件      |
-| `EffectTicks`                 | `tick_effect_duration_system`                               | 倒计时并过期持续效果             |
-|                               | `tick_effect_period_system`                                 | 周期性执行修饰器                 |
-| `AbilityTasks`                | `tick_ability_tasks_system`                                 | 推进技能任务 (等待/立即)         |
-| `Targeting`                   | `process_targeting_request_queue_system`                    | 选择、过滤、排序目标并延续请求   |
-| `Queues`                      | `process_gameplay_effect_application_queue_system` (run_if) | 消费效果应用队列 (有工作时)      |
-|                               | `process_ability_activation_queue_system` (run_if)          | 消费技能激活队列 (有工作时)      |
-| `Cleanup`                     | `cleanup_finished_abilities_system`                         | 清理 Ending/Cancelled 状态的技能 |
-|                               | `reconcile_active_effect_target_index_system`               | 从索引中清除已移除的效果         |
-| `RecalculateAttributes`       | `recalculate_attribute_sets_system`                         | 重算所有脏 `AttributeSet`        |
+| SystemSet                     | 包含的系统/用途                                               | 职责                                      |
+| ----------------------------- | ------------------------------------------------------------- | ----------------------------------------- |
+| `EffectTicks`                 | Duration → Requirement → Period → Requirement                 | 先处理过期与条件收敛，再决定周期执行      |
+| `AbilityTasks`                | `tick_ability_tasks_system`                                   | 按稳定实体顺序推进等待任务并生产请求      |
+| `RequestProducers`            | 游戏层自定义系统                                              | 当前 tick 请求的公共生产阶段              |
+| `Targeting`                   | `process_targeting_request_queue_system`                      | 选择、过滤、排序目标并产生技能请求        |
+| `PreGameplayConvergence`      | `update_active_effect_tag_requirements_system`                | 在消费请求前收敛外部 Tag 变化             |
+| `GameplayResolve`             | `process_gameplay_execution_queue_system` (`run_if`)          | 按跨类型 FIFO 消费效果与技能请求          |
+| `UpdateEffectTagRequirements` | `update_active_effect_tag_requirements_system`                | 执行后固定点收敛                          |
+| `Cleanup`                     | `cleanup_finished_abilities_system`                           | 清理 Ending/Cancelled 状态的技能          |
+| `RecalculateAttributes`       | `recalculate_attribute_sets_system`                           | 重算所有脏 `AttributeSet`                 |
 
 ### RuntimePlugin 初始化的 Resource
 
-| Resource                          | 类型       | 默认行为                     |
-| --------------------------------- | ---------- | ---------------------------- |
-| `AttributeIdManager`              | `Resource` | ID 256；热点 32 / 冷区 224   |
-| `AbilityActivationQueue`          | `Resource` | 每个 tick 按 FIFO 全量消费   |
-| `GameplayEffectApplicationQueue`  | `Resource` | 每个 tick 按 FIFO 全量消费   |
-| `TargetingRequestQueue`           | `Resource` | 每个 tick 按 FIFO 全量消费   |
-| `ActiveGameplayEffectTargetIndex` | `Resource` | —                            |
+| Resource                     | 类型       | 默认行为                                      |
+| ---------------------------- | ---------- | --------------------------------------------- |
+| `AttributeIdManager`         | `Resource` | ID 256；热点 32 / 冷区 224                    |
+| `GameplayExecutionQueue`     | `Resource` | 技能与效果共享的跨类型 FIFO，每 tick 全量消费 |
+| `TargetingRequestQueue`      | `Resource` | 每个 tick 按 FIFO 全量消费                    |
+
+上表列出游戏层可直接使用的 Resource。运行时还维护 Requirement dirty 状态，以及用于同批次
+deferred Active Ability 可见性的 pending overlay；二者属于内部收敛实现，不是公共 Gameplay API。
+
+## 请求生产约定
+
+需要在当前 `FixedUpdate` 执行的游戏层生产系统必须放入 `RequestProducers`，或显式位于
+`GameplayResolve` 之前。多个生产系统之间若存在先后语义，应使用 `.chain()`、`.before()`
+或 `.after()` 固定顺序。resolver 执行期间同步直接追加到 FIFO 的派生请求仍会由本次 drain 消费；
+在 `GameplayResolve` 之后才由其他系统写入的请求，则明确定义为下一 tick 处理。这是阶段
+语义，不是按负载随机分帧。
+
+统一请求类型、完整 drain 和同步 API 边界详见
+[16 — Gameplay 执行模块](./16-gameplay-execution.md)。
 
 ## 全局设置
 

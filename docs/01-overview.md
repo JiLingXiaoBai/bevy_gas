@@ -25,8 +25,9 @@
 ├──────────────────────────────────────────────────────────────────┤
 │  FixedUpdate 管线 (有序 SystemSet)                               │
 │                                                                  │
-│  UpdateEffectTagRequirements → EffectTicks → AbilityTasks        │
-│       → Queues (效果 + 技能) → Cleanup → RecalculateAttrs        │
+│  EffectTicks → AbilityTasks → RequestProducers → Targeting       │
+│       → PreConvergence → GameplayResolve → PostConvergence       │
+│       → Cleanup → Recalculate                                    │
 ├──────────────────────────────────────────────────────────────────┤
 │  核心模块                                                        │
 │                                                                  │
@@ -56,8 +57,10 @@
 │                             ▼                                    │
 │  ┌──────────────────────────────────────────────────────────┐    │
 │  │               AbilitySystemComponent (ASC)               │    │
-│  │  每实体技能授予 · 激活 · 队列                            │    │
+│  │  每实体技能授予 · 激活 · 活跃计数                        │    │
 │  └──────────────────────────────────────────────────────────┘    │
+│                                                                  │
+│  GameplayExecution：技能 + 效果共享的跨类型 FIFO 与结算器        │
 ├──────────────────────────────────────────────────────────────────┤
 │  支撑基础设施                                                    │
 │                                                                  │
@@ -74,14 +77,20 @@
 src/
 ├── lib.rs                        # 插件定义、公共重导出
 ├── main.rs                       # 示例用法 / 冒烟测试
+├── gas.rs                        # GAS 门面模块与公共重导出
 ├── gas/                          # Gameplay Ability System (核心)
 │   ├── gameplay_tags/            # 层级标签系统 (位集)
 │   ├── attributes/               # 属性系统 (修饰器聚合)
 │   ├── modifiers/                # 修饰器操作与幅度
 │   ├── gameplay_effects/         # Gameplay 效果 (即时/持续/无限)
 │   ├── gameplay_abilities/       # 技能 (冷却、消耗、激活、任务)
+│   ├── gameplay_execution.rs     # Gameplay 执行门面模块
+│   ├── gameplay_execution/       # 统一请求、跨类型 FIFO 与消费系统
+│   │   ├── gameplay_execution_request.rs
+│   │   ├── gameplay_execution_queue.rs
+│   │   └── gameplay_execution_resolver.rs
 │   ├── gameplay_targeting/       # 目标选择、过滤、排序与请求队列
-│   ├── ability_system/           # AbilitySystemComponent (ASC) + 队列
+│   ├── ability_system/           # AbilitySystemComponent (ASC)
 │   └── settings.rs               # 全局常量
 ├── randoms/                      # 确定性 RNG 封装 (Bevy Resource)
 └── unique_names/                 # 字符串驻留池 (hash → u32)
@@ -96,7 +105,8 @@ tests/
 
 1. **ECS 优先** — 一切皆为 Component、Resource、System 或 Event。不使用 OOP 风格的继承。
 2. **Tick 计时** — 所有持续时间、周期、任务等待均以 `FixedUpdate` tick 为单位，而非挂钟秒数。
-3. **队列模式** — 技能激活和效果应用支持延迟批量处理，避免同一帧内递归执行导致的借用问题。
+3. **统一执行 FIFO** — 技能激活和效果应用按跨类型 FIFO 在 `GameplayResolve` 完整消费；
+   请求量不会把 Gameplay mutation 隐式推迟到后续 tick。
 4. **脏标记模式** — `AttributeSet` 的冷热位图是唯一脏状态；`Changed<AttributeSet>` 驱动按位重算。
 5. **引用计数标签** — `GameplayTagContainer` 追踪每个位被设置的次数，防止重叠的效果授予/移除互相干扰。
 6. **Arc 共享定义** — `GameplayEffect` 和 `GameplayAbility` 定义通过 `Arc` 共享；规格通过 `Arc::ptr_eq` 比较。
