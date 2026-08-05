@@ -4,6 +4,12 @@
 
 Gameplay 效果是核心的 Buff/Debuff 系统。它们对属性应用修饰器、授予标签，可以是即时、持续或无限的。
 
+源码分为两组门面：`gameplay_effect.rs + gameplay_effect/` 负责定义、上下文、时间、标签和
+堆叠策略；`active_gameplay_effect.rs + active_gameplay_effect/` 负责 planning、应用事务、活跃
+状态、Requirement 收敛、移除和 tick 系统；`effect_system_params.rs` 定义 Effect 专用的 ECS
+访问边界。完整所有权边界见
+[17 — 源码布局与维护边界](./17-source-layout-and-maintenance.md)。
+
 ## 持续时间类型
 
 | 类型                 | 行为                                   |
@@ -14,16 +20,9 @@ Gameplay 效果是核心的 Buff/Debuff 系统。它们对属性应用修饰器�
 
 ## 效果定义 (`GameplayEffect`)
 
-```rust
-pub struct GameplayEffect {
-    modifiers: Vec<Modifier>,
-    duration: EffectDurationTicks,
-    period: Option<EffectPeriodTicks>,
-    probability_to_apply: f32,       // 0.0–1.0
-    stacking_policy: StackingPolicy,
-    tags: EffectTags,
-}
-```
+`GameplayEffect` 是通过 `GameplayEffect::new()` 构造的不可变定义，组合 Modifier、持续时间、
+可选周期、应用概率、堆叠策略和 Effect 标签。字段布局属于实现细节；精确构造签名以 rustdoc
+为准。
 
 ### `EffectDurationTicks`
 
@@ -45,53 +44,23 @@ modifier 应用，`execute_on_applied` 也不会额外执行。需要周期语�
 为 `DurationTicks` 或 `Infinite` 效果启用周期性修饰器执行（例如每 3 tick 造成一次伤害）。
 `Instant` 效果会忽略 period 配置。
 
-```rust
-pub struct EffectPeriodTicks {
-    period_ticks: ModifierMagnitude,
-    execute_on_applied: bool,  // 新建正周期 Active Effect 时是否立即 pulse
-}
-```
+使用 `EffectPeriodTicks::new(period_ticks, execute_on_applied)` 构造周期规则；第一个参数支持
+Flat 或 Calculated 幅度，第二个参数控制新建正周期 Active Effect 时是否立即 pulse。
 
 `execute_on_applied` 只作用于新建的正周期 Active Effect。重应用并堆叠到已有周期效果时不会
 立即 pulse，只会按 stack duration/period policy 更新其运行时状态。
 
 ## 效果标签 (`EffectTags`)
 
-效果的完整标签配置：
-
-```rust
-pub struct EffectTags {
-    asset_tags: Vec<GameplayTag>,                        // 此效果的身份标签
-    granted_tags: Vec<GameplayTag>,                      // 激活期间授予的标签
-    source_application_tags: TagRequirements,            // 来源必须满足才能应用
-    target_application_tags: TagRequirements,            // 目标必须满足才能应用
-    source_ongoing_tags: TagRequirements,                // 来源必须维持（抑制检查）
-    target_ongoing_tags: TagRequirements,                // 目标必须维持（抑制检查）
-    source_removal_tags: TagRequirements,                // 来源满足则触发移除
-    target_removal_tags: TagRequirements,                // 目标满足则触发移除
-    granted_application_immunity: Vec<GameplayEffectImmunityQuery>,  // 免疫授予
-    remove_effects_with_tags: Vec<GameplayTag>,          // 先移除带有这些标签的效果
-}
-```
+`EffectTags` 组合效果身份标签、激活期间授予的标签、来源/目标的 application、ongoing、
+removal 条件、免疫查询以及应用前需要移除的效果标签。字段布局属于实现细节；公开 getter 和
+构造签名以 rustdoc 为准。
 
 ### `TagRequirements`
 
-```rust
-pub struct TagRequirements {
-    require_all: Vec<GameplayTag>,       // 必须全部存在
-    ignore_any: Vec<GameplayTag>,        // 任一存在则阻止
-    require_all_bits: GameplayTagBits,   // 预缓存位集
-    ignore_any_bits: GameplayTagBits,    // 预缓存位集
-}
-
-impl TagRequirements {
-    pub fn new(...) -> Result<Self, GameplayTagError>;
-    pub fn passes(&self, tags: Option<&GameplayTagContainer>) -> bool;
-    pub fn passes_tag_slice(&self, tags: &[GameplayTag], manager: &Res<GameplayTagManager>) -> Result<bool, GameplayTagError>;
-    pub fn passes_tag_bits(&self, tag_bits: &GameplayTagBits) -> bool;
-    pub fn is_empty(&self) -> bool;
-}
-```
+`TagRequirements` 是 Gameplay Tags 领域的通用条件类型，详细 API 见
+[03 — Gameplay 标签](./03-gameplay-tags.md#tagrequirements)。Gameplay Effects 为兼容旧路径
+继续重导出该类型。
 
 空的 application/ongoing requirement 会通过检查；空的 removal requirement 被特殊视为
 “未配置移除条件”，不会触发移除。`remove_effects_with_tags` 匹配现有效果的 `asset_tags`
@@ -113,7 +82,7 @@ impl GameplayEffectImmunityQuery {
         &self,
         source_tags: Option<&GameplayTagContainer>,
         effect_asset_tags: &[GameplayTag],
-        tag_manager: &Res<GameplayTagManager>,
+        tag_manager: &GameplayTagManager,
     ) -> Result<bool, GameplayTagError>;
 }
 ```
@@ -172,7 +141,7 @@ StackingPolicy::linear_refreshing(StackingType::AggregateBySource, 5)   // 线�
 pub fn apply_gameplay_effect(
     target: Entity,
     effect: &Arc<GameplayEffect>,
-    params: &mut AbilitySystemParams,
+    params: &mut EffectSystemParams,
     payload: &EffectPayload,
 ) -> Result<(), GameplayEffectApplicationError>;
 ```
@@ -186,10 +155,10 @@ pub fn apply_gameplay_effect(
 
 ```rust
 // 阶段 1：准备（检查条件、查找可堆叠、收集待移除）
-let plan = prepare_gameplay_effect(target, effect, params, &payload)?;
+let plan = prepare_gameplay_effect(target, effect, &mut effect_params, &payload)?;
 
 // 阶段 2：执行
-execute_gameplay_effect_plan(plan, params)?;
+execute_gameplay_effect_plan(plan, &mut effect_params)?;
 ```
 
 `execute_gameplay_effect_plan()` 返回前也会收敛由该计划标记的 Requirement 变化。plan 应在
@@ -246,8 +215,10 @@ pub struct ActiveEffectHandle {
 }
 ```
 
-`AbilitySystemComponent`、`AttributeSet` 和 `GameplayTagContainer` 都会自动要求该 Component。
-目标内的槽位顺序稳定；移除后通常递增 generation，因此旧句柄即使遇到槽位复用也不会误
+基础 Component 不再反向要求 `ActiveGameplayEffects`。完整 GAS Actor 应通过
+`GameplayAbilitySystemBundle` 显式组合 ASC、Attributes、Tags 和 Active Effects；只使用 Tags
+或 Attributes 的实体无需携带效果存储。目标内的槽位顺序稳定；移除后通常递增 generation，
+因此旧句柄即使遇到槽位复用也不会误
 命中新效果。generation 达到 `u32::MAX` 时该槽位退休、不再复用。句柄携带 target，跨目标
 误用同样会返回缺失。
 
@@ -352,13 +323,20 @@ pub struct EffectPayload {
 }
 ```
 
-- `source`：提供 ASC、技能规格、来源属性和来源标签的 Gameplay 数据来源。
+- `source`：提供来源属性和来源标签等 Gameplay 数据的实体。
 - `instigator`：发起产生该效果之行为的实体；默认等于 `source`，拥有者与实际发起者
   不同时可通过 `with_instigator()` 覆盖。
 - `causer`：直接造成效果的可选物理实体，例如武器、投射物或爆炸区域。
 
 运行时代码不得使用 `instigator` 或 `causer` 代替 `source` 查询消耗、冷却、来源属性
 或来源标签。
+
+### `EffectSystemParams`
+
+Effect 的准备、应用、移除和 Requirement 收敛统一接收较窄的 `EffectSystemParams`。它只包含
+Tag/Attribute manager、确定性随机资源，以及 Attribute、Tag、Active Effect 查询和内部 dirty
+状态，不包含 ASC、Active Ability 或 Commands。`AbilitySystemParams` 内嵌该参数并实现
+`DerefMut`，因此 Ability 编排仍可直接调用 Effect API。
 
 ### `EffectContext`
 
@@ -371,7 +349,6 @@ pub struct EffectContext<'w, 's> {
     pub attribute_id_manager: &'w AttributeIdManager,
     pub attr_set_query: &'w Query<'w, 's, &'static AttributeSet>,
     pub tag_container_query: &'w Query<'w, 's, &'static GameplayTagContainer>,
-    pub asc_query: &'w Query<'w, 's, &'static AbilitySystemComponent>,
 }
 
 impl EffectContext<'_, '_> {
@@ -383,6 +360,10 @@ impl EffectContext<'_, '_> {
     pub fn attribute_id_manager(&self) -> &AttributeIdManager;
 }
 ```
+
+`EffectContext` 实现中立的 `ModifierEvaluationContext`。自定义幅度计算只依赖该 trait，不能再
+直接访问 ASC Query 或 Effect 存储；可通过 trait 方法读取 target/source/instigator/causer、
+level、来源快照、属性注册表和来源/目标标签。
 
 ## 查询活跃效果
 

@@ -26,8 +26,9 @@
 │  FixedUpdate 管线 (有序 SystemSet)                               │
 │                                                                  │
 │  EffectTicks → AbilityTasks → RequestProducers → Targeting       │
-│       → PreConvergence → GameplayResolve → PostConvergence       │
-│       → Cleanup → Recalculate                                    │
+│       → PreGameplayConvergence → GameplayResolve                 │
+│       → UpdateEffectTagRequirements → Cleanup                    │
+│       → RecalculateAttributes                                    │
 ├──────────────────────────────────────────────────────────────────┤
 │  核心模块                                                        │
 │                                                                  │
@@ -75,31 +76,48 @@
 
 ```
 src/
-├── lib.rs                        # 插件定义、公共重导出
-├── main.rs                       # 示例用法 / 冒烟测试
+├── lib.rs                        # crate 文档与公共重导出
 ├── gas.rs                        # GAS 门面模块与公共重导出
 ├── gas/                          # Gameplay Ability System (核心)
-│   ├── gameplay_tags/            # 层级标签系统 (位集)
-│   ├── attributes/               # 属性系统 (修饰器聚合)
-│   ├── modifiers/                # 修饰器操作与幅度
-│   ├── gameplay_effects/         # Gameplay 效果 (即时/持续/无限)
-│   ├── gameplay_abilities/       # 技能 (冷却、消耗、激活、任务)
+│   ├── runtime_plugin.rs          # PluginGroup、FixedUpdate 阶段和系统排序
+│   ├── prelude.rs                 # 精简常用 API
+│   ├── gameplay_tags.rs          # 标签领域门面
+│   ├── gameplay_tags/            # tag、bitset、registry、container、requirements
+│   ├── attributes.rs             # 属性领域门面
+│   ├── attributes/               # registry、aggregation、snapshot、attribute_set/*
+│   ├── modifiers.rs              # Modifier 领域门面
+│   ├── modifiers/                # definition、context、spec
+│   ├── gameplay_effects.rs       # Gameplay Effect 领域门面
+│   ├── gameplay_effects/
+│   │   ├── effect_system_params.rs # 独立 Effect ECS 访问边界
+│   │   ├── gameplay_effect.rs    # Effect 定义门面
+│   │   ├── gameplay_effect/      # context、timing、stacking、effect_tags、definition
+│   │   ├── active_gameplay_effect.rs  # Active Effect 运行时门面
+│   │   └── active_gameplay_effect/    # state、planning、application、execution、removal、requirements、ticking
+│   ├── gameplay_abilities.rs     # Ability 领域门面
+│   ├── gameplay_abilities/       # 定义、规格、active_gameplay_ability/* 与 ability_task/*
+│   ├── ability_system.rs         # ASC 领域门面
+│   ├── ability_system/            # component、params、commit、lifecycle、activation/*
 │   ├── gameplay_execution.rs     # Gameplay 执行门面模块
-│   ├── gameplay_execution/       # 统一请求、跨类型 FIFO 与消费系统
-│   │   ├── gameplay_execution_request.rs
-│   │   ├── gameplay_execution_queue.rs
-│   │   └── gameplay_execution_resolver.rs
-│   ├── gameplay_targeting/       # 目标选择、过滤、排序与请求队列
-│   ├── ability_system/           # AbilitySystemComponent (ASC)
+│   ├── gameplay_execution/       # request、queue、resolver
+│   ├── gameplay_targeting.rs     # Targeting 领域门面
+│   ├── gameplay_targeting/       # target data、definition、acquisition、targeting_queue/*
 │   └── settings.rs               # 全局常量
-├── randoms/                      # 确定性 RNG 封装 (Bevy Resource)
-└── unique_names/                 # 字符串驻留池 (hash → u32)
+├── randoms.rs + randoms/         # 确定性 RNG 封装 (Bevy Resource)
+└── unique_names.rs + unique_names/ # 字符串驻留池 (hash → u32)
+
+examples/
+└── tag_registration.rs           # 可运行的标签注册示例
 
 tests/
-├── gas_tests/                    # 按模块拆分的集成测试
+├── gas_tests.rs                  # GAS 集成测试门面
+├── gas_tests/                    # 按行为拆分的 Effect/Ability 测试与共享 support
 ├── randoms_tests.rs
 └── unique_names_tests.rs
 ```
+
+复杂领域统一采用 `foo.rs + foo/` 的门面布局；具体所有权和可见性约定见
+[17 — 源码布局与维护边界](./17-source-layout-and-maintenance.md)。
 
 ## 核心设计原则
 

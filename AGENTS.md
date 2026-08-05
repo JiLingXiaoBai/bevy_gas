@@ -206,21 +206,28 @@ cargo build
   `crate` 路径绕过当前功能模块边界，也避免用多层 `super::super::...` 跨领域引用
 - **文件头统一导入** — 文件中使用的类型和函数应优先通过文件头的 `use` 语句导入，
   避免在函数签名、函数体或字段类型中重复书写 `super::...` 或 `crate::...` 完整路径
-- **`pub use` 重导出模式** — 每个模块使用模块文件+同名目录布局，并通过
-  `pub use submodule::*` 重导出其公开项
+- **`pub use` 重导出模式** — 复杂领域使用模块文件+同名目录布局；门面通过
+  `pub use submodule::{Type, function}` 显式维护公开项，禁止通配公开重导出。
+  `prelude` 只包含最常用的 Plugin、Component、定义和 SystemParam，不作为完整 API 镜像
 - **Component/Resource 为中心** — 游戏状态存储在 Bevy Component 和 Resource
   中，而非独立的 world 存储
-- **SystemParam 作为公共 API** — 函数如 `apply_gameplay_effect()` 接收
-  `&mut AbilitySystemParams` 而非单独的查询
+- **显式 ECS 组合** — `GameplayTagContainer` 和 `AttributeSet` 可独立挂载，不反向
+  Required `ActiveGameplayEffects`；完整 GAS Actor 使用 `GameplayAbilitySystemBundle`
+  显式组合 ASC、Tags、Attributes 和 Active Effects
+- **SystemParam 作为公共 API** — 独立 Effect API（如 `apply_gameplay_effect()`）接收
+  `&mut EffectSystemParams`；Ability 编排 API 接收内嵌该参数的
+  `&mut AbilitySystemParams`，避免 Effects 反向依赖 ASC、Active Ability 或 `Commands`
 - **Arc\<GameplayEffect\>/Arc\<GameplayAbility\>** — 效果和技能定义通过 `Arc`
   共享；规格通过 `Arc::ptr_eq` 比较
-- **脏标记模式** — `Attribute` 和 `AttributeSet` 都有 `dirty: bool`，
-  `recalculate_attribute_sets_system` 使用 `Changed<AttributeSet>` 过滤
+- **脏标记模式** — `AttributeSet` 使用 hot/cold dirty 位图精确追踪待重算属性，
+  `recalculate_attribute_sets_system` 使用 `Changed<AttributeSet>` 过滤实体并只扫描脏位
 - **tick 计时，非秒** — 所有时间（持续时间、周期、任务等待）以 `FixedUpdate` tick
   为单位
 - **标签引用计数** — `GameplayTagContainer` 追踪每个位被设置的次数，
   避免重叠的效果授予/移除互相干扰
 - **`debug_assert!`** 用于内部不变量；超出容量时返回 `Err` 而非直接 panic
   （`GameplayTagError`、`AttributeIdError`）
-- **队列模式** — 技能激活和效果应用支持通过队列延迟到下一 tick 批量执行，
-  避免在同一帧内递归执行导致的借用问题
+- **统一执行队列** — 技能激活和效果应用进入同一跨类型 FIFO；在
+  `GameplayResolve` 前由 `AbilityTasks`、`RequestProducers` 或 `Targeting` 产生的请求在当前
+  fixed tick 完整消费，resolver 之后产生的请求进入下一 tick。队列避免递归执行导致的借用问题，
+  同时保持确定的跨类型顺序

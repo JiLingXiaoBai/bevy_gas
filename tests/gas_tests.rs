@@ -1,17 +1,14 @@
-#[path = "gas_tests/common_test.rs"]
-mod common_test;
-
-#[path = "gas_tests/active_gameplay_effect_test.rs"]
-mod active_gameplay_effect_test;
+#[path = "gas_tests/support.rs"]
+mod support;
 
 #[path = "gas_tests/attributes_test.rs"]
 mod attributes_test;
 
-#[path = "gas_tests/gameplay_abilities_test.rs"]
-mod gameplay_abilities_test;
+#[path = "gas_tests/abilities.rs"]
+mod abilities;
 
-#[path = "gas_tests/gameplay_effects_test.rs"]
-mod gameplay_effects_test;
+#[path = "gas_tests/effects.rs"]
+mod effects;
 
 #[path = "gas_tests/gameplay_tags_test.rs"]
 mod gameplay_tags_test;

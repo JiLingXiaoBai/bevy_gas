@@ -2,20 +2,20 @@
 
 ## 新增修饰器操作
 
-1. 在 `src/gas/modifiers/modifier.rs` 的 `ModifierOperation` 中添加变体
-2. 在 `Aggregator::apply_modifier_spec()` 中处理——新增一个桶
-3. 在 `Aggregator::remove_modifier_by_handle()` 中处理——清理新桶
+1. 在 `src/gas/modifiers/definition.rs` 的 `ModifierOperation` 中添加变体
+2. 在 `src/gas/attributes/aggregation.rs` 的 `Aggregator::apply_modifier_spec()` 中处理——新增一个桶
+3. 在 `Aggregator::remove_modifiers_by_source()` 中处理——清理新桶
 4. 在 `Aggregator::reset()` 中处理——清空新桶
 5. 在 `Aggregator::modifier_count()` 中处理——纳入新桶
 6. 在 `default_executor()` 中更新新操作的默认求值逻辑
-7. 在 crate 内部的 `Attribute::modify_base_value()` 中处理即时修饰器，并确保所有调用仍由 `AttributeSet` 负责设置 dirty bit
+7. 在 `src/gas/attributes/attribute_set/mutation.rs` 中处理即时修饰器，并确保所有调用仍由 `AttributeSet` 负责设置 dirty bit
 
 ## 新增堆叠策略变体
 
-1. 在 `src/gas/gameplay_effects/gameplay_effect.rs` 的相应 `Stack*` 枚举中添加变体
+1. 在 `src/gas/gameplay_effects/gameplay_effect/stacking.rs` 的相应 `Stack*` 枚举中添加变体
 2. 在 `find_stackable_active_effect()` 中处理——匹配逻辑
 3. 在 `execute_stack_existing_effect()` 中处理——应用逻辑
-4. 在 `tests/gas_tests/gameplay_effects_test.rs` 中添加测试
+4. 在 `tests/gas_tests/effects/stacking.rs` 中添加测试
 
 ## 新增属性
 
@@ -33,7 +33,7 @@
 ## 新增系统
 
 1. 将系统函数添加到对应模块
-2. 在 `src/lib.rs` 的 `GameplayAbilitySystemRuntimePlugin::build()` 中注册
+2. 在 `src/gas/runtime_plugin.rs` 的 `GameplayAbilitySystemRuntimePlugin::build()` 中注册
 3. 使用 `.in_set()` 选择正确的 `GameplayAbilitySystemSet`
 4. 如需排序，使用 `.before()` / `.after()`
 5. 考虑添加 `run_if` 条件以提高效率
@@ -64,15 +64,16 @@ app.add_systems(
 
 ## 新增 AbilityTask 类型
 
-1. 在 `src/gas/gameplay_abilities/ability_task.rs` 的 `AbilityTaskDef` 中添加定义变体
+1. 在 `src/gas/gameplay_abilities/ability_task/definition.rs` 的 `AbilityTaskDef` 中添加定义变体
 2. 若任务需要跨 tick 状态，在 `AbilityTaskKind` 中添加运行时变体，并更新
-   `AbilityTaskDef::instantiate()` 与 `AbilityTask::tick()`
-3. 更新 `ability_system_component.rs` 中的 `start_startup_ability_tasks()`，明确新任务在技能
+   `AbilityTaskDef::instantiate()` 与 `src/gas/gameplay_abilities/ability_task/state.rs`
+3. 更新 `src/gas/ability_system/activation/startup.rs` 中的
+   `start_startup_ability_tasks()`，明确新任务在技能
    激活时是立即派发，还是创建任务实体后由后续 tick 推进
 4. 如需新的完成动作，在 `AbilityTaskOnFinishedDef` 和 `AbilityTaskOnFinished` 中添加变体，
    并更新 `AbilityTaskOnFinishedDef::instantiate()`
-5. 在 `dispatch_ability_task_completion()` 中实现完成动作；
-   `tick_ability_tasks_system()` 只负责按稳定实体顺序推进任务并调用该分派函数
+5. 在 `ability_task/completion.rs` 的 `dispatch_ability_task_completion()` 中实现完成动作；
+   `ability_task/ticking.rs` 的 `tick_ability_tasks_system()` 只负责按稳定实体顺序推进任务并调用该分派函数
 6. 分别添加 startup 路径和运行时 tick 路径测试，验证执行 tick、FIFO 顺序及结束语义
 
 ## 设计约束

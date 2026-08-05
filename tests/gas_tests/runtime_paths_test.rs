@@ -1,4 +1,4 @@
-use super::common_test::{
+use super::support::{
     ability_task_count, active_ability_count, active_effect_handles, add_modifier,
     add_tag_to_entity, apply_effect, apply_effect_with_payload, current_value, empty_effect_tags,
     give_ability, register_attribute, register_tag, run_fixed_update, spawn_attribute_set,
@@ -8,10 +8,10 @@ use bevy::ecs::system::RunSystemOnce;
 use bevy::prelude::*;
 use bevy_tools::{
     AbilityActivationContext, AbilitySystemComponent, AbilityTaskDef, AbilityTaskOnFinishedDef,
-    AttributeId, AttributeSet, EffectContext, EffectDurationTicks, EffectPayload, GameplayAbility,
-    GameplayAbilitySystemSet, GameplayEffect, GameplayExecutionQueue, GameplayTag,
-    GameplayTagContainer, Modifier, ModifierMagnitude, ModifierMagnitudeCalculation,
-    ModifierOperation, StackingPolicy,
+    ActiveGameplayEffects, AttributeId, AttributeSet, EffectDurationTicks, EffectPayload,
+    GameplayAbility, GameplayAbilitySystemBundle, GameplayAbilitySystemSet, GameplayEffect,
+    GameplayExecutionQueue, GameplayTag, GameplayTagContainer, Modifier, ModifierEvaluationContext,
+    ModifierMagnitude, ModifierMagnitudeCalculation, ModifierOperation, StackingPolicy,
 };
 use std::sync::Arc;
 
@@ -39,7 +39,7 @@ struct LevelMagnitude {
 }
 
 impl ModifierMagnitudeCalculation for LevelMagnitude {
-    fn calculate(&self, context: &EffectContext) -> f32 {
+    fn calculate(&self, context: &dyn ModifierEvaluationContext) -> f32 {
         context.level() as f32 * self.scale
     }
 }
@@ -49,7 +49,7 @@ struct SnapshotCurrentMagnitude {
 }
 
 impl ModifierMagnitudeCalculation for SnapshotCurrentMagnitude {
-    fn calculate(&self, context: &EffectContext) -> f32 {
+    fn calculate(&self, context: &dyn ModifierEvaluationContext) -> f32 {
         context
             .source_snapshot()
             .and_then(|snapshot| {
@@ -69,14 +69,42 @@ struct SourceTagMagnitude {
 }
 
 impl ModifierMagnitudeCalculation for SourceTagMagnitude {
-    fn calculate(&self, context: &EffectContext) -> f32 {
+    fn calculate(&self, context: &dyn ModifierEvaluationContext) -> f32 {
         let has_tag = context
-            .tag_container_query
-            .get(context.source())
-            .ok()
+            .source_tags()
             .is_some_and(|tags| tags.has_tag(&self.tag));
         if has_tag { self.tagged } else { self.untagged }
     }
+}
+
+#[test]
+fn gameplay_ability_system_bundle_is_the_explicit_composition_root() {
+    let mut app = test_app();
+    let tag_only = app.world_mut().spawn(GameplayTagContainer::default()).id();
+    let attributes_only = app.world_mut().spawn(AttributeSet::default()).id();
+    let complete_actor = app
+        .world_mut()
+        .spawn(GameplayAbilitySystemBundle::default())
+        .id();
+
+    assert!(
+        app.world()
+            .entity(tag_only)
+            .get::<ActiveGameplayEffects>()
+            .is_none()
+    );
+    assert!(
+        app.world()
+            .entity(attributes_only)
+            .get::<ActiveGameplayEffects>()
+            .is_none()
+    );
+
+    let actor = app.world().entity(complete_actor);
+    assert!(actor.contains::<AbilitySystemComponent>());
+    assert!(actor.contains::<AttributeSet>());
+    assert!(actor.contains::<GameplayTagContainer>());
+    assert!(actor.contains::<ActiveGameplayEffects>());
 }
 
 #[test]

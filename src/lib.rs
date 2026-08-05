@@ -1,150 +1,53 @@
-mod gas;
+//! ECS-first Gameplay Ability System building blocks for Bevy.
+//!
+//! The crate exposes gameplay tags, attributes, effects, abilities, targeting,
+//! and a deterministic fixed-tick execution pipeline through domain modules and
+//! compatibility re-exports at the crate root.
+
+pub mod gas;
 mod randoms;
 mod unique_names;
 
-use bevy::app::PluginGroupBuilder;
-use bevy::prelude::*;
-pub use gas::*;
-pub use randoms::*;
-pub use unique_names::*;
+pub use gas::{
+    ATTRIBUTE_SET_SIZE, AbilityActivationContext, AbilityActivationError, AbilityActivationReason,
+    AbilityActivationRequest, AbilityActivationStatus, AbilityChainContext, AbilityChainError,
+    AbilityCommitError, AbilitySpecHandle, AbilitySystemComponent, AbilitySystemParams,
+    AbilityTags, AbilityTargetData, AbilityTargetHit, AbilityTask, AbilityTaskDef,
+    AbilityTaskEvent, AbilityTaskKind, AbilityTaskOnFinished, AbilityTaskOnFinishedDef,
+    ActiveAbilityHandle, ActiveEffectDurationTicks, ActiveEffectHandle, ActiveEffectPeriodTicks,
+    ActiveGameplayAbility, ActiveGameplayEffect, ActiveGameplayEffects, Aggregator,
+    AppliedModifier, AttributeId, AttributeIdError, AttributeIdManager, AttributeIdRegister,
+    AttributeLocation, AttributePostExecute, AttributeRegion, AttributeSet, AttributeSetError,
+    AttributeSetSnapshot, AttributeSnapshot, BLOCK_SIZE_EXPONENT, COLD_ATTRIBUTE_SET_SIZE,
+    EffectContext, EffectDurationTicks, EffectDurationTicksSpec, EffectPayload, EffectPeriodTicks,
+    EffectPeriodTicksSpec, EffectSystemParams, EffectTags, GameplayAbility, GameplayAbilitySpec,
+    GameplayAbilitySystemBundle, GameplayAbilitySystemPlugin, GameplayAbilitySystemRuntimePlugin,
+    GameplayAbilitySystemSet, GameplayAbilitySystemSettings, GameplayEffect,
+    GameplayEffectApplicationError, GameplayEffectApplicationPlan,
+    GameplayEffectApplicationRequest, GameplayEffectImmunityQuery, GameplayEffectSpec,
+    GameplayExecutionQueue, GameplayExecutionRequest, GameplayTag, GameplayTagBits,
+    GameplayTagContainer, GameplayTagError, GameplayTagManager, GameplayTagPlugin,
+    GameplayTagRegister, HOT_ATTRIBUTE_SET_SIZE, MAX_TAG_BLOCKS, MAX_TAG_COUNTS, Modifier,
+    ModifierEvaluationContext, ModifierMagnitude, ModifierMagnitudeCalculation, ModifierOperation,
+    ModifierSourceId, ModifierSpec, PendingActiveGameplayAbilities, RandomPlugin,
+    StackDurationPolicy, StackExpirationPolicy, StackMagnitudePolicy, StackOverflowPolicy,
+    StackPeriodPolicy, StackingPolicy, StackingType, TAG_BITS_PER_BLOCK, TagRequirements,
+    Targetable, TargetingCandidateQuery, TargetingContinuation, TargetingDefinition,
+    TargetingDefinitionError, TargetingError, TargetingInput, TargetingOperation,
+    TargetingRequestId, TargetingRequestQueue, TargetingResultEvent, TargetingSortOrder,
+    UniqueNamePlugin, ability_system, acquire_targets, add_bit_with_tag, apply_gameplay_effect,
+    attributes, can_activate_ability, cancel_ability, cleanup_finished_abilities_system,
+    commit_ability, default_executor, end_ability, execute_gameplay_effect_plan,
+    gameplay_abilities, gameplay_effects, gameplay_execution, gameplay_execution_queue_has_work,
+    gameplay_tags, gameplay_targeting, get_active_effects_on_target, has_active_effect_with_tags,
+    modifiers, prelude, prepare_gameplay_effect, process_gameplay_execution_queue_system,
+    process_targeting_request_queue_system, recalculate_attribute_sets_system,
+    remove_active_effect, remove_active_effects_with_tags, resolve_active_effect_tag_requirements,
+    settings, tag_bits_from_tags, tag_bits_from_tags_with_manager,
+    targeting_request_queue_has_work, tick_ability_tasks_system, tick_effect_duration_system,
+    tick_effect_period_system, try_activate_ability_by_handle,
+    update_active_effect_tag_requirements_system,
+};
+pub use randoms::Random;
+pub use unique_names::{UniqueName, UniqueNameError, UniqueNamePool};
 extern crate core;
-
-pub struct GameplayTagPlugin;
-
-impl Plugin for GameplayTagPlugin {
-    fn build(&self, app: &mut App) {
-        app.init_resource::<GameplayTagManager>();
-    }
-}
-
-pub struct UniqueNamePlugin;
-
-impl Plugin for UniqueNamePlugin {
-    fn build(&self, app: &mut App) {
-        app.init_resource::<UniqueNamePool>();
-    }
-}
-
-pub struct RandomPlugin;
-
-impl Plugin for RandomPlugin {
-    fn build(&self, app: &mut App) {
-        app.init_resource::<Random>();
-    }
-}
-
-/// Installs the fixed-tick GAS runtime resources, phases, and systems.
-pub struct GameplayAbilitySystemRuntimePlugin;
-
-/// Ordered phases of the fixed-tick GAS runtime pipeline.
-#[derive(SystemSet, Debug, Hash, PartialEq, Eq, Clone)]
-pub enum GameplayAbilitySystemSet {
-    /// Advances effect duration, requirements, and period state.
-    EffectTicks,
-    /// Runs built-in ability tasks that can produce gameplay requests.
-    AbilityTasks,
-    /// Public phase for gameplay request-producing systems.
-    RequestProducers,
-    /// Runs targeting work that may produce gameplay requests.
-    Targeting,
-    /// Converges externally changed tags before gameplay requests are consumed.
-    PreGameplayConvergence,
-    /// Drains the deterministic gameplay execution FIFO.
-    GameplayResolve,
-    /// Converges tag requirements after gameplay execution.
-    UpdateEffectTagRequirements,
-    /// Removes ending and cancelled ability instances.
-    Cleanup,
-    /// Recalculates dirty attributes after all gameplay mutations.
-    RecalculateAttributes,
-}
-
-impl Plugin for GameplayAbilitySystemRuntimePlugin {
-    fn build(&self, app: &mut App) {
-        app.init_resource::<AttributeIdManager>()
-            .init_resource::<GameplayExecutionQueue>()
-            .init_resource::<ActiveEffectRequirementSync>()
-            .init_resource::<PendingActiveGameplayAbilities>()
-            .init_resource::<TargetingRequestQueue>()
-            .configure_sets(
-                FixedUpdate,
-                (
-                    GameplayAbilitySystemSet::EffectTicks
-                        .before(GameplayAbilitySystemSet::AbilityTasks),
-                    GameplayAbilitySystemSet::AbilityTasks
-                        .before(GameplayAbilitySystemSet::RequestProducers),
-                    GameplayAbilitySystemSet::RequestProducers
-                        .before(GameplayAbilitySystemSet::Targeting),
-                    GameplayAbilitySystemSet::Targeting
-                        .before(GameplayAbilitySystemSet::PreGameplayConvergence),
-                    GameplayAbilitySystemSet::PreGameplayConvergence
-                        .before(GameplayAbilitySystemSet::GameplayResolve),
-                    GameplayAbilitySystemSet::GameplayResolve
-                        .before(GameplayAbilitySystemSet::UpdateEffectTagRequirements),
-                    GameplayAbilitySystemSet::UpdateEffectTagRequirements
-                        .before(GameplayAbilitySystemSet::Cleanup),
-                    GameplayAbilitySystemSet::Cleanup
-                        .before(GameplayAbilitySystemSet::RecalculateAttributes),
-                ),
-            )
-            .add_systems(
-                FixedUpdate,
-                (
-                    tick_effect_duration_system,
-                    update_active_effect_tag_requirements_system,
-                    tick_effect_period_system,
-                    update_active_effect_tag_requirements_system,
-                )
-                    .chain()
-                    .in_set(GameplayAbilitySystemSet::EffectTicks),
-            )
-            .add_systems(
-                FixedUpdate,
-                tick_ability_tasks_system.in_set(GameplayAbilitySystemSet::AbilityTasks),
-            )
-            .add_systems(
-                FixedUpdate,
-                process_targeting_request_queue_system
-                    .run_if(targeting_request_queue_has_work)
-                    .in_set(GameplayAbilitySystemSet::Targeting),
-            )
-            .add_systems(
-                FixedUpdate,
-                update_active_effect_tag_requirements_system
-                    .in_set(GameplayAbilitySystemSet::PreGameplayConvergence),
-            )
-            .add_systems(
-                FixedUpdate,
-                process_gameplay_execution_queue_system
-                    .run_if(gameplay_execution_queue_has_work)
-                    .in_set(GameplayAbilitySystemSet::GameplayResolve),
-            )
-            .add_systems(
-                FixedUpdate,
-                update_active_effect_tag_requirements_system
-                    .in_set(GameplayAbilitySystemSet::UpdateEffectTagRequirements),
-            )
-            .add_systems(
-                FixedUpdate,
-                cleanup_finished_abilities_system.in_set(GameplayAbilitySystemSet::Cleanup),
-            )
-            .add_systems(
-                FixedUpdate,
-                recalculate_attribute_sets_system
-                    .in_set(GameplayAbilitySystemSet::RecalculateAttributes),
-            );
-    }
-}
-
-/// Plugin group containing all resources and runtime systems required by GAS.
-pub struct GameplayAbilitySystemPlugin;
-
-impl PluginGroup for GameplayAbilitySystemPlugin {
-    fn build(self) -> PluginGroupBuilder {
-        PluginGroupBuilder::start::<Self>()
-            .add(UniqueNamePlugin)
-            .add(GameplayTagPlugin)
-            .add(RandomPlugin)
-            .add(GameplayAbilitySystemRuntimePlugin)
-    }
-}

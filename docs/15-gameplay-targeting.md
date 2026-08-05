@@ -10,6 +10,26 @@
 `activation_effects` 会在该技能激活请求内部按目标顺序直接应用；
 `ApplyGameplayEffectToTargets` task 则按相同顺序向统一 Gameplay FIFO 写入多个效果请求。
 
+## 源码结构
+
+```text
+src/gas/
+├── gameplay_targeting.rs                 # 领域门面与显式公共重导出
+└── gameplay_targeting/
+    ├── ability_target_data.rs            # 有序目标数据与命中记录
+    ├── targeting_definition.rs           # 已验证的操作定义、Targetable 与配置错误
+    ├── acquisition.rs                    # 同步抓取算法、候选查询与运行时错误
+    ├── targeting_queue.rs                # 队列子领域门面
+    └── targeting_queue/
+        ├── request.rs                    # 请求输入、ID、continuation 与结果事件
+        ├── queue.rs                      # FIFO Resource 与请求 ID 分配
+        └── processing.rs                 # drain、同步抓取、continuation 和事件派发
+```
+
+同步抓取职责集中在 `acquisition.rs`。抓取算法与队列调度分离：同步调用只依赖
+acquisition；排队调用则由 processing 复用同一抓取入口。`TargetingRequest` 保持为队列内部
+类型，外部只接触请求输入、稳定 ID、continuation、结果事件和队列 Resource。
+
 ## 实体要求
 
 范围、锥形和显式实体选择只会接受带有 `Targetable` Component 的实体。这样可以避免将
@@ -150,6 +170,10 @@ UI 或游戏专用逻辑消费。
 
 队列在当前 `FixedUpdate` 中按 FIFO 顺序处理全部待处理请求，不会因为请求数量而隐式推迟
 到后续 tick。
+
+对每个出队请求，processing 固定按“执行同步抓取 → 成功时执行 direct continuation → 触发
+结果事件”的顺序处理。随后才读取下一个请求；这保证了 continuation 与事件的相对语义没有
+因文件拆分而改变。
 
 整批请求的 direct continuation 会先按 Targeting FIFO 写入 Gameplay 队列，系统返回后才应用
 deferred result triggers。因此 Observer 派生的请求排在该批所有 direct continuation 之后，

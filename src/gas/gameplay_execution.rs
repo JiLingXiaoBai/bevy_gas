@@ -1,10 +1,15 @@
-mod gameplay_execution_queue;
-mod gameplay_execution_request;
-mod gameplay_execution_resolver;
+//! Deterministic cross-type gameplay request queue and resolver.
+//!
+//! Ability activation and effect application requests share one FIFO so their
+//! relative ordering remains observable within a fixed tick.
 
-pub use gameplay_execution_queue::*;
-pub use gameplay_execution_request::*;
-pub(crate) use gameplay_execution_resolver::drain_gameplay_execution_queue;
-pub use gameplay_execution_resolver::{
-    gameplay_execution_queue_has_work, process_gameplay_execution_queue_system,
+mod queue;
+mod request;
+mod resolver;
+
+pub use queue::GameplayExecutionQueue;
+pub use request::{
+    AbilityActivationRequest, GameplayEffectApplicationRequest, GameplayExecutionRequest,
 };
+pub(crate) use resolver::drain_gameplay_execution_queue;
+pub use resolver::{gameplay_execution_queue_has_work, process_gameplay_execution_queue_system};

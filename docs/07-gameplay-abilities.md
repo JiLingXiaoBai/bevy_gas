@@ -4,6 +4,28 @@
 
 Gameplay 技能代表角色可执行的动作——法术、攻击、冲刺等。它们支持冷却、消耗、激活效果、启动任务和链式激活。
 
+## 源码结构
+
+```text
+src/gas/
+├── gameplay_abilities.rs                     # 领域门面与显式公共重导出
+└── gameplay_abilities/
+    ├── gameplay_ability.rs                   # 不可变技能定义与 AbilityTags
+    ├── gameplay_ability_spec.rs              # 已授予技能的可变运行时规格
+    ├── active_gameplay_ability.rs             # 活跃技能门面
+    ├── active_gameplay_ability/
+    │   ├── chain.rs                           # 技能链、深度限制与循环检测
+    │   ├── context.rs                         # 激活来源、原因、快照与目标数据
+    │   └── state.rs                           # 活跃实例 Component、句柄与生命周期状态
+    ├── ability_task.rs                        # 技能任务门面
+    └── ability_task/                          # 详见 08 — 技能任务
+```
+
+`gameplay_abilities.rs` 和两个同名门面文件只负责声明子模块与显式重导出，不承载业务流程。
+`GameplayAbility` 与 `GameplayAbilitySpec` 保持分离：前者是可共享的定义，后者保存某个 ASC
+已授予技能的等级、输入和活跃实例计数。活跃实例相关代码再按技能链、激活上下文和 ECS
+状态拆开，避免修改链路校验时影响生命周期存储。
+
 ## 技能定义 (`GameplayAbility`)
 
 ```rust

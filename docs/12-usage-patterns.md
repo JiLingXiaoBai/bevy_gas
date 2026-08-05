@@ -324,7 +324,7 @@ struct FireballDamageCalc {
 }
 
 impl ModifierMagnitudeCalculation for FireballDamageCalc {
-    fn calculate(&self, context: &EffectContext) -> f32 {
+    fn calculate(&self, context: &dyn ModifierEvaluationContext) -> f32 {
         let attack = context
             .source_snapshot()
             .and_then(|snapshot| {

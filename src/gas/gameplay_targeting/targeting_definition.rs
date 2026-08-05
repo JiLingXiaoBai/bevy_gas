@@ -1,4 +1,4 @@
-use crate::gameplay_effects::TagRequirements;
+use crate::gameplay_tags::TagRequirements;
 use bevy::prelude::*;
 use std::error::Error;
 use std::fmt;

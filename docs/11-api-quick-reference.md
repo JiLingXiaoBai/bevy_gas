@@ -1,17 +1,23 @@
 # 11 — API 快速参考
 
-## 公开 API 索引
+## 常用公开 API 导航
+
+本页用于按领域定位常用入口，不替代编译器生成的 rustdoc。精确签名、参数、返回值和错误以
+源码 rustdoc 为准；`#[doc(hidden)]` 的运行时内部类型不列为用户入口。
+
+常用 Plugin、Component、定义和 SystemParam 可从 `bevy_tools::prelude::*` 导入；本页其余专项
+API 继续从对应领域模块显式导入。
 
 ### 插件
 
 | 项                                   | 类型          | 模块     |
 | ------------------------------------ | ------------- | -------- |
-| `GameplayAbilitySystemPlugin`        | `PluginGroup` | `lib.rs` |
-| `GameplayAbilitySystemRuntimePlugin` | `Plugin`      | `lib.rs` |
-| `GameplayTagPlugin`                  | `Plugin`      | `lib.rs` |
-| `UniqueNamePlugin`                   | `Plugin`      | `lib.rs` |
-| `RandomPlugin`                       | `Plugin`      | `lib.rs` |
-| `GameplayAbilitySystemSet`           | `SystemSet`   | `lib.rs` |
+| `GameplayAbilitySystemPlugin`        | `PluginGroup` | `gas/runtime_plugin.rs` |
+| `GameplayAbilitySystemRuntimePlugin` | `Plugin`      | `gas/runtime_plugin.rs` |
+| `GameplayTagPlugin`                  | `Plugin`      | `gas/runtime_plugin.rs` |
+| `UniqueNamePlugin`                   | `Plugin`      | `gas/runtime_plugin.rs` |
+| `RandomPlugin`                       | `Plugin`      | `gas/runtime_plugin.rs` |
+| `GameplayAbilitySystemSet`           | `SystemSet`   | `gas/runtime_plugin.rs` |
 
 ### Gameplay 标签
 
@@ -21,6 +27,7 @@
 | `GameplayTagContainer`            | `Component`   | 每实体位集 + 引用计数   |
 | `GameplayTagManager`              | `Resource`    | 全局标签注册表          |
 | `GameplayTagRegister`             | `SystemParam` | 按点分隔名称注册标签    |
+| `TagRequirements`                 | `struct`      | 要求全部 / 忽略任一标签 |
 | `GameplayTagError`                | `enum`        | 标签注册错误            |
 | `MAX_TAG_COUNTS`                  | `const`       | 可注册标签总容量        |
 | `BLOCK_SIZE_EXPONENT`             | `const`       | 位块索引右移量（6）     |
@@ -58,9 +65,11 @@
 | `ModifierOperation`            | `enum`   | Add / PercentAdd / Multiply / Override |
 | `ModifierMagnitude`            | `enum`   | Flat(f32) 或 Calculated(trait)         |
 | `ModifierMagnitudeCalculation` | `trait`  | 动态幅度计算                           |
+| `ModifierEvaluationContext`    | `trait`  | 与 Effect runtime 解耦的只读求值接口   |
 | `Modifier`                     | `struct` | 修饰器定义                             |
 | `ModifierSpec`                 | `struct` | 已解析的不可变修饰器                   |
-| `AppliedModifier`              | `struct` | 带句柄的已应用修饰器                   |
+| `ModifierSourceId`             | `struct` | 中立的 scope + slot + generation 来源 ID |
+| `AppliedModifier`              | `struct` | 带中立来源 ID 的已应用修饰器           |
 | `Aggregator`                   | `struct` | 修饰器收集 + 求值                      |
 | `default_executor`             | `fn`     | Aggregator 默认求值公式                 |
 
@@ -75,7 +84,6 @@
 | `EffectPeriodTicks`                                | `struct`     | 周期性执行配置                               |
 | `EffectPeriodTicksSpec`                            | `struct`     | 已解析的周期配置                             |
 | `EffectTags`                                       | `struct`     | 完整标签配置                                 |
-| `TagRequirements`                                  | `struct`     | 要求全部 / 忽略任一标签                      |
 | `GameplayEffectImmunityQuery`                      | `struct`     | 免疫匹配查询                                 |
 | `StackingPolicy`                                   | `struct`     | 堆叠配置                                     |
 | `StackingType`                                     | `enum`       | None / AggregateBySource / AggregateByTarget |
@@ -86,6 +94,7 @@
 | `StackExpirationPolicy`                            | `enum`       | RemoveAllStacks / RemoveSingleStack          |
 | `EffectPayload`                                    | `struct`     | 效果执行元数据                               |
 | `EffectContext`                                    | `struct`     | 计算用的世界查询包装                         |
+| `EffectSystemParams`                               | `SystemParam`| Effect 专用查询与资源边界                    |
 | `ActiveGameplayEffects`                            | `Component`  | 目标持有的稳定槽位效果容器                   |
 | `ActiveGameplayEffect`                             | `struct`     | 容器中的运行时效果                           |
 | `ActiveEffectHandle`                               | `struct`     | target + slot + generation 稳定句柄          |
@@ -173,7 +182,8 @@
 | 项                                        | 类型          | 说明                   |
 | ----------------------------------------- | ------------- | ---------------------- |
 | `AbilitySystemComponent`                  | `Component`   | 每实体 ASC             |
-| `AbilitySystemParams`                     | `SystemParam` | 聚合的 GAS 查询 + 资源 |
+| `GameplayAbilitySystemBundle`             | `Bundle`      | 显式组合完整 GAS Actor 组件 |
+| `AbilitySystemParams`                     | `SystemParam` | Effect 参数 + Ability 编排状态 |
 | `try_activate_ability_by_handle`          | `fn`          | 独立的同步激活调用路径        |
 | `can_activate_ability`                    | `fn`          | 检查而不激活           |
 | `commit_ability`                          | `fn`          | 执行消耗 + 冷却        |

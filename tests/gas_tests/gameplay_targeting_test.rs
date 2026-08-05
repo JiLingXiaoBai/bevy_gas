@@ -1,4 +1,4 @@
-use crate::common_test::{
+use crate::support::{
     activate_ability_with_context, add_modifier, add_tag_to_entity, attribute_set, current_value,
     empty_effect_tags, give_ability, register_attribute, register_tag, run_fixed_update, test_app,
 };

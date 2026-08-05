@@ -1,4 +1,4 @@
-use super::common_test::{
+use super::support::{
     active_effect_handles, add_modifier, apply_effect, apply_effect_result, attribute_set,
     current_value, empty_effect_tags, instant_add_effect, modifier, register_attribute,
     register_hot_attribute, run_effect_duration_tick, spawn_attribute_set, test_app,
@@ -6,7 +6,7 @@ use super::common_test::{
 use bevy::ecs::system::RunSystemOnce;
 use bevy::prelude::*;
 use bevy_tools::{
-    AttributeIdManager, AttributeSet, EffectDurationTicks, GameplayEffect,
+    ActiveGameplayEffects, AttributeIdManager, AttributeSet, EffectDurationTicks, GameplayEffect,
     GameplayEffectApplicationError, ModifierMagnitude, ModifierOperation, StackingPolicy,
     UniqueNamePool,
 };
@@ -199,7 +199,10 @@ fn custom_executor_survives_removal_of_last_modifier() {
     attributes
         .initialize_attribute(&manager, health, 100.0, Some(add_one_executor))
         .unwrap();
-    let target = app.world_mut().spawn(attributes).id();
+    let target = app
+        .world_mut()
+        .spawn((attributes, ActiveGameplayEffects::default()))
+        .id();
     let effect = Arc::new(GameplayEffect::new(
         vec![add_modifier(health, 20.0)],
         EffectDurationTicks::DurationTicks(ModifierMagnitude::Flat(1.0)),
@@ -232,7 +235,10 @@ fn sparse_aggregators_support_reverse_location_insertion_and_independent_removal
     attributes
         .initialize_attribute(&manager, mana, 50.0, None)
         .unwrap();
-    let target = app.world_mut().spawn(attributes).id();
+    let target = app
+        .world_mut()
+        .spawn((attributes, ActiveGameplayEffects::default()))
+        .id();
 
     let mana_effect = Arc::new(GameplayEffect::new(
         vec![add_modifier(mana, 10.0)],

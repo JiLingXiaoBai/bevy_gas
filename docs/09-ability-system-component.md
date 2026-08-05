@@ -4,18 +4,24 @@
 
 `AbilitySystemComponent` (ASC) 是挂载到可使用技能的实体上的主要 `Component`。它管理已授予的技能、追踪阻止标签，并提供核心激活逻辑。
 
+实现直接在 `ability_system/` 下组织 Component、SystemParam、activation、commit 和
+lifecycle；activation 内部再按 error、validation、startup 和 execution 拆分。完整所有权边界见
+[17 — 源码布局与维护边界](./17-source-layout-and-maintenance.md)。
+
 ## `AbilitySystemComponent`
 
+ASC 可以独立默认构造。它不再通过 Required Component 隐式安装 Tags、Attributes 或 Active
+Effects；其私有存储维护 Ability 规格、Handle 索引、活跃计数和阻止标签，这些字段不是公共契约。
+
+需要完整 GAS 运行时能力的实体应显式生成 `GameplayAbilitySystemBundle`：
+
 ```rust
-#[derive(Component, Default)]
-#[require(ActiveGameplayEffects)]
-pub struct AbilitySystemComponent {
-    next_ability_handle: u32,
-    abilities: Vec<GameplayAbilitySpec>,
-    ability_indices: HashMap<AbilitySpecHandle, usize>,
-    blocked_ability_tags: GameplayTagContainer,
-}
+commands.spawn(GameplayAbilitySystemBundle::default());
 ```
+
+Bundle 统一包含 `AbilitySystemComponent`、`AttributeSet`、`GameplayTagContainer` 和
+`ActiveGameplayEffects`。只需要标签或属性的实体仍可单独使用相应 Component，且不会意外获得
+Effect 存储。
 
 ### 主要方法
 
@@ -27,39 +33,34 @@ pub struct AbilitySystemComponent {
 | `find_ability_spec(handle) -> Option<&GameplayAbilitySpec>` | 按句柄查找规格                       |
 | `get_blocked_ability_tags() -> &GameplayTagContainer`       | 获取阻止标签容器                     |
 
-### 内部方法（由激活流程使用）
+### 内部生命周期
 
-| 方法                               | 说明                                                     |
-| ---------------------------------- | -------------------------------------------------------- |
-| `start_ability(...)`               | 设置阻止标签、递增活跃计数、生成 `ActiveGameplayAbility` |
-| `finish_active_ability(handle)`    | 递减活跃计数、移除阻止标签                               |
-| `rollback_started_ability(handle)` | 回滚后续失败的 `start_ability`                           |
+激活流程负责设置阻止标签、递增活跃计数并生成 `ActiveGameplayAbility`；结束、取消或后续步骤失败
+时，生命周期模块对这些变化进行对称清理或回滚。具体私有函数名称不是知识库契约。
 
 ## `AbilitySystemParams`
 
-主要的 `SystemParam` 聚合器——打包了所有 GAS 操作所需的查询和资源：
+Ability 编排使用的 `SystemParam` 聚合器。Effect 运行时访问被收敛到独立的
+`EffectSystemParams` 中：
 
 ```rust
 pub struct AbilitySystemParams<'w, 's> {
     pub commands: Commands<'w, 's>,
-    pub tag_manager: Res<'w, GameplayTagManager>,
-    pub random_gen: ResMut<'w, Random>,
-    pub attribute_id_manager: Res<'w, AttributeIdManager>,
-    pub attr_set_query: Query<'w, 's, &'static mut AttributeSet>,
-    pub tag_container_query: Query<'w, 's, &'static mut GameplayTagContainer>,
+    pub effects: EffectSystemParams<'w, 's>,
     pub asc_query: Query<'w, 's, &'static mut AbilitySystemComponent>,
     pub attr_set_snapshot_query: Query<'w, 's, &'static AttributeSetSnapshot>,
-    pub active_effect_query: Query<'w, 's, &'static mut ActiveGameplayEffects>,
     pub active_ability_query:
         Query<'w, 's, (Entity, &'static mut ActiveGameplayAbility)>,
 }
 ```
 
-上面只列出公开字段。实现还包含 Requirement dirty 状态和 pending Active Ability overlay，
-用于同一结算 batch 的内部收敛与 deferred 可见性。
+`AbilitySystemParams` 对 `EffectSystemParams` 实现 `Deref` / `DerefMut`，因此 Ability 编排可以
+直接调用接收 `&mut EffectSystemParams` 的 Effect API，同时 Effect 模块不再依赖 ASC Query。
+实现还包含 pending Active Ability overlay，用于同一结算 batch 的 deferred 可见性。
 
-这是向 GAS 函数传递上下文的**标准方式**。大多数公开 API 函数接收 `&mut AbilitySystemParams` 而非单独的查询。
-Gameplay 请求生产系统应单独声明 `ResMut<GameplayExecutionQueue>`；基础
+Ability API 使用 `&mut AbilitySystemParams`；独立 Effect API 使用更窄的
+`&mut EffectSystemParams`。Gameplay 请求生产系统应单独声明
+`ResMut<GameplayExecutionQueue>`；
 `AbilitySystemParams` 不锁定全局队列，从而避免无关效果查询降低其他系统并行度。
 
 ## 激活函数

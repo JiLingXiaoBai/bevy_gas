@@ -5,6 +5,22 @@
 技能任务在活跃技能内部编排行为。startup `Instant` 在技能激活流程中直接派发；只有需要
 跨 tick 保存状态的任务（当前为 `WaitTicks`）才生成实体，并由 `AbilityTasks` 系统推进。
 
+## 源码结构
+
+```text
+src/gas/gameplay_abilities/
+├── ability_task.rs                # 门面；显式重导出公共 API 与 crate 内部完成入口
+└── ability_task/
+    ├── definition.rs              # AbilityTaskDef 与 AbilityTaskOnFinishedDef
+    ├── state.rs                   # AbilityTask、AbilityTaskKind 与运行时完成动作
+    ├── completion.rs              # 完成分派、AbilityTaskEvent 与 Gameplay 请求转换
+    └── ticking.rs                 # 确定性任务遍历和 tick system
+```
+
+定义层只描述技能资产中的任务；状态层只保存需要跨 tick 存活的 ECS 数据；完成层集中处理
+任务结束产生的事件、效果请求和链式激活；tick 层负责按稳定顺序推进任务。startup
+`Instant` 与运行时任务复用同一个完成分派入口，因此拆分文件不会改变两条路径的副作用语义。
+
 ## 任务定义 (`AbilityTaskDef`)
 
 ```rust
@@ -97,6 +113,10 @@ startup `WaitTicks` 也通过 deferred spawn 创建，`WaitTicks(0)` 最早在�
 3. 调用 `task.tick()` — 完成时返回 `true`
 4. 完成时执行 `on_finished` 动作
 5. 销毁任务实体
+
+这里的排序发生在每个 tick 开始处理任务时；完成动作写入 `GameplayExecutionQueue` 的顺序
+与该稳定实体顺序一致。任务系统本身不直接消费队列，后续仍由统一 Gameplay resolver 按
+FIFO 处理。
 
 ### `AbilityTaskEvent`
 

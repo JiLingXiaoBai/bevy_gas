@@ -20,20 +20,18 @@
 src/gas/
 ├── gameplay_execution.rs
 └── gameplay_execution/
-    ├── gameplay_execution_request.rs
-    ├── gameplay_execution_queue.rs
-    └── gameplay_execution_resolver.rs
+    ├── request.rs
+    ├── queue.rs
+    └── resolver.rs
 ```
 
 - `gameplay_execution.rs`：私有子模块声明和公共重导出。
-- `gameplay_execution_request.rs`：统一请求枚举及请求类型转换。
-- `gameplay_execution_queue.rs`：FIFO Resource、入队 API 和链 ID 分配。
-- `gameplay_execution_resolver.rs`：完整 drain、逐请求收敛和 Bevy System 包装。
+- `request.rs`：两种具体请求、统一请求枚举及类型转换。
+- `queue.rs`：FIFO Resource、入队 API 和链 ID 分配。
+- `resolver.rs`：完整 drain、逐请求收敛和 Bevy System 包装。
 
-两种具体请求分别定义在所属领域：
-
-- `ability_system/ability_activation_request.rs`
-- `gameplay_effects/gameplay_effect_application_request.rs`
+两种具体请求现在都由 Execution 领域拥有。Ability System 与 Gameplay Effects 的领域门面直接
+兼容重导出这两个类型，因此现有领域导入路径仍可使用，而不再保留重复的请求文件。
 
 ## 请求类型
 
@@ -274,8 +272,8 @@ startup 派生效果或技能严格在当前 batch 生效，应使用 `ApplyGame
 
 如果后续需要加入第三种 `GameplayExecutionRequest`：
 
-1. 在所属功能领域定义只捕获稳定输入的具体请求类型；
-2. 在 `gameplay_execution_request.rs` 增加枚举变体及 `From` 转换；
+1. 在 `gameplay_execution/request.rs` 定义只捕获稳定输入的具体请求类型；
+2. 在同一文件增加统一枚举变体及 `From` 转换；
 3. 按需在 `GameplayExecutionQueue` 增加语义清晰的便捷入队方法；
 4. 在 resolver 中实现该变体，明确它的错误分类、请求间可见性、收敛点与终止保护；
 5. 更新模块重导出、API 索引，并添加同类型 FIFO、跨类型 FIFO、派生请求和阶段边界测试。
@@ -286,8 +284,8 @@ startup 派生效果或技能严格在当前 batch 生效，应使用 `ApplyGame
 
 - `tests/gas_tests/queues_test.rs`：完整 drain、同类型和跨类型 FIFO；
 - `tests/gas_tests/runtime_paths_test.rs`：阶段边界、当前 tick 与下一 tick；
-- `tests/gas_tests/gameplay_effects_test.rs`：请求间 Requirement、免疫、堆叠和跨实体 Tag 可见性；
-- `tests/gas_tests/gameplay_abilities_test.rs`：startup Instant、链式激活和 deferred cancellation。
+- `tests/gas_tests/effects/requirements.rs` 与 `stacking.rs`：请求间 Requirement、免疫、堆叠和跨实体 Tag 可见性；
+- `tests/gas_tests/abilities/chaining.rs` 与 `lifecycle.rs`：startup Instant、链式激活和 deferred cancellation。
 
 继续阅读：
 

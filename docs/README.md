@@ -4,30 +4,48 @@
 
 ## 目录
 
-| #   | 文档                                                   | 说明                                        |
-| --- | ------------------------------------------------------ | ------------------------------------------- |
-| 01  | [项目概述](./01-overview.md)                           | 架构、设计原则、源码树                      |
-| 02  | [插件系统与生命周期](./02-plugins-and-lifecycle.md)    | 插件、FixedUpdate 管线、SystemSet、全局设置 |
-| 03  | [Gameplay 标签](./03-gameplay-tags.md)                 | 层级位集标签、引用计数、注册                |
-| 04  | [属性系统](./04-attributes.md)                         | 属性系统、延迟重算、快照                   |
-| 05  | [修饰器与聚合器](./05-modifiers-and-aggregator.md)     | 修饰器操作、幅度类型、求值顺序              |
-| 06  | [Gameplay 效果](./06-gameplay-effects.md)              | Buff/Debuff、堆叠、抑制、免疫与条件收敛     |
-| 07  | [Gameplay 技能](./07-gameplay-abilities.md)            | 技能定义、激活流程、链式激活                |
-| 08  | [技能任务](./08-ability-tasks.md)                      | 时间线编排、任务类型、事件系统              |
-| 09  | [技能系统组件 (ASC)](./09-ability-system-component.md) | ASC、AbilitySystemParams、激活 API          |
-| 10  | [支撑基础设施](./10-supporting-infrastructure.md)      | UniqueName、Random、Settings                |
-| 11  | [API 快速参考](./11-api-quick-reference.md)            | 完整公开 API 索引                           |
-| 12  | [使用模式与示例](./12-usage-patterns.md)               | 常见模式：直伤、DoT、Buff、连招、事件驱动   |
-| 13  | [测试指南](./13-testing-guide.md)                      | 测试组织、模式、提交前检查清单              |
-| 14  | [扩展系统](./14-extending-the-system.md)               | 如何新增操作、策略、任务、系统              |
-| 15  | [Gameplay 目标抓取](./15-gameplay-targeting.md)         | 目标管线、队列、多目标技能、确定性           |
-| 16  | [Gameplay 执行模块](./16-gameplay-execution.md)         | 统一请求、跨类型 FIFO、阶段边界与收敛        |
+### 入门
+
+| 文档 | 说明 |
+| --- | --- |
+| [01 — 项目概述](./01-overview.md) | 架构、设计原则、源码树 |
+| [12 — 使用模式与示例](./12-usage-patterns.md) | 直伤、DoT、Buff、连招和事件驱动 |
+
+### 运行时架构
+
+| 文档 | 说明 |
+| --- | --- |
+| [02 — 插件系统与生命周期](./02-plugins-and-lifecycle.md) | Plugin、FixedUpdate 管线和 SystemSet |
+| [16 — Gameplay 执行模块](./16-gameplay-execution.md) | 统一请求、跨类型 FIFO、阶段边界与收敛 |
+| [17 — 源码布局与维护边界](./17-source-layout-and-maintenance.md) | 模块所有权、门面结构、可见性和测试布局 |
+
+### 领域模块
+
+| 文档 | 说明 |
+| --- | --- |
+| [03 — Gameplay 标签](./03-gameplay-tags.md) | 层级位集标签、引用计数和注册 |
+| [04 — 属性系统](./04-attributes.md) | 属性存储、延迟重算和快照 |
+| [05 — 修饰器与聚合器](./05-modifiers-and-aggregator.md) | 操作、幅度类型和求值顺序 |
+| [06 — Gameplay 效果](./06-gameplay-effects.md) | Buff/Debuff、堆叠、抑制、免疫与条件收敛 |
+| [07 — Gameplay 技能](./07-gameplay-abilities.md) | 技能定义、激活流程和链式激活 |
+| [08 — 技能任务](./08-ability-tasks.md) | 时间线编排、任务类型和事件系统 |
+| [09 — 技能系统组件](./09-ability-system-component.md) | ASC、AbilitySystemParams 和激活 API |
+| [10 — 支撑基础设施](./10-supporting-infrastructure.md) | UniqueName、Random 和 Settings |
+| [15 — Gameplay 目标抓取](./15-gameplay-targeting.md) | 目标管线、队列、多目标技能和确定性 |
+
+### 维护与参考
+
+| 文档 | 说明 |
+| --- | --- |
+| [11 — API 快速参考](./11-api-quick-reference.md) | 常用公共入口导航；精确签名以 rustdoc 为准 |
+| [13 — 测试指南](./13-testing-guide.md) | 测试组织、模式和提交前检查清单 |
+| [14 — 扩展系统](./14-extending-the-system.md) | 如何新增操作、策略、任务和系统 |
 
 ## 快速开始
 
 ```rust
 use bevy::prelude::*;
-use bevy_tools::*;
+use bevy_tools::prelude::*;
 
 fn main() {
     App::new()
@@ -70,7 +88,9 @@ fn register_initial_attributes(mut register: AttributeIdRegister) {
 | **GameplayEffect**         | `Arc<struct>` | Buff/Debuff 定义（即时/持续/无限） |
 | **GameplayAbility**        | `Arc<struct>` | 技能定义（冷却、消耗、任务）       |
 | **AbilitySystemComponent** | `Component`   | 每实体技能授予与激活管理           |
-| **AbilitySystemParams**    | `SystemParam` | 聚合所有 GAS 查询与资源的系统参数  |
+| **GameplayAbilitySystemBundle** | `Bundle` | 显式组合完整 GAS Actor 所需组件 |
+| **EffectSystemParams**     | `SystemParam` | Effect 专用的窄查询与资源边界      |
+| **AbilitySystemParams**    | `SystemParam` | Effect 参数 + Ability 编排状态     |
 | **TargetingDefinition**    | `Arc<struct>` | 有序的目标选择、过滤、排序管线      |
 | **AbilityTargetData**      | `struct`      | 确定性排序的目标抓取结果            |
 | **GameplayExecutionQueue** | `Resource`    | 技能与效果共享的确定性 FIFO         |

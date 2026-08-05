@@ -1,6 +1,9 @@
 # bevy_tools
 
-`bevy_tools` 是一个基于 Bevy ECS 的轻量 Gameplay Ability System 实验项目。当前重点是搭建一套可组合的战斗/技能运行时，包括 GameplayTag、Attribute、GameplayEffect、GameplayAbility、AbilityTask 和 AbilitySystemComponent。
+`bevy_tools` 是一个基于 Bevy ECS 的轻量 Gameplay Ability System 库。它提供一套可组合的战斗/技能运行时，包括 GameplayTag、Attribute、GameplayEffect、GameplayAbility、AbilityTask 和 AbilitySystemComponent。
+
+完整的架构说明、API 导航、运行时流程与扩展指南请参阅
+[项目知识库](./docs/README.md)。
 
 项目依赖：
 
@@ -18,16 +21,23 @@
 - `GameplayAbility`：描述技能定义、消耗、冷却、启动任务和标签规则
 - `AbilityTask`：承担技能执行行为，例如等待、触发事件、应用 effect
 - `AbilitySystemComponent`：挂在角色实体上，管理技能授予、激活和生命周期
+- `GameplayAbilitySystemBundle`：显式组合完整 GAS Actor 的 ASC、Tags、Attributes 与 Active Effects
 
 项目整体思路是：Ability 负责启动和组织行为，Effect 负责真正修改属性或授予状态，Task 负责把行为拆成可 tick、可取消、可扩展的执行单元。
 
 ## 快速检查
 
-常用检查命令：
+运行标签注册示例：
+
+```bash
+cargo run --example tag_registration
+```
+
+提交前检查：
 
 ```bash
 cargo fmt
-cargo clippy
+cargo clippy --all-targets --all-features -- -D warnings
 cargo test
 cargo build
 ```

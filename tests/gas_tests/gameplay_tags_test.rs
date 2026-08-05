@@ -1,4 +1,4 @@
-use super::common_test::{add_tag_to_entity, register_tag, remove_tag_from_entity, test_app};
+use super::support::{add_tag_to_entity, register_tag, remove_tag_from_entity, test_app};
 use bevy::ecs::system::RunSystemOnce;
 use bevy::prelude::*;
 use bevy_tools::{

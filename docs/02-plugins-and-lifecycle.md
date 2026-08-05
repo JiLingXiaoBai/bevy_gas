@@ -2,6 +2,9 @@
 
 ## 插件一览
 
+插件与 FixedUpdate 调度实现在 `src/gas/runtime_plugin.rs`；`lib.rs` 只负责 crate 门面和公共
+重导出。
+
 | 插件                                 | 类型          | 用途                                              |
 | ------------------------------------ | ------------- | ------------------------------------------------- |
 | `UniqueNamePlugin`                   | `Plugin`      | 初始化 `UniqueNamePool` 资源                      |
@@ -14,7 +17,7 @@
 
 ```rust
 use bevy::prelude::*;
-use bevy_tools::*;
+use bevy_tools::prelude::*;
 
 fn main() {
     App::new()
@@ -30,6 +33,9 @@ fn register_initial_tags(mut register: GameplayTagRegister) {
     }
 }
 ```
+
+Plugin 负责资源和调度，不会自动为游戏实体安装 GAS Component。完整角色应显式生成
+`GameplayAbilitySystemBundle`；只需要 Tags 或 Attributes 的实体可以只附加对应 Component。
 
 ## FixedUpdate 系统管线
 

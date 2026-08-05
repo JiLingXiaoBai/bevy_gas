@@ -1,4 +1,4 @@
-use super::common_test::{
+use super::support::{
     ability_task_count, attribute_set, current_value, empty_effect_tags, give_ability,
     instant_add_effect, modifier, register_attribute, run_ability_tasks,
     run_gameplay_execution_queue, spawn_ability_task, spawn_active_ability, spawn_attribute_set,
@@ -8,10 +8,10 @@ use bevy::prelude::*;
 use bevy_tools::{
     AbilityActivationContext, AbilityActivationStatus, AbilityChainContext, AbilitySpecHandle,
     AbilitySystemComponent, AbilityTask, AbilityTaskDef, AbilityTaskEvent, AbilityTaskOnFinished,
-    AbilityTaskOnFinishedDef, ActiveGameplayAbility, AttributeId, EffectContext,
-    EffectDurationTicks, EffectPayload, GameplayAbility, GameplayEffect, GameplayExecutionQueue,
-    Modifier, ModifierMagnitude, ModifierMagnitudeCalculation, ModifierOperation, StackingPolicy,
-    UniqueName,
+    AbilityTaskOnFinishedDef, ActiveGameplayAbility, AttributeId, EffectDurationTicks,
+    EffectPayload, GameplayAbility, GameplayEffect, GameplayExecutionQueue, Modifier,
+    ModifierEvaluationContext, ModifierMagnitude, ModifierMagnitudeCalculation, ModifierOperation,
+    StackingPolicy, UniqueName,
 };
 use std::sync::Arc;
 
@@ -21,7 +21,7 @@ struct QueuedEffectContextMagnitude {
 }
 
 impl ModifierMagnitudeCalculation for QueuedEffectContextMagnitude {
-    fn calculate(&self, context: &EffectContext) -> f32 {
+    fn calculate(&self, context: &dyn ModifierEvaluationContext) -> f32 {
         if context.causer() != Some(self.expected_causer) {
             return 0.0;
         }
