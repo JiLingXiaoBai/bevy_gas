@@ -34,7 +34,6 @@ cargo build
 
 ## TODO
 
-- 目标抓取流程
 - 玩家通过输入激活技能流程
 - 序列化与反序列化
 - 技能消耗支持非 ModifierOperation::Add 的其他消耗类型

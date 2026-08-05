@@ -10,6 +10,7 @@ tests/
 │   ├── attributes_test.rs               # 属性初始化、重算、聚合器
 │   ├── gameplay_effects_test.rs         # 效果应用、堆叠、抑制
 │   ├── gameplay_abilities_test.rs       # 技能激活、任务、链式
+│   ├── gameplay_targeting_test.rs       # 目标管线、确定性、技能集成
 │   ├── active_gameplay_effect_test.rs   # 活跃效果生命周期
 │   ├── queues_test.rs                   # 队列处理、运行条件
 │   └── runtime_paths_test.rs            # 端到端运行时路径
@@ -37,12 +38,16 @@ cargo test test_name
 
 ```bash
 cargo fmt
-cargo clippy
+cargo clippy --all-targets --all-features -- -D warnings
 cargo test
 cargo build
 ```
 
 所有代码应无编译警告，并通过所有测试。
+
+运行时代码按照项目约定不使用 `unwrap()`、`expect()` 和 `panic!()`。测试中的
+`unwrap()` / `expect()` 可作为“此步骤必须成功”的显式断言使用；生产代码必须通过
+`Result`、`?`、`match` 或 `let ... else` 处理失败路径。
 
 ## 编写新测试
 
@@ -97,5 +102,6 @@ for _ in 0..n_ticks {
 | 技能激活   | 冷却、消耗、阻止标签、激活要求               |
 | 技能任务   | WaitTicks 倒计时、on_finished 动作           |
 | 技能链式   | 深度限制、循环检测                           |
+| 目标抓取   | 管线验证、过滤、排序、锥形、限流、多目标效果 |
 | 队列       | Push/pop、每 tick 限制、运行条件             |
 | 清理       | Ending/Cancelled 技能销毁、索引清理          |

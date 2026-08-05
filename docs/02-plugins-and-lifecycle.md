@@ -41,6 +41,10 @@ UpdateEffectTagRequirements
    (推进任务进度)
         │
         ▼
+    Targeting
+   (目标请求管线)
+        │
+        ▼
      Queues
    (效果应用 + 技能激活)
         │
@@ -61,6 +65,7 @@ RecalculateAttributes
 | `EffectTicks`                 | `tick_effect_duration_system`                               | 倒计时并过期持续效果             |
 |                               | `tick_effect_period_system`                                 | 周期性执行修饰器                 |
 | `AbilityTasks`                | `tick_ability_tasks_system`                                 | 推进技能任务 (等待/立即)         |
+| `Targeting`                   | `process_targeting_request_queue_system`                    | 选择、过滤、排序目标并延续请求   |
 | `Queues`                      | `process_gameplay_effect_application_queue_system` (run_if) | 消费效果应用队列 (有工作时)      |
 |                               | `process_ability_activation_queue_system` (run_if)          | 消费技能激活队列 (有工作时)      |
 | `Cleanup`                     | `cleanup_finished_abilities_system`                         | 清理 Ending/Cancelled 状态的技能 |
@@ -72,8 +77,9 @@ RecalculateAttributes
 | Resource                          | 类型       | 默认容量      |
 | --------------------------------- | ---------- | ------------- |
 | `AttributeIdManager`              | `Resource` | ID 256；热点 32 / 冷区 224 |
-| `AbilityActivationQueue`          | `Resource` | 每 tick 64 个 |
-| `GameplayEffectApplicationQueue`  | `Resource` | 每 tick 64 个 |
+| `AbilityActivationQueue`          | `Resource` | 每 tick 128 个 |
+| `GameplayEffectApplicationQueue`  | `Resource` | 每 tick 256 个 |
+| `TargetingRequestQueue`            | `Resource` | 每 tick 32 个 |
 | `ActiveGameplayEffectTargetIndex` | `Resource` | —             |
 
 ## 全局设置
@@ -86,6 +92,7 @@ RecalculateAttributes
 | `HOT_ATTRIBUTE_SET_SIZE`                         | 32  | 热点属性区域容量                 |
 | `COLD_ATTRIBUTE_SET_SIZE`                        | 224 | 冷属性区域容量                   |
 | `GAMEPLAY_TAG_SIZE`                              | 512 | 最大 Gameplay 标签数             |
-| `ABILITY_ACTIVATION_QUEUE_MAX_PER_TICK`          | 64  | 每 tick 处理的最大技能激活数     |
-| `GAMEPLAY_EFFECT_APPLICATION_QUEUE_MAX_PER_TICK` | 64  | 每 tick 处理的最大效果应用数     |
+| `ABILITY_ACTIVATION_QUEUE_MAX_PER_TICK`          | 128 | 每 tick 处理的最大技能激活数     |
+| `GAMEPLAY_EFFECT_APPLICATION_QUEUE_MAX_PER_TICK` | 256 | 每 tick 处理的最大效果应用数     |
+| `TARGETING_REQUEST_QUEUE_MAX_PER_TICK`            | 32  | 每 tick 处理的最大目标请求数     |
 | `ABILITY_CHAIN_MAX_DEPTH`                        | 8   | 链式技能激活的最大深度           |

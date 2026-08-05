@@ -33,6 +33,7 @@ pub enum AbilityTaskOnFinishedDef {
     EndAbility,
     EmitEvent { event_id: UniqueName },
     ApplyGameplayEffectToTarget { effect: Arc<GameplayEffect> },
+    ApplyGameplayEffectToTargets { effect: Arc<GameplayEffect> },
     ActivateAbility { handle: AbilitySpecHandle },
 }
 ```
@@ -43,6 +44,7 @@ pub enum AbilityTaskOnFinishedDef {
 | `EndAbility`                  | 将父技能状态设为 `Ending`             |
 | `EmitEvent`                   | 触发 `AbilityTaskEvent`（Bevy Event） |
 | `ApplyGameplayEffectToTarget` | 向目标队列一个 Gameplay 效果          |
+| `ApplyGameplayEffectToTargets`| 向 Target Data 中每个实体队列效果      |
 | `ActivateAbility`             | 队列一个链式技能激活                  |
 
 ## 运行时任务 (`AbilityTask`)

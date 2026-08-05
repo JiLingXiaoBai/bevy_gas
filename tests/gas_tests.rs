@@ -16,6 +16,9 @@ mod gameplay_effects_test;
 #[path = "gas_tests/gameplay_tags_test.rs"]
 mod gameplay_tags_test;
 
+#[path = "gas_tests/gameplay_targeting_test.rs"]
+mod gameplay_targeting_test;
+
 #[path = "gas_tests/queues_test.rs"]
 mod queues_test;
 

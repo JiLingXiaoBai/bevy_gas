@@ -3,6 +3,7 @@ pub mod attributes;
 pub mod gameplay_abilities;
 pub mod gameplay_effects;
 pub mod gameplay_tags;
+pub mod gameplay_targeting;
 pub mod modifiers;
 pub mod settings;
 
@@ -11,5 +12,6 @@ pub use attributes::*;
 pub use gameplay_abilities::*;
 pub use gameplay_effects::*;
 pub use gameplay_tags::*;
+pub use gameplay_targeting::*;
 pub use modifiers::*;
 pub use settings::*;

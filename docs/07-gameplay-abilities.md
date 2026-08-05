@@ -126,6 +126,7 @@ pub struct AbilityActivationContext {
     instigator: Entity,
     causer: Option<Entity>,
     source_snapshot: Option<AttributeSetSnapshot>,
+    target_data: Option<AbilityTargetData>,
     reason: AbilityActivationReason,
 }
 
@@ -142,6 +143,10 @@ pub enum AbilityActivationReason {
 `causer` 表示直接造成技能行为的可选物理实体。两者都会沿链式技能激活继承，并传播到
 技能产生的 `EffectPayload`；消耗、冷却、来源属性和来源标签仍始终从技能的 `source`
 读取。
+
+`target_data` 保存目标抓取模块返回的完整有序目标集合。旧 `target: Entity` 继续表示首要
+目标；存在 Target Data 时，激活效果会逐个应用到其中的实体。详见
+[15 — Gameplay 目标抓取](./15-gameplay-targeting.md)。
 
 ### `AbilityChainContext`
 
@@ -208,7 +213,7 @@ Active ──► Ending ──► (销毁)
 #[derive(Resource)]
 pub struct AbilityActivationQueue {
     requests: VecDeque<AbilityActivationRequest>,
-    max_activations_per_tick: usize,  // 默认：64
+    max_activations_per_tick: usize,  // 默认：128
     next_chain_id: u64,
 }
 ```

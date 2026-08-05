@@ -66,9 +66,21 @@ impl AbilityTaskEvent {
 pub enum AbilityTaskOnFinishedDef {
     None,
     EndAbility,
-    EmitEvent { event_id: UniqueName },
-    ApplyGameplayEffectToTarget { effect: Arc<GameplayEffect> },
-    ActivateAbility { handle: AbilitySpecHandle },
+    EmitEvent {
+        event_id: UniqueName,
+    },
+    ApplyGameplayEffectToTarget {
+        effect: Arc<GameplayEffect>,
+    },
+    /// Applies an effect to every entity in the activation target data.
+    ///
+    /// Falls back to the ability's legacy single target when no target data is attached.
+    ApplyGameplayEffectToTargets {
+        effect: Arc<GameplayEffect>,
+    },
+    ActivateAbility {
+        handle: AbilitySpecHandle,
+    },
 }
 
 #[derive(Clone)]
@@ -139,6 +151,14 @@ impl AbilityTaskOnFinishedDef {
                     level,
                 }
             }
+            AbilityTaskOnFinishedDef::ApplyGameplayEffectToTargets { effect } => {
+                AbilityTaskOnFinished::ApplyGameplayEffectToTargets {
+                    source,
+                    fallback_target: target,
+                    effect: effect.clone(),
+                    level,
+                }
+            }
             AbilityTaskOnFinishedDef::ActivateAbility { handle } => {
                 AbilityTaskOnFinished::ActivateAbility {
                     source,
@@ -169,6 +189,12 @@ pub enum AbilityTaskOnFinished {
     ApplyGameplayEffect {
         source: Entity,
         target: Entity,
+        effect: Arc<GameplayEffect>,
+        level: u32,
+    },
+    ApplyGameplayEffectToTargets {
+        source: Entity,
+        fallback_target: Entity,
         effect: Arc<GameplayEffect>,
         level: u32,
     },
@@ -312,6 +338,22 @@ pub fn tick_ability_tasks_system(
                 let payload =
                     effect_payload_from_activation_context(source, level, &active_context);
                 effect_queue.push_application(target, effect, payload);
+            }
+            AbilityTaskOnFinished::ApplyGameplayEffectToTargets {
+                source,
+                fallback_target,
+                effect,
+                level,
+            } => {
+                let payload =
+                    effect_payload_from_activation_context(source, level, &active_context);
+                if let Some(target_data) = active_context.get_target_data() {
+                    for target in target_data.entities() {
+                        effect_queue.push_application(target, effect.clone(), payload.clone());
+                    }
+                } else {
+                    effect_queue.push_application(fallback_target, effect, payload);
+                }
             }
         }
 

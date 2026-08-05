@@ -276,7 +276,7 @@ impl StackingPolicy {
     }
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct TagRequirements {
     require_all: Vec<GameplayTag>,
     ignore_any: Vec<GameplayTag>,

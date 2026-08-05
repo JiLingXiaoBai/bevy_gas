@@ -47,8 +47,13 @@
 ### 错误处理
 
 - 优先使用 `Result` 返回错误。
-- 除非明确确认不会失败，否则不要使用 `unwrap()` 或 `expect()`。
-- Library 代码中禁止主动 `panic!()`。
+- `src/`、示例及其他运行时代码中禁止使用 `unwrap()`、`expect()` 和 `panic!()`。
+- 可恢复错误使用 `Result` 和 `?` 传播；可选值使用 `let ... else`、`match`、
+  `ok_or()` / `ok_or_else()` 或安全默认值显式处理。
+- 内部不变量优先使用 `debug_assert!()` 记录开发期错误，但面向外部输入、配置、容量和
+  ECS 状态的失败必须返回具体错误，不得依赖断言。
+- 测试代码允许使用 `unwrap()` / `expect()` 作为明确的成功断言，因为测试失败本就应当
+  立即终止；不得将这种写法复制到运行时代码。
 
 ### 所有权与内存
 
@@ -137,7 +142,7 @@ Gameplay 逻辑应尽可能保持确定性。
 
 ```bash
 cargo fmt
-cargo clippy
+cargo clippy --all-targets --all-features -- -D warnings
 cargo test
 cargo build
 ```

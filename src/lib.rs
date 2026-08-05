@@ -40,6 +40,7 @@ pub enum GameplayAbilitySystemSet {
     UpdateEffectTagRequirements,
     EffectTicks,
     AbilityTasks,
+    Targeting,
     Queues,
     Cleanup,
     RecalculateAttributes,
@@ -50,14 +51,18 @@ impl Plugin for GameplayAbilitySystemRuntimePlugin {
         app.init_resource::<AttributeIdManager>()
             .init_resource::<AbilityActivationQueue>()
             .init_resource::<GameplayEffectApplicationQueue>()
+            .init_resource::<TargetingRequestQueue>()
             .init_resource::<ActiveGameplayEffectTargetIndex>()
             .configure_sets(
                 FixedUpdate,
                 (
                     GameplayAbilitySystemSet::UpdateEffectTagRequirements
                         .before(GameplayAbilitySystemSet::EffectTicks),
-                    GameplayAbilitySystemSet::EffectTicks.before(GameplayAbilitySystemSet::Queues),
-                    GameplayAbilitySystemSet::AbilityTasks.before(GameplayAbilitySystemSet::Queues),
+                    GameplayAbilitySystemSet::EffectTicks
+                        .before(GameplayAbilitySystemSet::Targeting),
+                    GameplayAbilitySystemSet::AbilityTasks
+                        .before(GameplayAbilitySystemSet::Targeting),
+                    GameplayAbilitySystemSet::Targeting.before(GameplayAbilitySystemSet::Queues),
                     GameplayAbilitySystemSet::Queues.before(GameplayAbilitySystemSet::Cleanup),
                     GameplayAbilitySystemSet::Cleanup
                         .before(GameplayAbilitySystemSet::RecalculateAttributes),
@@ -77,6 +82,12 @@ impl Plugin for GameplayAbilitySystemRuntimePlugin {
             .add_systems(
                 FixedUpdate,
                 tick_ability_tasks_system.in_set(GameplayAbilitySystemSet::AbilityTasks),
+            )
+            .add_systems(
+                FixedUpdate,
+                process_targeting_request_queue_system
+                    .run_if(targeting_request_queue_has_work)
+                    .in_set(GameplayAbilitySystemSet::Targeting),
             )
             .add_systems(
                 FixedUpdate,

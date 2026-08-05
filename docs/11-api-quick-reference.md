@@ -104,6 +104,27 @@
 | `process_gameplay_effect_application_queue_system` | `fn`         | 系统：消费队列                               |
 | `gameplay_effect_application_queue_has_work`       | `fn`         | 队列系统的运行条件                           |
 
+### Gameplay 目标抓取
+
+| 项                                      | 类型        | 说明                                      |
+| --------------------------------------- | ----------- | ----------------------------------------- |
+| `Targetable`                            | `Component` | 标记可被非自身 Selection 选中的实体       |
+| `AbilityTargetHit`                      | `struct`    | 实体、世界位置和可选表面法线              |
+| `AbilityTargetData`                     | `struct`    | 带原点的确定性有序命中集合                |
+| `TargetingDefinition`                   | `struct`    | 已验证的有序目标操作管线                  |
+| `TargetingOperation`                    | `enum`      | Selection / Filter / Sort / Limit 操作    |
+| `TargetingSortOrder`                    | `enum`      | Ascending / Descending                    |
+| `TargetingDefinitionError`              | `enum`      | 非法管线配置                              |
+| `TargetingInput`                        | `struct`    | 捕获的原点、方向和显式目标                |
+| `TargetingError`                        | `enum`      | 运行时抓取失败                            |
+| `TargetingRequestId`                    | `struct`    | 队列请求的稳定标识                        |
+| `TargetingContinuation`                 | `enum`      | 只发结果或继续激活技能                    |
+| `TargetingResultEvent`                  | `Event`     | 请求完成后的结果事件                      |
+| `TargetingRequestQueue`                 | `Resource`  | 有每 tick 上限的 FIFO 请求队列            |
+| `acquire_targets`                       | `fn`        | 同步执行目标操作管线                      |
+| `process_targeting_request_queue_system`| `fn`        | 系统：处理请求并分派 continuation         |
+| `targeting_request_queue_has_work`      | `fn`        | 队列系统的运行条件                        |
+
 ### Gameplay 技能
 
 | 项                         | 类型         | 说明                                                  |
@@ -115,7 +136,7 @@
 | `ActiveGameplayAbility`    | `Component`  | 运行时活跃技能                                        |
 | `ActiveAbilityHandle`      | `type alias` | 活跃技能的 `Entity` 句柄                              |
 | `AbilityActivationStatus`  | `enum`       | Active / Ending / Cancelled                           |
-| `AbilityActivationContext` | `struct`     | 激活元数据                                            |
+| `AbilityActivationContext` | `struct`     | 激活元数据及可选 `AbilityTargetData`                  |
 | `AbilityActivationReason`  | `enum`       | Direct / Input / Chained / TaskEvent / GameplayEffect |
 | `AbilityChainContext`      | `struct`     | 链追踪（深度 + 循环检测）                             |
 | `AbilityChainError`        | `enum`       | 链验证错误                                            |

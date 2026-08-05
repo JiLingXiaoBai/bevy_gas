@@ -20,6 +20,7 @@
 | 12  | [使用模式与示例](./12-usage-patterns.md)               | 常见模式：直伤、DoT、Buff、连招、事件驱动   |
 | 13  | [测试指南](./13-testing-guide.md)                      | 测试组织、模式、提交前检查清单              |
 | 14  | [扩展系统](./14-extending-the-system.md)               | 如何新增操作、策略、任务、系统              |
+| 15  | [Gameplay 目标抓取](./15-gameplay-targeting.md)         | 目标管线、队列、多目标技能、确定性           |
 
 ## 快速开始
 
@@ -59,6 +60,8 @@ fn setup(mut tag_register: GameplayTagRegister, mut attr_register: AttributeIdRe
 | **GameplayAbility**        | `Arc<struct>` | 技能定义（冷却、消耗、任务）       |
 | **AbilitySystemComponent** | `Component`   | 每实体技能授予与激活管理           |
 | **AbilitySystemParams**    | `SystemParam` | 聚合所有 GAS 查询与资源的系统参数  |
+| **TargetingDefinition**    | `Arc<struct>` | 有序的目标选择、过滤、排序管线      |
+| **AbilityTargetData**      | `struct`      | 确定性排序的目标抓取结果            |
 
 ## 数据流
 

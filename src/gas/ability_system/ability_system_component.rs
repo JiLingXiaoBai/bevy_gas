@@ -539,14 +539,21 @@ pub fn try_activate_ability_by_handle(
         });
     }
 
+    let activation_targets = activation_context
+        .get_target_data()
+        .map(|target_data| target_data.entities().collect::<Vec<_>>())
+        .unwrap_or_else(|| vec![target]);
     for effect in ability.get_activation_effects() {
         // Activation effects are best-effort; cost/cooldown commit already decided activation success.
-        let payload = effect_payload_from_activation_context(source, level, &activation_context);
-        if let Err(error) = apply_gameplay_effect(target, effect, params, &payload) {
-            if error.is_rejection() {
-                debug!("ability activation effect was rejected: {error}");
-            } else {
-                error!("ability activation effect failed: {error}");
+        for &activation_target in &activation_targets {
+            let payload =
+                effect_payload_from_activation_context(source, level, &activation_context);
+            if let Err(error) = apply_gameplay_effect(activation_target, effect, params, &payload) {
+                if error.is_rejection() {
+                    debug!("ability activation effect was rejected: {error}");
+                } else {
+                    error!("ability activation effect failed: {error}");
+                }
             }
         }
     }

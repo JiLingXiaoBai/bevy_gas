@@ -240,7 +240,7 @@ pub struct ActiveGameplayEffect {
 #[derive(Resource)]
 pub struct GameplayEffectApplicationQueue {
     requests: VecDeque<GameplayEffectApplicationRequest>,
-    max_applications_per_tick: usize,  // 默认：64
+    max_applications_per_tick: usize,  // 默认：256
 }
 ```
 
