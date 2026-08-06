@@ -6,12 +6,12 @@ use super::support_test::{
 };
 use bevy::prelude::*;
 use bevy_tools::{
-    AbilityActivationContext, AbilityActivationStatus, AbilityChainContext, AbilitySpecHandle,
-    AbilitySystemComponent, AbilityTask, AbilityTaskDef, AbilityTaskEvent, AbilityTaskOnFinished,
-    AbilityTaskOnFinishedDef, ActiveGameplayAbility, AttributeId, EffectDurationTicks,
-    EffectPayload, GameplayAbility, GameplayEffect, GameplayExecutionQueue, Modifier,
-    ModifierEvaluationContext, ModifierMagnitude, ModifierMagnitudeCalculation, ModifierOperation,
-    StackingPolicy, UniqueName,
+    AbilityActivationContext, AbilityActivationReason, AbilityActivationRequest,
+    AbilityActivationStatus, AbilityChainContext, AbilitySpecHandle, AbilitySystemComponent,
+    AbilityTask, AbilityTaskDef, AbilityTaskEvent, AbilityTaskOnFinished, AbilityTaskOnFinishedDef,
+    ActiveGameplayAbility, AttributeId, EffectDurationTicks, EffectPayload, GameplayAbility,
+    GameplayEffect, GameplayExecutionQueue, Modifier, ModifierEvaluationContext, ModifierMagnitude,
+    ModifierMagnitudeCalculation, ModifierOperation, StackingPolicy, UniqueName,
 };
 use std::sync::Arc;
 
@@ -114,6 +114,59 @@ fn gameplay_queue_processes_entire_activation_batch() {
 
     run_gameplay_execution_queue(&mut app);
     assert!(app.world().resource::<GameplayExecutionQueue>().is_empty());
+}
+
+#[test]
+fn ability_activation_request_is_preserved_through_startup() {
+    let mut app = test_app();
+    let source = app
+        .world_mut()
+        .spawn(AbilitySystemComponent::default())
+        .id();
+    let target = app.world_mut().spawn_empty().id();
+    let instigator = app.world_mut().spawn_empty().id();
+    let causer = app.world_mut().spawn_empty().id();
+    let ability = Arc::new(GameplayAbility::new(
+        bevy_tools::AbilityTags::default(),
+        Vec::new(),
+        None,
+        None,
+        Vec::new(),
+        false,
+        false,
+    ));
+    let handle = give_ability(&mut app, source, ability);
+    let chain = AbilityChainContext::root(handle, 42);
+    let context = AbilityActivationContext::direct(source, chain.clone())
+        .with_instigator(instigator)
+        .with_causer(Some(causer));
+
+    app.world_mut()
+        .resource_mut::<GameplayExecutionQueue>()
+        .push(AbilityActivationRequest::new(
+            source, target, handle, context,
+        ));
+    run_gameplay_execution_queue(&mut app);
+
+    let world = app.world_mut();
+    let mut query = world.query::<&ActiveGameplayAbility>();
+    let active_ability = query.single(world).unwrap();
+    assert_eq!(active_ability.get_source(), source);
+    assert_eq!(active_ability.get_target(), target);
+    assert_eq!(active_ability.get_spec_handle(), handle);
+    assert_eq!(
+        active_ability.get_activation_context().get_instigator(),
+        instigator
+    );
+    assert_eq!(
+        active_ability.get_activation_context().get_causer(),
+        Some(causer)
+    );
+    assert_eq!(
+        active_ability.get_activation_context().get_reason(),
+        AbilityActivationReason::Direct
+    );
+    assert_eq!(active_ability.get_chain(), Some(&chain));
 }
 
 #[test]

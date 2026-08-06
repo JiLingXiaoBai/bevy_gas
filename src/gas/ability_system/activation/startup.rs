@@ -4,27 +4,20 @@ use crate::gameplay_abilities::{
     AbilityActivationContext, AbilityActivationStatus, AbilitySpecHandle, AbilityTaskCompletion,
     AbilityTaskDef, ActiveAbilityHandle, ActiveGameplayAbility, dispatch_ability_task_completion,
 };
-use crate::gameplay_execution::GameplayExecutionQueue;
+use crate::gameplay_execution::{AbilityActivationRequest, GameplayExecutionQueue};
 use crate::gameplay_tags::{GameplayTagError, GameplayTagManager};
 use bevy::prelude::*;
-
-pub(super) struct AbilityStartContext {
-    pub(super) source: Entity,
-    pub(super) target: Entity,
-    pub(super) spec_handle: AbilitySpecHandle,
-    pub(super) activation_context: AbilityActivationContext,
-}
 
 impl AbilitySystemComponent {
     pub(super) fn start_ability(
         &mut self,
-        context: AbilityStartContext,
+        request: &AbilityActivationRequest,
         commands: &mut Commands,
         tag_manager: &Res<GameplayTagManager>,
         pending_active_abilities: &mut PendingActiveGameplayAbilities,
     ) -> Result<ActiveAbilityHandle, GameplayTagError> {
         let blocked_tags = self
-            .find_ability_spec(context.spec_handle)
+            .find_ability_spec(request.get_handle())
             .map(|spec| {
                 spec.get_ability()
                     .get_tags()
@@ -35,20 +28,20 @@ impl AbilitySystemComponent {
         self.blocked_ability_tags_mut()
             .add_tags(&blocked_tags, tag_manager)?;
 
-        if let Some(spec) = self.find_ability_spec_mut(context.spec_handle) {
+        if let Some(spec) = self.find_ability_spec_mut(request.get_handle()) {
             spec.increment_active_count();
         }
 
         let active_ability = ActiveGameplayAbility::new(
-            context.source,
-            context.spec_handle,
-            context.target,
+            request.get_source(),
+            request.get_handle(),
+            request.get_target(),
             AbilityActivationStatus::Active,
-            context.activation_context,
+            request.get_context().clone(),
         );
         let mut entity_commands = commands.spawn(active_ability.clone());
         let active_handle = entity_commands.id();
-        entity_commands.set_parent_in_place(context.source);
+        entity_commands.set_parent_in_place(request.get_source());
         pending_active_abilities.insert(active_handle, active_ability);
 
         Ok(active_handle)

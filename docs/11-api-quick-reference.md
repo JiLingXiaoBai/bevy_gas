@@ -157,7 +157,7 @@ ASC、Active Ability 或 `Commands`。`AbilitySystemParams` 内嵌它并实现 `
 | ------------------------------------------- | ---------- | ------------------------------------- |
 | `GameplayExecutionQueue`                    | `Resource` | 技能与效果共享的跨类型 FIFO           |
 | `GameplayExecutionRequest`                  | `enum`     | ActivateAbility / ApplyGameplayEffect |
-| `AbilityActivationRequest`                  | `struct`   | 捕获后的技能激活请求                  |
+| `AbilityActivationRequest`                  | `struct`   | 激活全过程共享的标准输入              |
 | `GameplayEffectApplicationRequest`          | `struct`   | 捕获后的效果应用请求                  |
 | `process_gameplay_execution_queue_system`   | `fn`       | 系统：完整 drain 并按需收敛 Tag 条件  |
 | `gameplay_execution_queue_has_work`         | `fn`       | 统一 FIFO 的运行条件                   |

@@ -216,8 +216,9 @@ pub fn cancel_ability(
 
 ## 生命周期与 Cleanup
 
-启动技能时，ASC 写入阻止标签、递增规格 `active_count`，并通过 `Commands` 生成
-`ActiveGameplayAbility`。结束路径需要对称移除阻止标签和递减计数。
+启动技能时，ASC 直接借用经过校验的 `AbilityActivationRequest`，写入阻止标签、递增规格
+`active_count`，并通过 `Commands` 生成 `ActiveGameplayAbility`。队列与同步入口使用同一个
+请求类型，不再维护字段重复的内部 Start Context。结束路径需要对称移除阻止标签和递减计数。
 
 `cleanup_finished_abilities_system` 位于 `GameplayAbilitySystemSet::Cleanup`：
 

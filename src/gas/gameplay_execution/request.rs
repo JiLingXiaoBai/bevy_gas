@@ -3,7 +3,10 @@ use crate::gameplay_effects::{EffectPayload, GameplayEffect};
 use bevy::prelude::*;
 use std::sync::Arc;
 
-/// Captured input for one queued ability activation.
+/// Canonical captured input for one ability activation.
+///
+/// Queued and synchronous activation paths pass this request unchanged through validation and
+/// ability startup so the two paths share the same source, target, handle, and context semantics.
 #[derive(Clone)]
 pub struct AbilityActivationRequest {
     source: Entity,

@@ -52,6 +52,11 @@ pub struct AbilityActivationRequest {
 `AbilityActivationContext::get_target_data()`。Targeting continuation 会把它设为
 `primary_entity()`；直接入队时不做一致性验证，调用方必须自行保持两者一致。
 
+这是整个激活流程的唯一完整输入类型：队列 resolver 直接把请求移动到 Ability System，
+独立同步入口也会先把参数归一为同一请求。校验、commit 和 ASC startup 共享其中的数据，
+不会再复制成字段相同的内部 Start Context；只有创建 `ActiveGameplayAbility` 时才克隆需要长期
+保存的 `AbilityActivationContext`。
+
 ### `GameplayEffectApplicationRequest`
 
 捕获效果定义、目标和应用上下文：

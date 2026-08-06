@@ -173,10 +173,10 @@ pub fn try_activate_ability_by_handle(
 ) -> Result<(), AbilityActivationError>;
 ```
 
-该入口先收敛 Active Effect Requirement，再使用一个局部 `GameplayExecutionQueue` 执行根激活，
-并在返回前 drain 根激活的 startup `Instant` 派生请求。它不会查看或消费全局队列，所以不要在
-同一逻辑阶段把它与尚未消费的全局请求混用。派生请求失败由 resolver 记录日志，不会改写已经
-成功的根激活返回值。
+该入口先把参数归一为 `AbilityActivationRequest`，收敛 Active Effect Requirement，再使用一个
+局部 `GameplayExecutionQueue` 执行根激活，并在返回前 drain 根激活的 startup `Instant`
+派生请求。它不会查看或消费全局队列，所以不要在同一逻辑阶段把它与尚未消费的全局请求混用。
+派生请求失败由 resolver 记录日志，不会改写已经成功的根激活返回值。
 
 “同步”只表示这条逻辑路径在返回前完成本地结算，不表示 `Commands` 已 flush，也不表示事务式
 回滚。

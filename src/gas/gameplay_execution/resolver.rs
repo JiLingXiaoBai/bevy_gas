@@ -17,14 +17,9 @@ pub(crate) fn drain_gameplay_execution_queue(
     while let Some(request) = execution_queue.pop() {
         match request {
             GameplayExecutionRequest::ActivateAbility(request) => {
-                if let Err(error) = execute_ability_activation_in_batch(
-                    request.get_source(),
-                    request.get_target(),
-                    request.get_handle(),
-                    request.get_context().clone(),
-                    execution_queue,
-                    params,
-                ) {
+                if let Err(error) =
+                    execute_ability_activation_in_batch(request, execution_queue, params)
+                {
                     if error.is_rejection() {
                         debug!("queued ability activation was rejected: {error}");
                     } else {

@@ -5,7 +5,7 @@ use super::super::commit::{
 use super::super::lifecycle::{cancel_active_abilities_with_tags, finish_ability_with_status};
 use super::super::params::AbilitySystemParams;
 use super::error::{AbilityActivationError, ability_activation_failed};
-use super::startup::{AbilityStartContext, StartupAbilityTaskContext, start_startup_ability_tasks};
+use super::startup::{StartupAbilityTaskContext, start_startup_ability_tasks};
 use super::validation::passes_ability_activation_requirements;
 use crate::gameplay_abilities::{
     AbilityActivationContext, AbilityActivationStatus, AbilitySpecHandle,
@@ -14,7 +14,9 @@ use crate::gameplay_effects::{
     apply_gameplay_effect_in_batch, resolve_active_effect_tag_requirements,
     resolve_active_effect_tag_requirements_if_dirty,
 };
-use crate::gameplay_execution::{GameplayExecutionQueue, drain_gameplay_execution_queue};
+use crate::gameplay_execution::{
+    AbilityActivationRequest, GameplayExecutionQueue, drain_gameplay_execution_queue,
+};
 use crate::gameplay_tags::tag_bits_from_tags_with_manager;
 use bevy::prelude::*;
 
@@ -42,10 +44,7 @@ pub fn try_activate_ability_by_handle(
         .retain_unapplied(&params.active_ability_query);
     let mut execution_queue = GameplayExecutionQueue::default();
     let result = execute_ability_activation_in_batch(
-        source,
-        target,
-        handle,
-        activation_context,
+        AbilityActivationRequest::new(source, target, handle, activation_context),
         &mut execution_queue,
         params,
     );
@@ -54,13 +53,15 @@ pub fn try_activate_ability_by_handle(
 }
 
 pub(crate) fn execute_ability_activation_in_batch(
-    source: Entity,
-    target: Entity,
-    handle: AbilitySpecHandle,
-    activation_context: AbilityActivationContext,
+    request: AbilityActivationRequest,
     execution_queue: &mut GameplayExecutionQueue,
     params: &mut AbilitySystemParams,
 ) -> Result<(), AbilityActivationError> {
+    let source = request.get_source();
+    let target = request.get_target();
+    let handle = request.get_handle();
+    let activation_context = request.get_context();
+
     if let Some(chain) = activation_context.get_chain()
         && let Err(error) = chain.validate_for_handle(handle)
     {
@@ -104,7 +105,7 @@ pub(crate) fn execute_ability_activation_in_batch(
         source,
         &ability,
         level,
-        Some(&activation_context),
+        Some(activation_context),
         params,
     ) {
         Ok(plans) => plans,
@@ -147,12 +148,7 @@ pub(crate) fn execute_ability_activation_in_batch(
             );
         };
         match asc.start_ability(
-            AbilityStartContext {
-                source,
-                target,
-                spec_handle: handle,
-                activation_context: activation_context.clone(),
-            },
+            &request,
             &mut params.commands,
             &params.effects.tag_manager,
             &mut params.pending_active_abilities,
@@ -200,8 +196,7 @@ pub(crate) fn execute_ability_activation_in_batch(
         .unwrap_or_else(|| vec![target]);
     for effect in ability.get_activation_effects() {
         for &activation_target in &activation_targets {
-            let payload =
-                effect_payload_from_activation_context(source, level, &activation_context);
+            let payload = effect_payload_from_activation_context(source, level, activation_context);
             if let Err(error) = apply_gameplay_effect_in_batch(
                 activation_target,
                 effect,
@@ -226,7 +221,7 @@ pub(crate) fn execute_ability_activation_in_batch(
             target,
             spec_handle: handle,
             level,
-            activation_context: &activation_context,
+            activation_context,
         },
         execution_queue,
         params,
