@@ -1,4 +1,4 @@
-use super::support::{
+use super::support_test::{
     active_effect_handles, add_modifier, apply_effect, apply_effect_result, attribute_set,
     current_value, empty_effect_tags, instant_add_effect, modifier, register_attribute,
     register_hot_attribute, run_effect_duration_tick, spawn_attribute_set, test_app,

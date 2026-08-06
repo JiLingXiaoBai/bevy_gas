@@ -4,30 +4,30 @@
 
 ```text
 tests/
-├── gas_tests.rs                         # GAS 集成测试 crate 门面
-├── gas_tests/
-│   ├── support.rs                       # App、builder、tick 和查询 helper
-│   ├── effects.rs                       # Effect 行为测试门面
-│   ├── effects/
-│   │   ├── application.rs               # 应用校验、错误与执行边界
-│   │   ├── stacking.rs                  # 堆叠、上限与刷新策略
-│   │   ├── requirements.rs              # 免疫、抑制与固定点收敛
-│   │   ├── ticking.rs                   # Duration 与 Period tick
-│   │   └── removal.rs                   # 显式与标签驱动移除
-│   ├── abilities.rs                     # Ability 行为测试门面
-│   ├── abilities/
-│   │   ├── activation.rs                # 激活条件与实例策略
-│   │   ├── commit.rs                    # Cost 与 Cooldown
-│   │   ├── lifecycle.rs                 # 取消、结束与清理
-│   │   ├── tasks.rs                     # WaitTicks 与任务结束
-│   │   └── chaining.rs                  # 链上下文、深度与循环限制
+├── gas_test.rs                         # GAS 集成测试 crate 门面
+├── gas_test/
+│   ├── support_test.rs                       # App、builder、tick 和查询 helper
+│   ├── effects_test.rs                       # Effect 行为测试门面
+│   ├── effects_test/
+│   │   ├── application_test.rs               # 应用校验、错误与执行边界
+│   │   ├── stacking_test.rs                  # 堆叠、上限与刷新策略
+│   │   ├── requirements_test.rs              # 免疫、抑制与固定点收敛
+│   │   ├── ticking_test.rs                   # Duration 与 Period tick
+│   │   └── removal_test.rs                   # 显式与标签驱动移除
+│   ├── abilities_test.rs                     # Ability 行为测试门面
+│   ├── abilities_test/
+│   │   ├── activation_test.rs                # 激活条件与实例策略
+│   │   ├── commit_test.rs                    # Cost 与 Cooldown
+│   │   ├── lifecycle_test.rs                 # 取消、结束与清理
+│   │   ├── tasks_test.rs                     # WaitTicks 与任务结束
+│   │   └── chaining_test.rs                  # 链上下文、深度与循环限制
 │   ├── attributes_test.rs               # 属性注册、冷热槽位、重算与聚合
 │   ├── gameplay_tags_test.rs            # 标签注册、位集与引用计数
 │   ├── gameplay_targeting_test.rs       # 目标管线、确定性与技能集成
 │   ├── queues_test.rs                   # 跨类型 FIFO、运行条件与批次语义
 │   └── runtime_paths_test.rs            # Plugin 管线、Bundle 与公共运行路径
-├── randoms_tests.rs                     # RNG 种子确定性与概率边界
-└── unique_names_tests.rs                # 驻留复用与名称区分
+├── randoms_test.rs                     # RNG 种子确定性与概率边界
+└── unique_names_test.rs                # 驻留复用与名称区分
 
 examples/
 └── tag_registration.rs                 # 完整 App 中的标签注册
@@ -37,6 +37,13 @@ Effect 与 Ability 测试按外部行为拆分，不镜像私有实现文件。�
 改名；新增行为时应放入最接近其 Gameplay 语义的模块。跨领域执行顺序、Bundle 组合和公共
 导入路径优先放在 `runtime_paths_test.rs` 或 `queues_test.rs`。
 
+### 测试路径命名约定
+
+`tests/` 下的所有文件和子目录都必须以 `_test` 结尾。文件扩展名不参与后缀判断，例如
+`queues_test.rs` 合规，而 `queues.rs` 和 `queues_tests.rs` 均不合规。新增或移动测试时，应同步
+更新 `#[path = "..."]`、`mod` 声明、模块导入、文档路径以及 `cargo test --test <target>` 中的
+集成测试目标名，避免文件路径与 Rust 模块名不一致。
+
 ## 运行命令
 
 ```bash
@@ -44,20 +51,20 @@ Effect 与 Ability 测试按外部行为拆分，不镜像私有实现文件。�
 cargo test
 
 # GAS integration-test crate
-cargo test --test gas_tests
+cargo test --test gas_test
 
 # One nested behavior module
-cargo test --test gas_tests effects::requirements
+cargo test --test gas_test effects_test::requirements_test
 
 # Supporting infrastructure only
-cargo test --test randoms_tests
-cargo test --test unique_names_tests
+cargo test --test randoms_test
+cargo test --test unique_names_test
 
 # One test-name filter with captured output visible
 cargo test test_name -- --nocapture
 
 # List discoverable tests before choosing a filter
-cargo test --test gas_tests -- --list
+cargo test --test gas_test -- --list
 
 # Compile or run the checked example
 cargo check --example tag_registration
@@ -87,7 +94,7 @@ cargo build
 
 ## 测试 App 与 Fixture
 
-集成测试的通用 App 与当前 `support.rs` 保持一致：
+集成测试的通用 App 与当前 `support_test.rs` 保持一致：
 
 ```rust
 use bevy::prelude::*;

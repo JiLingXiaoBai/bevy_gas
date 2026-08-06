@@ -247,12 +247,12 @@ Active ──► Ending ──► Cleanup/despawn
 
 | 测试文件 | 覆盖范围 |
 | -------- | -------- |
-| `tests/gas_tests/abilities/activation.rs` | 多实例、required/blocked tag、阻止标签和缺失规格 |
-| `tests/gas_tests/abilities/commit.rs` | Cost、Cooldown、准备失败与 activation effect 容错 |
-| `tests/gas_tests/abilities/chaining.rs` | 循环/深度保护、上下文继承和 pending 父技能取消 |
-| `tests/gas_tests/abilities/lifecycle.rs` | 标签取消、活跃计数、清除规格和清理幂等性 |
-| `tests/gas_tests/runtime_paths_test.rs` | 插件阶段、startup `Instant` 与 Bundle 组合 |
-| `tests/gas_tests/gameplay_targeting_test.rs` | Target Data 与多目标 activation effects |
+| `tests/gas_test/abilities_test/activation_test.rs` | 多实例、required/blocked tag、阻止标签和缺失规格 |
+| `tests/gas_test/abilities_test/commit_test.rs` | Cost、Cooldown、准备失败与 activation effect 容错 |
+| `tests/gas_test/abilities_test/chaining_test.rs` | 循环/深度保护、上下文继承和 pending 父技能取消 |
+| `tests/gas_test/abilities_test/lifecycle_test.rs` | 标签取消、活跃计数、清除规格和清理幂等性 |
+| `tests/gas_test/runtime_paths_test.rs` | 插件阶段、startup `Instant` 与 Bundle 组合 |
+| `tests/gas_test/gameplay_targeting_test.rs` | Target Data 与多目标 activation effects |
 
 继续阅读：[08 — 技能任务](./08-ability-tasks.md)、
 [09 — 技能系统组件](./09-ability-system-component.md)、

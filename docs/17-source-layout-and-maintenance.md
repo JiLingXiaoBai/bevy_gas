@@ -258,34 +258,36 @@ commit 和生命周期编排的流程：
 
 ```text
 tests/
-├── gas_tests.rs
-├── gas_tests/
-│   ├── support.rs
+├── gas_test.rs
+├── gas_test/
+│   ├── support_test.rs
 │   ├── attributes_test.rs
 │   ├── gameplay_tags_test.rs
 │   ├── gameplay_targeting_test.rs
 │   ├── queues_test.rs
 │   ├── runtime_paths_test.rs
-│   ├── effects.rs
-│   ├── effects/
-│   │   ├── application.rs
-│   │   ├── removal.rs
-│   │   ├── requirements.rs
-│   │   ├── stacking.rs
-│   │   └── ticking.rs
-│   ├── abilities.rs
-│   └── abilities/
-│       ├── activation.rs
-│       ├── chaining.rs
-│       ├── commit.rs
-│       ├── lifecycle.rs
-│       └── tasks.rs
-├── randoms_tests.rs
-└── unique_names_tests.rs
+│   ├── effects_test.rs
+│   ├── effects_test/
+│   │   ├── application_test.rs
+│   │   ├── removal_test.rs
+│   │   ├── requirements_test.rs
+│   │   ├── stacking_test.rs
+│   │   └── ticking_test.rs
+│   ├── abilities_test.rs
+│   └── abilities_test/
+│       ├── activation_test.rs
+│       ├── chaining_test.rs
+│       ├── commit_test.rs
+│       ├── lifecycle_test.rs
+│       └── tasks_test.rs
+├── randoms_test.rs
+└── unique_names_test.rs
 ```
 
-`support.rs` 只保存 App/注册/builder/tick/query 等共享 fixture，不隐藏业务断言。需要 World、
+`support_test.rs` 只保存 App/注册/builder/tick/query 等共享 fixture，不隐藏业务断言。需要 World、
 调度顺序、公开 API 或跨模块可见性的场景使用集成测试；纯算法和私有不变量可以就近写单元测试。
+`tests/` 下所有文件的文件名主干和所有子目录名统一以 `_test` 结尾；重命名时必须同步更新模块
+声明、`#[path]`、导入路径、文档导航和 Cargo 集成测试目标名。
 
 ## 修改路由
 
@@ -294,9 +296,9 @@ tests/
 | Tag 注册/匹配/引用计数 | `gameplay_tags/` | `gameplay_tags_test.rs` | 03 |
 | Attribute 注册/存储/重算 | `attributes/` | `attributes_test.rs` | 04 |
 | Modifier 求值/聚合顺序 | `modifiers/`、`attributes/aggregation.rs` | `attributes_test.rs`、`runtime_paths_test.rs` | 05 |
-| Effect 应用/堆叠/条件/tick | `gameplay_effects/` | `effects/*` | 06 |
-| Ability 定义/实例/task | `gameplay_abilities/` | `abilities/*` | 07、08 |
-| ASC 激活/commit/lifecycle | `ability_system/` | `abilities/*` | 09 |
+| Effect 应用/堆叠/条件/tick | `gameplay_effects/` | `effects_test/*` | 06 |
+| Ability 定义/实例/task | `gameplay_abilities/` | `abilities_test/*` | 07、08 |
+| ASC 激活/commit/lifecycle | `ability_system/` | `abilities_test/*` | 09 |
 | 目标管线与队列 | `gameplay_targeting/` | `gameplay_targeting_test.rs` | 15 |
 | 统一 FIFO 与阶段可见性 | `gameplay_execution/`、`runtime_plugin.rs` | `queues_test.rs`、`runtime_paths_test.rs` | 02、16 |
 | 公共导出/prelude | 各门面、`gas.rs`、`lib.rs`、`prelude.rs` | 全目标编译/rustdoc | 11、17 |

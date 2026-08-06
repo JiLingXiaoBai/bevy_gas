@@ -320,11 +320,11 @@ API。运行时如果已经存在全局排队请求，不要在同一逻辑阶�
 
 相关集成测试位于：
 
-- `tests/gas_tests/queues_test.rs`：完整 drain、同类型和跨类型 FIFO；
-- `tests/gas_tests/runtime_paths_test.rs`：阶段边界、当前 tick 与下一 tick；
-- `tests/gas_tests/effects/requirements.rs` 与 `stacking.rs`：请求间 Requirement、免疫、堆叠和跨实体 Tag 可见性；
-- `tests/gas_tests/abilities/chaining.rs` 与 `lifecycle.rs`：startup Instant、链式激活和 deferred cancellation。
-- `tests/gas_tests/gameplay_targeting_test.rs`：Targeting FIFO、direct continuation 与多目标请求。
+- `tests/gas_test/queues_test.rs`：完整 drain、同类型和跨类型 FIFO；
+- `tests/gas_test/runtime_paths_test.rs`：阶段边界、当前 tick 与下一 tick；
+- `tests/gas_test/effects_test/requirements_test.rs` 与 `stacking_test.rs`：请求间 Requirement、免疫、堆叠和跨实体 Tag 可见性；
+- `tests/gas_test/abilities_test/chaining_test.rs` 与 `lifecycle_test.rs`：startup Instant、链式激活和 deferred cancellation。
+- `tests/gas_test/gameplay_targeting_test.rs`：Targeting FIFO、direct continuation 与多目标请求。
 
 继续阅读：
 

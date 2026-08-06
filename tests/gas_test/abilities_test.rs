@@ -1,4 +1,4 @@
-use crate::support::{
+use crate::support_test::{
     ability_task_count, activate_ability, activate_ability_result, activate_ability_with_context,
     active_ability_context_for_spec, active_ability_count, active_ability_entity_for_spec,
     add_tag_to_entity, attribute_set, current_value, effect_tags, empty_effect_tags, give_ability,
@@ -44,13 +44,13 @@ impl ModifierMagnitudeCalculation for ContextPayloadMagnitude {
     }
 }
 
-#[path = "abilities/activation.rs"]
-mod activation;
-#[path = "abilities/chaining.rs"]
-mod chaining;
-#[path = "abilities/commit.rs"]
-mod commit;
-#[path = "abilities/lifecycle.rs"]
-mod lifecycle;
-#[path = "abilities/tasks.rs"]
-mod tasks;
+#[path = "abilities_test/activation_test.rs"]
+mod activation_test;
+#[path = "abilities_test/chaining_test.rs"]
+mod chaining_test;
+#[path = "abilities_test/commit_test.rs"]
+mod commit_test;
+#[path = "abilities_test/lifecycle_test.rs"]
+mod lifecycle_test;
+#[path = "abilities_test/tasks_test.rs"]
+mod tasks_test;

@@ -51,7 +51,7 @@ Modifier 是独立共享领域：Effect 负责把定义求值为 `ModifierSpec`�
 3. 在 `src/gas/gameplay_effects/active_gameplay_effect/execution.rs` 的
    `execute_stack_existing_effect()` 更新执行逻辑；
 4. 检查 Duration、Period、Magnitude、Overflow 与 Expiration 策略的组合语义；
-5. 在 `tests/gas_tests/effects/stacking.rs` 添加成功、拒绝、刷新与回滚边界测试；
+5. 在 `tests/gas_test/effects_test/stacking_test.rs` 添加成功、拒绝、刷新与回滚边界测试；
 6. 显式更新拥有该枚举的 Gameplay Effects 门面以及需要的聚合/根重导出。
 
 不要依赖 `HashMap` 遍历顺序选择堆叠目标；继续使用稳定 handle/slot 语义。

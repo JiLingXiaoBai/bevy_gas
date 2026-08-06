@@ -201,9 +201,9 @@ phase。
 
 | 测试文件 | 覆盖范围 |
 | -------- | -------- |
-| `tests/gas_tests/gameplay_targeting_test.rs` | 定义验证、Sphere/Cone/Explicit、排序、完整 drain、Target Data 激活和多目标效果 |
-| `tests/gas_tests/runtime_paths_test.rs` | 默认 FixedUpdate 阶段与 Gameplay 同 tick 边界 |
-| `tests/gas_tests/queues_test.rs` | Task 派生 Gameplay 请求的 FIFO 行为 |
+| `tests/gas_test/gameplay_targeting_test.rs` | 定义验证、Sphere/Cone/Explicit、排序、完整 drain、Target Data 激活和多目标效果 |
+| `tests/gas_test/runtime_paths_test.rs` | 默认 FixedUpdate 阶段与 Gameplay 同 tick 边界 |
+| `tests/gas_test/queues_test.rs` | Task 派生 Gameplay 请求的 FIFO 行为 |
 
 继续阅读：[07 — Gameplay 技能](./07-gameplay-abilities.md)、
 [16 — Gameplay 执行模块](./16-gameplay-execution.md)。

@@ -282,11 +282,11 @@ tick 重复激活。
 
 | 测试文件 | 覆盖范围 |
 | -------- | -------- |
-| `tests/gas_tests/runtime_paths_test.rs` | Bundle 显式组合、插件阶段和同/下一 tick 边界 |
-| `tests/gas_tests/abilities/activation.rs` | 激活要求、多实例和阻止标签 |
-| `tests/gas_tests/abilities/commit.rs` | Cost/Cooldown 准备与执行 |
-| `tests/gas_tests/abilities/lifecycle.rs` | Cancel、Cleanup、活跃计数与规格清除 |
-| `tests/gas_tests/abilities/chaining.rs` | pending overlay 和 deferred 父技能取消 |
+| `tests/gas_test/runtime_paths_test.rs` | Bundle 显式组合、插件阶段和同/下一 tick 边界 |
+| `tests/gas_test/abilities_test/activation_test.rs` | 激活要求、多实例和阻止标签 |
+| `tests/gas_test/abilities_test/commit_test.rs` | Cost/Cooldown 准备与执行 |
+| `tests/gas_test/abilities_test/lifecycle_test.rs` | Cancel、Cleanup、活跃计数与规格清除 |
+| `tests/gas_test/abilities_test/chaining_test.rs` | pending overlay 和 deferred 父技能取消 |
 
 继续阅读：[07 — Gameplay 技能](./07-gameplay-abilities.md)、
 [16 — Gameplay 执行模块](./16-gameplay-execution.md)。

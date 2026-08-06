@@ -185,11 +185,11 @@ let ability = Arc::new(GameplayAbility::new(
 
 | 测试文件 | 覆盖范围 |
 | -------- | -------- |
-| `tests/gas_tests/abilities/tasks.rs` | Wait tick 计数和 startup `EndAbility` 截断 sibling |
-| `tests/gas_tests/abilities/lifecycle.rs` | 父技能结束时递归清理 startup task |
-| `tests/gas_tests/queues_test.rs` | 缺失父实例、效果/技能入队、上下文继承和 Event payload |
-| `tests/gas_tests/runtime_paths_test.rs` | startup `Instant` 同 tick 与 `WaitTicks` 跨 tick |
-| `tests/gas_tests/gameplay_targeting_test.rs` | Target Data 多目标完成动作 |
+| `tests/gas_test/abilities_test/tasks_test.rs` | Wait tick 计数和 startup `EndAbility` 截断 sibling |
+| `tests/gas_test/abilities_test/lifecycle_test.rs` | 父技能结束时递归清理 startup task |
+| `tests/gas_test/queues_test.rs` | 缺失父实例、效果/技能入队、上下文继承和 Event payload |
+| `tests/gas_test/runtime_paths_test.rs` | startup `Instant` 同 tick 与 `WaitTicks` 跨 tick |
+| `tests/gas_test/gameplay_targeting_test.rs` | Target Data 多目标完成动作 |
 
 继续阅读：[07 — Gameplay 技能](./07-gameplay-abilities.md)、
 [16 — Gameplay 执行模块](./16-gameplay-execution.md)。
