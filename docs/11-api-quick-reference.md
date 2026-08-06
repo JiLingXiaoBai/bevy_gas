@@ -1,23 +1,53 @@
 # 11 — API 快速参考
 
-## 常用公开 API 导航
+## 公开路径与门面边界
 
-本页用于按领域定位常用入口，不替代编译器生成的 rustdoc。精确签名、参数、返回值和错误以
-源码 rustdoc 为准；`#[doc(hidden)]` 的运行时内部类型不列为用户入口。
+本页用于按领域定位公开入口，不替代编译器生成的 rustdoc。精确签名、参数、返回值和错误以
+源码 rustdoc 为准；`#[doc(hidden)]` 的运行时管线类型不列为用户入口。
 
-常用 Plugin、Component、定义和 SystemParam 可从 `bevy_tools::prelude::*` 导入；本页其余专项
-API 继续从对应领域模块显式导入。
+公开路径分为四层：
+
+| 层级 | 示例 | 约定 |
+| --- | --- | --- |
+| 精简 prelude | `bevy_tools::prelude::*`、`bevy_tools::gas::prelude::*` | 只包含常用 Plugin、Component、定义、队列和 SystemParam |
+| 领域门面 | `bevy_tools::gas::gameplay_effects::GameplayEffect` | 专项 API 的规范所有者 |
+| GAS 聚合门面 | `bevy_tools::gas::GameplayEffect` | 对 GAS 领域公开项做显式聚合 |
+| crate root | `bevy_tools::GameplayEffect` | 显式兼容重导出；另拥有 `Random` 与 `UniqueName*` 支撑类型 |
+
+`lib.rs` 还显式重导出 `ability_system`、`attributes`、`gameplay_abilities`、
+`gameplay_effects`、`gameplay_execution`、`gameplay_tags`、`gameplay_targeting`、
+`modifiers` 与 `settings` 模块，因此旧的 `bevy_tools::gameplay_effects::...` 路径仍可用。
+所有门面都禁止 `pub use *`；新增内部 `pub` 项不会自动成为公开 API。
+
+### Prelude 的精确范围
+
+当前 prelude 包含：
+
+| 领域 | 项 |
+| --- | --- |
+| Runtime | `GameplayAbilitySystemPlugin`、`GameplayAbilitySystemRuntimePlugin`、`GameplayAbilitySystemSet` |
+| Ability System | `AbilitySystemComponent`、`AbilitySystemParams`、`GameplayAbilitySystemBundle` |
+| Attributes | `AttributeId`、`AttributeIdRegister`、`AttributeRegion`、`AttributeSet` |
+| Abilities | `AbilityActivationContext`、`AbilitySpecHandle`、`AbilityTags`、`GameplayAbility` |
+| Effects | `ActiveGameplayEffects`、`EffectDurationTicks`、`EffectPayload`、`EffectSystemParams`、`EffectTags`、`GameplayEffect`、`StackingPolicy` |
+| Execution | `GameplayExecutionQueue` |
+| Tags | `GameplayTag`、`GameplayTagContainer`、`GameplayTagRegister`、`TagRequirements` |
+| Targeting | `AbilityTargetData`、`TargetingDefinition`、`TargetingRequestQueue` |
+| Modifiers | `Modifier`、`ModifierEvaluationContext`、`ModifierMagnitude`、`ModifierMagnitudeCalculation`、`ModifierOperation` |
+
+错误类型、低层 handle/spec、管理器、独立基础插件、系统函数与支撑类型不在 prelude；请从拥有它
+的领域门面或 crate root 显式导入。
 
 ### 插件
 
-| 项                                   | 类型          | 模块     |
-| ------------------------------------ | ------------- | -------- |
-| `GameplayAbilitySystemPlugin`        | `PluginGroup` | `gas/runtime_plugin.rs` |
-| `GameplayAbilitySystemRuntimePlugin` | `Plugin`      | `gas/runtime_plugin.rs` |
-| `GameplayTagPlugin`                  | `Plugin`      | `gas/runtime_plugin.rs` |
-| `UniqueNamePlugin`                   | `Plugin`      | `gas/runtime_plugin.rs` |
-| `RandomPlugin`                       | `Plugin`      | `gas/runtime_plugin.rs` |
-| `GameplayAbilitySystemSet`           | `SystemSet`   | `gas/runtime_plugin.rs` |
+| 项 | 类型 | Prelude | 公开路径 |
+| --- | --- | --- | --- |
+| `GameplayAbilitySystemPlugin` | `PluginGroup` | 是 | `bevy_tools::gas` / crate root |
+| `GameplayAbilitySystemRuntimePlugin` | `Plugin` | 是 | `bevy_tools::gas` / crate root |
+| `GameplayAbilitySystemSet` | `SystemSet` | 是 | `bevy_tools::gas` / crate root |
+| `GameplayTagPlugin` | `Plugin` | 否 | `bevy_tools::gas` / crate root |
+| `UniqueNamePlugin` | `Plugin` | 否 | `bevy_tools::gas` / crate root |
+| `RandomPlugin` | `Plugin` | 否 | `bevy_tools::gas` / crate root |
 
 ### Gameplay 标签
 
@@ -114,6 +144,13 @@ API 继续从对应领域模块显式导入。
 | `update_active_effect_tag_requirements_system`     | `fn`         | 系统：抑制/移除检查                          |
 | `resolve_active_effect_tag_requirements`           | `fn`         | 同步执行确定性固定点收敛                     |
 
+Effect 的准备、应用、移除与同步 Requirement API 接收 `&mut EffectSystemParams`。该参数只包含
+Tag/Attribute manager、确定性随机、Attribute/Tag/Active Effect 查询和内部 dirty 状态，不包含
+ASC、Active Ability 或 `Commands`。`AbilitySystemParams` 内嵌它并实现 `Deref` / `DerefMut`，
+但新的 Effect-only system 与测试应优先直接声明窄参数。
+
+`TagRequirements` 由 Gameplay Tags 领域拥有；Gameplay Effects 门面保留同一类型的兼容重导出。
+
 ### Gameplay 执行
 
 | 项                                          | 类型       | 说明                                  |
@@ -124,6 +161,9 @@ API 继续从对应领域模块显式导入。
 | `GameplayEffectApplicationRequest`          | `struct`   | 捕获后的效果应用请求                  |
 | `process_gameplay_execution_queue_system`   | `fn`       | 系统：完整 drain 并按需收敛 Tag 条件  |
 | `gameplay_execution_queue_has_work`         | `fn`       | 统一 FIFO 的运行条件                   |
+
+两个请求类型由 `gameplay_execution` 领域拥有。`ability_system` 与 `gameplay_effects` 门面分别
+兼容重导出对应请求类型；新代码需要同时处理两类请求时，应从 Execution 门面导入。
 
 ### Gameplay 目标抓取
 
@@ -191,6 +231,10 @@ API 继续从对应领域模块显式导入。
 | `cancel_ability`                          | `fn`          | 将状态设为 Cancelled   |
 | `cleanup_finished_abilities_system`       | `fn`          | 系统：销毁已完成技能   |
 
+`GameplayAbilitySystemBundle` 显式组合 `AbilitySystemComponent`、`AttributeSet`、
+`GameplayTagContainer` 与 `ActiveGameplayEffects`。这些 Component 本身没有反向
+`#[require(ActiveGameplayEffects)]`，纯 Tags/Attributes 实体可以独立存在。
+
 ### 支撑
 
 | 项                              | 类型       | 说明                  |
@@ -200,3 +244,9 @@ API 继续从对应领域模块显式导入。
 | `UniqueNamePool`                | `Resource` | 碰撞安全的字符串驻留池，注册返回 Result |
 | `Random`                        | `Resource` | 种子确定性 RNG                        |
 | `GameplayAbilitySystemSettings` | `struct`   | 全局编译期常量                        |
+
+`UniqueName`、`UniqueNameError`、`UniqueNamePool` 与 `Random` 只从 crate root 公开，不在
+`bevy_tools::gas` 或 prelude 中。`GameplayAbilitySystemSettings` 由 `gas::settings` 拥有，并由
+`gas` 与 crate root 显式重导出；其常量为 `ATTRIBUTE_SET_SIZE`、
+`HOT_ATTRIBUTE_SET_SIZE`、`COLD_ATTRIBUTE_SET_SIZE`、`GAMEPLAY_TAG_SIZE` 与
+`ABILITY_CHAIN_MAX_DEPTH`。

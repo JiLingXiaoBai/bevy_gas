@@ -1,186 +1,334 @@
 # 17 — 源码布局与维护边界
 
-## 目标
+## 本文职责
 
-源码按 Gameplay 领域组织，在每个领域内部再区分定义、运行时状态、执行流程和系统。
-这种布局让一次功能修改尽量停留在一个领域中，同时保持 Bevy ECS 的 Component、Resource、
-System 和 Event 边界清晰。
+本文是源码物理布局和模块所有权的权威说明。行为语义由各领域文档负责，精确公共签名由
+rustdoc 负责。目录变化后应优先更新本页，而不是在多篇领域文档中复制完整文件树。
 
-本项目不以“每个类型一个文件”或绝对行数作为目标。判断是否拆分文件时，优先检查文件是否
-同时承担多个独立的变更原因，例如：
-
-- 同时定义持久状态、应用事务和调度系统；
-- 同时包含校验、执行、回滚和清理；
-- 测试文件同时覆盖多个彼此独立的行为轴；
-- 修改一个局部规则时，需要理解文件中大部分无关实现。
-
-## 顶层组织原则
-
-顶层模块按领域划分，而不是建立全局 `components/`、`systems/`、`resources/` 或
-`utils/` 目录：
-
-| 领域 | 门面模块 | 主要职责 | 权威文档 |
-| --- | --- | --- | --- |
-| Gameplay Tags | `gameplay_tags.rs` | 标签注册、层级位集、引用计数和标签条件 | [03](./03-gameplay-tags.md) |
-| Attributes | `attributes.rs` | 属性 ID、存储、聚合、快照与延迟重算 | [04](./04-attributes.md)、[05](./05-modifiers-and-aggregator.md) |
-| Modifiers | `modifiers.rs` | Modifier 操作、幅度、规格和聚合输入 | [05](./05-modifiers-and-aggregator.md) |
-| Gameplay Effects | `gameplay_effects.rs` | Effect 定义、规格、应用、活跃状态和生命周期 | [06](./06-gameplay-effects.md) |
-| Gameplay Abilities | `gameplay_abilities.rs` | Ability 定义、实例、激活上下文和任务 | [07](./07-gameplay-abilities.md)、[08](./08-ability-tasks.md) |
-| Ability System | `ability_system.rs` | ASC、激活、commit 和生命周期编排 | [09](./09-ability-system-component.md) |
-| Targeting | `gameplay_targeting.rs` | 目标管线、目标数据和请求队列 | [15](./15-gameplay-targeting.md) |
-| Execution | `gameplay_execution.rs` | 跨类型 FIFO 与统一请求消费 | [16](./16-gameplay-execution.md) |
-| Runtime Plugin | `gas/runtime_plugin.rs` | FixedUpdate 阶段、资源安装和系统排序 | [02](./02-plugins-and-lifecycle.md) |
-| Supporting | `randoms.rs`、`unique_names.rs`、`gas/settings.rs` | 确定性随机、名称驻留和容量设置 | [10](./10-supporting-infrastructure.md) |
-
-## 门面文件与实现目录
-
-复杂模块采用“同名门面文件 + 同名目录”的布局：
+项目按 Gameplay 领域组织，不建立横跨所有领域的 `components/`、`systems/`、`resources/` 或
+`utils/` 目录。复杂领域使用“门面文件 + 同名实现目录”布局：
 
 ```text
 feature.rs
 feature/
 ├── state.rs
-├── application.rs
-└── lifecycle.rs
+├── definition.rs
+└── execution.rs
 ```
 
-门面文件只负责：
+门面决定领域边界，实现文件只承担一种主要变更原因。
 
-1. 声明私有子模块；
-2. 通过显式 `pub use submodule::{Type, function}` 维护领域公共 API；
-3. 通过 `pub(crate) use` 暴露确实需要跨领域使用的内部入口；
-4. 使用 `//!` 说明模块职责和关键不变量。
+## 当前源码树
 
-拆分实现文件不得无意改变用户路径。移动公开类型或函数时，应继续从原门面重导出。
-门面不得使用通配公开重导出，因为新增一个内部 `pub` 项不应自动扩大 crate API。
+以下结构对应当前仓库，不包含 `target/` 等生成内容：
 
-`bevy_tools::gas` 是 GAS 的规范命名空间；原有 crate-root 路径继续显式重导出以保持兼容。
-`bevy_tools::prelude` / `bevy_tools::gas::prelude` 只包含 Plugin、核心 Component、常用定义和
-SystemParam，不作为完整 API 镜像。
+```text
+src/
+├── lib.rs
+├── randoms.rs
+├── randoms/
+│   └── random.rs
+├── unique_names.rs
+├── unique_names/
+│   └── unique_name.rs
+├── gas.rs
+└── gas/
+    ├── prelude.rs
+    ├── runtime_plugin.rs
+    ├── settings.rs
+    ├── gameplay_tags.rs
+    ├── gameplay_tags/
+    │   ├── tag.rs
+    │   ├── bitset.rs
+    │   ├── registry.rs
+    │   ├── container.rs
+    │   └── requirements.rs
+    ├── attributes.rs
+    ├── attributes/
+    │   ├── registry.rs
+    │   ├── aggregation.rs
+    │   ├── snapshot.rs
+    │   ├── attribute_set.rs
+    │   └── attribute_set/
+    │       ├── state.rs
+    │       ├── mutation.rs
+    │       └── recalculation.rs
+    ├── modifiers.rs
+    ├── modifiers/
+    │   ├── definition.rs
+    │   ├── context.rs
+    │   └── spec.rs
+    ├── gameplay_effects.rs
+    ├── gameplay_effects/
+    │   ├── effect_system_params.rs
+    │   ├── gameplay_effect_spec.rs
+    │   ├── gameplay_effect.rs
+    │   ├── gameplay_effect/
+    │   │   ├── definition.rs
+    │   │   ├── context.rs
+    │   │   ├── timing.rs
+    │   │   ├── stacking.rs
+    │   │   └── effect_tags.rs
+    │   ├── active_gameplay_effect.rs
+    │   └── active_gameplay_effect/
+    │       ├── state.rs
+    │       ├── planning.rs
+    │       ├── application.rs
+    │       ├── execution.rs
+    │       ├── removal.rs
+    │       ├── requirements.rs
+    │       └── ticking.rs
+    ├── gameplay_abilities.rs
+    ├── gameplay_abilities/
+    │   ├── gameplay_ability.rs
+    │   ├── gameplay_ability_spec.rs
+    │   ├── active_gameplay_ability.rs
+    │   ├── active_gameplay_ability/
+    │   │   ├── chain.rs
+    │   │   ├── context.rs
+    │   │   └── state.rs
+    │   ├── ability_task.rs
+    │   └── ability_task/
+    │       ├── definition.rs
+    │       ├── state.rs
+    │       ├── completion.rs
+    │       └── ticking.rs
+    ├── ability_system.rs
+    ├── ability_system/
+    │   ├── component.rs
+    │   ├── params.rs
+    │   ├── commit.rs
+    │   ├── lifecycle.rs
+    │   ├── activation.rs
+    │   └── activation/
+    │       ├── error.rs
+    │       ├── validation.rs
+    │       ├── startup.rs
+    │       └── execution.rs
+    ├── gameplay_targeting.rs
+    ├── gameplay_targeting/
+    │   ├── ability_target_data.rs
+    │   ├── targeting_definition.rs
+    │   ├── acquisition.rs
+    │   ├── targeting_queue.rs
+    │   └── targeting_queue/
+    │       ├── request.rs
+    │       ├── queue.rs
+    │       └── processing.rs
+    ├── gameplay_execution.rs
+    └── gameplay_execution/
+        ├── request.rs
+        ├── queue.rs
+        └── resolver.rs
+```
 
-## Gameplay Effect 内部边界
+可运行示例位于 `examples/tag_registration.rs`。集成测试布局见本文后半部分。
 
-Active Effect 运行时按以下职责分离：
+## 顶层门面和公开路径
 
-| 子模块 | 所有权 |
+| 文件 | 职责 |
 | --- | --- |
-| `state` | Handle、稳定 slot、Active Effect Component 和 tick 状态 |
-| `planning` | 应用 Plan、公开错误、prepare 与错误映射 |
-| `application` | 同步入口、堆叠查找、应用条件和免疫 |
-| `execution` | Plan validate、Instant、Stack、Create、modifier 变更与回滚 |
-| `removal` | 查询、显式移除、标签移除和状态清理 |
-| `requirements` | ongoing/removal 条件、抑制和固定点收敛 |
-| `ticking` | Duration 与 Period 的 FixedUpdate 系统 |
+| `src/lib.rs` | crate 文档、`gas` 命名空间、Random/UniqueName 和 crate-root 兼容重导出 |
+| `src/gas.rs` | 声明 GAS 领域模块并显式聚合公共 API |
+| `src/gas/<domain>.rs` | 声明私有实现子模块，显式维护该领域的 `pub use` / `pub(crate) use` |
+| `src/gas/prelude.rs` | 只重导出高频 Plugin、Component、定义和 SystemParam |
+| `src/gas/runtime_plugin.rs` | Plugin 组合、Resource 初始化和 `FixedUpdate` 阶段排序 |
+| `src/gas/settings.rs` | 编译期容量和递归安全上限 |
 
-依赖方向应尽量由流程层指向状态层。低层 slot 存储不应构造高层的 Effect 应用错误；它只返回
-内部存储错误，再由 application 层映射为公共错误。
+公开路径分三层：
 
-固定点收敛、FIFO 可见性、回滚和 fail-closed 行为属于 Gameplay 语义，不能在机械拆文件时
-改变。详见 [Gameplay Effects](./06-gameplay-effects.md) 与
-[Gameplay Execution](./16-gameplay-execution.md)。
+1. `bevy_tools::prelude::*`：常规接入；
+2. `bevy_tools::gas::gameplay_effects::GameplayEffect` 这类领域路径：完整领域 API；
+3. `bevy_tools::GameplayEffect` 这类 crate-root 路径：保留的显式兼容重导出。
 
-## Ability System 内部边界
+门面禁止 `pub use *`。新增实现文件中的 `pub` 项不会自动成为 crate API；只有被门面明确重导出的
+项才属于领域公共表面。私有文件名可以调整，但不得在没有迁移方案时改变已公开的类型和函数路径。
 
-Ability System 按以下职责分离：
+## 领域内部所有权
 
-| 子模块 | 所有权 |
+### Tags、Attributes 与 Modifiers
+
+| 文件 | 主要所有权 |
 | --- | --- |
-| `params` | `AbilitySystemParams`、内嵌 Effect 参数和同批次 pending runtime state |
-| `component` | ASC 的 Ability 规格存储、索引和查询 |
-| `activation/error` | 公开激活错误和 rejection 分类 |
-| `activation/validation` | 标签、冷却与支付能力预检 |
-| `activation/startup` | Active Ability 实例和 startup task 创建 |
-| `activation/execution` | 同步入口与 batch 激活编排 |
-| `commit` | Cost/Cooldown 的准备、支付校验、执行和 commit 错误 |
-| `lifecycle` | End、Cancel、回滚和 Cleanup system |
+| `gameplay_tags/tag.rs` | `GameplayTag` 值类型和注册错误 |
+| `gameplay_tags/bitset.rs` | 固定容量位集和继承位操作 |
+| `gameplay_tags/registry.rs` | 名称注册、父标签递归注册和 `SystemParam` 注册入口 |
+| `gameplay_tags/container.rs` | 每实体引用计数 Tag 状态 |
+| `gameplay_tags/requirements.rs` | required/blocked/ignored 条件匹配 |
+| `attributes/registry.rs` | Attribute ID、Region、Location 和注册表 |
+| `attributes/aggregation.rs` | `Aggregator` 与 AttributeSet 内部稀疏聚合器集合 |
+| `attributes/snapshot.rs` | 单属性与整套来源快照 |
+| `attributes/attribute_set/state.rs` | AttributeSet 存储、dirty 位图和错误 |
+| `attributes/attribute_set/mutation.rs` | 初始化、Instant/Duration 修改和来源清理 |
+| `attributes/attribute_set/recalculation.rs` | 按需/批量重算与末尾系统 |
+| `modifiers/definition.rs` | Modifier 操作、幅度和自定义计算 trait |
+| `modifiers/context.rs` | 与具体 Effect runtime 无关的只读求值接口 |
+| `modifiers/spec.rs` | 求值后的 Spec、Applied 值和中立来源 ID |
 
-`EffectSystemParams` 是 Effect API 的窄公共边界，不包含 ASC 或 Active Ability 查询。
-`AbilitySystemParams` 内嵌它并增加 Ability 编排状态。两者都只是访问边界，不表示实现应放在
-同一个文件。
+`modifiers` 可以引用 Attribute ID/快照和 Tag 容器作为求值契约，但不得依赖
+`EffectContext`、`ActiveEffectHandle` 或 Active Effect 存储。Attributes 只保存
+`ModifierSourceId`；Effect runtime 在跨领域边界完成 Handle 转换。
 
-## 低层领域与 ECS 组合
+### Gameplay Effects
 
-- `gameplay_tags/` 按 `tag → bitset → registry → container → requirements` 分层；
-- `attributes/` 按 registry、aggregation、snapshot 和 attribute-set state/mutation/recalculation
-  分层；
-- `modifiers/` 是 Attributes 与 Effects 共享的领域模块，但通过
-  `ModifierEvaluationContext` 和 `ModifierSourceId` 保持对 Effect runtime 的独立；
-- `GameplayTagContainer` 与 `AttributeSet` 可以独立存在，不得反向 Required
-  `ActiveGameplayEffects`；
-- 完整 Actor 使用 `GameplayAbilitySystemBundle` 显式组合 ASC、Attributes、Tags 与 Active
-  Effects。
+| 文件 | 主要所有权 |
+| --- | --- |
+| `effect_system_params.rs` | Effect 准备、执行、移除和收敛需要的窄 ECS 访问集合 |
+| `gameplay_effect/definition.rs` | 不可变 Effect 定义和 builder/getter |
+| `gameplay_effect/context.rs` | Effect payload 与 Modifier 求值上下文适配 |
+| `gameplay_effect/timing.rs` | Duration/Period 定义值 |
+| `gameplay_effect/stacking.rs` | StackingPolicy 及子策略 |
+| `gameplay_effect/effect_tags.rs` | Effect identity、授予、条件、移除和免疫标签配置 |
+| `gameplay_effect_spec.rs` | 捕获 level、duration/period 和 ModifierSpec 的准备结果 |
+| `active_gameplay_effect/state.rs` | Handle、稳定 slot、Active Effect 状态和目标 Component |
+| `active_gameplay_effect/planning.rs` | 应用错误、Plan、prepare 和错误映射 |
+| `active_gameplay_effect/application.rs` | 同步应用入口、条件、概率、免疫和堆叠选择 |
+| `active_gameplay_effect/execution.rs` | Plan 重验证、Instant/Stack/Create、回滚和 modifier mutation |
+| `active_gameplay_effect/removal.rs` | 显式/按标签移除和 Effect 状态清理 |
+| `active_gameplay_effect/requirements.rs` | ongoing/removal 条件和固定点收敛 |
+| `active_gameplay_effect/ticking.rs` | Duration 与 Period fixed-tick 系统 |
 
-## 可见性约定
+Effect 公开 mutation API 接收 `EffectSystemParams`。该参数不包含 ASC、Active Ability 或
+`Commands`；不要为了方便把 Effect API 再扩回完整 `AbilitySystemParams`。
+
+### Abilities 与 Ability System
+
+`gameplay_abilities` 拥有可共享定义和运行时数据类型；`ability_system` 拥有对这些类型执行激活、
+commit 和生命周期编排的流程：
+
+| 文件 | 主要所有权 |
+| --- | --- |
+| `gameplay_ability.rs` | AbilityTags、startup task、cost/cooldown/activation Effect 定义 |
+| `gameplay_ability_spec.rs` | 授予 Handle、level、input ID/pressed 和 active count |
+| `active_gameplay_ability/{chain,context,state}.rs` | 链保护、激活上下文和活跃实例状态 |
+| `ability_task/definition.rs` | Instant/WaitTicks 定义和完成动作定义 |
+| `ability_task/state.rs` | 运行时 Task 数据 |
+| `ability_task/completion.rs` | 完成动作到 Event/Effect/Ability 请求的分派 |
+| `ability_task/ticking.rs` | Task 稳定推进与清理 |
+| `ability_system/component.rs` | ASC 规格存储和显式 `GameplayAbilitySystemBundle` |
+| `ability_system/params.rs` | `AbilitySystemParams` 和同 batch pending overlay |
+| `ability_system/activation/*` | 错误、预检、startup 创建和同步/batch 激活 |
+| `ability_system/commit.rs` | cost/cooldown prepare、支付检查和执行 |
+| `ability_system/lifecycle.rs` | end、cancel、回滚和 Cleanup system |
+
+`AbilitySystemParams` 内嵌 `EffectSystemParams`，再增加 `Commands`、ASC、来源快照、活跃 Ability
+查询和内部 pending overlay。Effect 实现不得反向导入 Ability System。
+
+### Targeting 与统一 Execution
+
+| 文件 | 主要所有权 |
+| --- | --- |
+| `ability_target_data.rs` | 稳定排序的 Hit 与多目标结果 |
+| `targeting_definition.rs` | Targetable、合法操作管线和定义错误 |
+| `acquisition.rs` | 同步候选查询、选择、过滤、排序和限制 |
+| `targeting_queue/request.rs` | 请求输入、continuation、ID 和结果 Event |
+| `targeting_queue/queue.rs` | FIFO Resource 与入队 API |
+| `targeting_queue/processing.rs` | 整批抓取、continuation 和结果通知 |
+| `gameplay_execution/request.rs` | Ability/Effect 具体请求与统一枚举 |
+| `gameplay_execution/queue.rs` | 跨类型 FIFO 和 Ability chain ID 分配 |
+| `gameplay_execution/resolver.rs` | 完整 drain、逐请求 Requirement 收敛和 System 包装 |
+
+具体请求由 `gameplay_execution` 拥有。Ability System 和 Gameplay Effects 门面仅为兼容调用方
+重导出各自请求类型，不再保存重复请求文件。
+
+## ECS 组合与依赖规则
+
+- `GameplayTagContainer`、`AttributeSet`、`AbilitySystemComponent` 均可独立存在；
+- 完整 Gameplay Actor 使用 `GameplayAbilitySystemBundle` 显式组合 ASC、Tags、Attributes 和
+  Active Effects；
+- 低层 Component 不得通过 Required Component 反向安装高层 Effect runtime；
+- Effect mutation 接收 `EffectSystemParams`，Ability 编排接收 `AbilitySystemParams`；
+- Gameplay 系统通常生产请求，唯一 resolver 负责消费统一 FIFO；
+- 多个请求生产系统如果业务顺序重要，必须使用 `.chain()` / `.before()` / `.after()` 显式排序；
+- 定义对象使用 `Arc` 共享，目标持有的运行时状态仍保存在 ECS Component/实体中。
+
+## 可见性与引用路径
 
 从窄到宽选择可见性：
 
-1. 默认私有：只在当前子模块使用；
-2. `pub(super)`：同一领域的兄弟子模块需要使用；
-3. `pub(crate)`：确实需要跨领域调用的运行时内部接口；
-4. `pub`：稳定且有文档的用户 API。
+1. 默认私有：只在当前文件使用；
+2. `pub(super)`：同一领域的父/兄弟模块需要；
+3. `pub(crate)`：确有跨领域运行时调用；
+4. `pub`：有稳定语义和 rustdoc 的用户 API。
 
-某些 Bevy public system 的函数签名会暴露内部 Resource 类型。此类类型可以使用
-`#[doc(hidden)]` 表明不建议用户直接依赖，但在改变 public system 签名前不能直接降低可见性。
+同一领域内部优先 `use super::...`；跨领域使用 `use crate::...`。避免用多层
+`super::super::...` 穿透领域，也避免从私有叶子文件路径导入以绕过门面。
 
 ## 测试布局
 
-测试按行为组织，而不是简单复制源文件名称：
-
 ```text
-tests/gas_tests/
-├── effects.rs
-├── effects/
-│   ├── application.rs
-│   ├── stacking.rs
-│   ├── requirements.rs
-│   ├── ticking.rs
-│   └── removal.rs
-├── abilities.rs
-├── abilities/
-│   ├── activation.rs
-│   ├── commit.rs
-│   ├── lifecycle.rs
-│   ├── tasks.rs
-│   └── chaining.rs
-├── support.rs
-├── attributes_test.rs
-├── gameplay_tags_test.rs
-├── gameplay_targeting_test.rs
-├── queues_test.rs
-└── runtime_paths_test.rs
+tests/
+├── gas_tests.rs
+├── gas_tests/
+│   ├── support.rs
+│   ├── attributes_test.rs
+│   ├── gameplay_tags_test.rs
+│   ├── gameplay_targeting_test.rs
+│   ├── queues_test.rs
+│   ├── runtime_paths_test.rs
+│   ├── effects.rs
+│   ├── effects/
+│   │   ├── application.rs
+│   │   ├── removal.rs
+│   │   ├── requirements.rs
+│   │   ├── stacking.rs
+│   │   └── ticking.rs
+│   ├── abilities.rs
+│   └── abilities/
+│       ├── activation.rs
+│       ├── chaining.rs
+│       ├── commit.rs
+│       ├── lifecycle.rs
+│       └── tasks.rs
+├── randoms_tests.rs
+└── unique_names_tests.rs
 ```
 
-共享设施统一放在 `support`：App 构造、注册 helper、Effect/Ability builder、tick driver 和状态
-查询。测试断言仍放在各行为模块中，避免 support 演变成隐藏业务逻辑的通用工具箱。
+`support.rs` 只保存 App/注册/builder/tick/query 等共享 fixture，不隐藏业务断言。需要 World、
+调度顺序、公开 API 或跨模块可见性的场景使用集成测试；纯算法和私有不变量可以就近写单元测试。
 
-纯算法和私有不变量可以在源码旁编写单元测试；需要 Bevy World、调度顺序或公共 API 的场景
-继续使用集成测试。
+## 修改路由
 
-## 文档真相来源
+| 修改目标 | 首选源码位置 | 首选测试 | 同步文档 |
+| --- | --- | --- | --- |
+| Tag 注册/匹配/引用计数 | `gameplay_tags/` | `gameplay_tags_test.rs` | 03 |
+| Attribute 注册/存储/重算 | `attributes/` | `attributes_test.rs` | 04 |
+| Modifier 求值/聚合顺序 | `modifiers/`、`attributes/aggregation.rs` | `attributes_test.rs`、`runtime_paths_test.rs` | 05 |
+| Effect 应用/堆叠/条件/tick | `gameplay_effects/` | `effects/*` | 06 |
+| Ability 定义/实例/task | `gameplay_abilities/` | `abilities/*` | 07、08 |
+| ASC 激活/commit/lifecycle | `ability_system/` | `abilities/*` | 09 |
+| 目标管线与队列 | `gameplay_targeting/` | `gameplay_targeting_test.rs` | 15 |
+| 统一 FIFO 与阶段可见性 | `gameplay_execution/`、`runtime_plugin.rs` | `queues_test.rs`、`runtime_paths_test.rs` | 02、16 |
+| 公共导出/prelude | 各门面、`gas.rs`、`lib.rs`、`prelude.rs` | 全目标编译/rustdoc | 11、17 |
 
-项目使用三层文档来源：
+## 何时继续拆文件
 
-- rustdoc：精确签名、参数、返回值和错误；
-- `docs/`：行为、时序、不变量、设计理由和跨模块流程；
-- `examples/` 与集成测试：由编译器验证的完整用法。
+不以固定行数作为唯一标准。出现下列情况时优先拆分：
 
-知识库不应长期复制私有 struct 字段或私有 enum 布局。需要解释实现时，优先描述稳定语义并
-链接源码；可执行用法优先放在 example 或 doctest 中。
+- 一个文件同时定义持久状态、配置、事务执行和调度系统；
+- 校验、提交、回滚、清理需要独立推理；
+- 修改一个局部策略必须阅读大量无关逻辑；
+- 测试文件同时覆盖多个可以独立失败的行为轴。
 
-## 修改检查清单
+不要为了“每个类型一个文件”制造过深目录；小型值类型和紧密相关的实现应留在同一职责文件中。
+拆分时先保持行为和公共路径不变，再单独进行语义修改。
 
-进行源码结构调整时：
+## 文档同步清单
 
-1. 先确认工作区基线测试通过；
-2. 单个提交只处理一个领域或一个明确的依赖边界；
-3. 机械移动阶段不改变 public 名称、错误语义、执行顺序或确定性；
-4. 同步更新门面 `//!`、对应知识库章节和测试导航；
-5. 检查新增内部接口是否可以使用更窄的可见性；
-6. 运行完整检查：
+源码结构或公共 API 变化后：
+
+1. 更新领域门面 `//!` 与 rustdoc；
+2. 更新本页的文件树、所有权或修改路由；
+3. 更新对应领域文档中的行为和边界；
+4. 只在 API 快速参考中列高频公开入口，避免复制整个 rustdoc；
+5. 更新或新增能够编译的 example/集成测试；
+6. 扫描旧文件名、旧签名、通配 `pub use *` 和断开的 Markdown 相对链接；
+7. 执行：
 
 ```bash
 cargo fmt
 cargo clippy --all-targets --all-features -- -D warnings
 cargo test
 cargo build
+cargo doc --no-deps --all-features
 ```

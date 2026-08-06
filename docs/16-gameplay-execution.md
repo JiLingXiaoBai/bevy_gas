@@ -105,6 +105,19 @@ pub struct GameplayExecutionQueue {
 Gameplay 系统通常只应生产请求。`pop()` 和 `clear()` 主要用于受控工具、测试或自定义调度；
 运行时存在多个消费者会破坏统一顺序。
 
+默认消费者签名为：
+
+```rust
+pub fn process_gameplay_execution_queue_system(
+    mut execution_queue: ResMut<GameplayExecutionQueue>,
+    mut params: AbilitySystemParams,
+) {
+    /* Drains the shared gameplay FIFO. */
+}
+```
+
+内部 drain 是 `pub(crate)` 实现，不是游戏层应直接调用的公共 API。
+
 ## FixedUpdate 阶段契约
 
 运行时插件配置的顺序为：
@@ -168,7 +181,7 @@ app.add_systems(
 
 `process_gameplay_execution_queue_system` 只在队列非空时运行。内部 resolver 按以下步骤工作：
 
-1. 整理尚未由 `Commands` flush 的 Active Ability overlay；
+1. 从 pending overlay 移除已经由 `Commands` 应用、可通过 Query 访问的 Active Ability；
 2. 收敛此前标记为 dirty 的 Active Effect Requirement；
 3. 从 FIFO 头部取出一个请求；
 4. 执行技能激活或效果应用；
@@ -198,7 +211,8 @@ spawn。较早请求创建的效果会立即参与后续请求的堆叠、免疫
 
 技能实例仍通过 `Commands` 创建实体。resolver 使用内部 pending overlay 表示尚未 flush 的
 `ActiveGameplayAbility`，使同批次链式技能能够看到并取消父技能。第一次取消会先更新状态，
-避免同一个 deferred despawn 实例在同一 drain 中被重复清理。
+避免同一个 deferred despawn 实例在同一 drain 中被重复清理。该 overlay 是 `#[doc(hidden)]`
+运行时资源，不是游戏层状态容器。
 
 ### Tag Requirement
 
@@ -217,19 +231,26 @@ Requirement 每一轮先基于同一快照收集决策，再按稳定的实体�
 
 ## 同 tick 与下一 tick 边界
 
-| 请求产生位置 | 消费时机 |
-| ------------ | -------- |
-| `AbilityTasks`、`RequestProducers` 或 `Targeting` | 当前 `FixedUpdate` |
-| `GameplayResolve` drain 内直接追加 | 当前 drain |
-| `GameplayResolve` 之后的系统 | 下一次 `FixedUpdate` |
-| `GameplayResolve` 内 startup `Instant::EmitEvent` 的 Observer 再入队 | 下一次 `FixedUpdate` |
+| 请求或状态产生位置 | 默认插件下的消费时机 |
+| ------------------ | -------------------- |
+| `AbilityTasks`、`RequestProducers` 或 Targeting direct continuation 写入 Gameplay FIFO | 当前 `FixedUpdate` |
+| `TargetingResultEvent` Observer 写入 Gameplay FIFO | deferred trigger 在 resolver 前应用，当前 `FixedUpdate` |
+| `GameplayResolve` drain 内直接追加 Gameplay 请求 | 当前 drain |
+| `GameplayResolve` 创建 startup `WaitTicks` | `AbilityTasks` 已结束，下一次 `FixedUpdate` 才开始推进 |
+| `GameplayResolve` 内 startup `Instant::EmitEvent` 的 Observer 写入 Gameplay FIFO | resolver 已结束，下一次 `FixedUpdate` |
+| `GameplayResolve` 之后的系统写入 Gameplay FIFO | 下一次 `FixedUpdate` |
+| `TargetingResultEvent` Observer 再写 Targeting FIFO | Targeting drain 已结束，下一次 `FixedUpdate` 抓取 |
 
-最后一项是 `GameplayResolve` 场景下的通知边界：`EmitEvent` 使用 `Commands::trigger`，Observer
+startup Event 项是 `GameplayResolve` 场景下的通知边界：`EmitEvent` 使用 `Commands::trigger`，Observer
 在当前 resolver 返回、deferred command 应用后才运行，此时本 tick 的唯一消费阶段已经结束。
 这不是由 `EventReader` 读取的缓冲消息。若 `WaitTicks` 在 `AbilityTasks` 发出通知，或目标结果在
 `Targeting` 发出通知，Observer 在 `GameplayResolve` 前完成入队时仍可赶上当前 tick。若要求
 startup 派生效果或技能严格在当前 batch 生效，应使用 `ApplyGameplayEffectToTarget`、
 `ApplyGameplayEffectToTargets` 或 `ActivateAbility` 完成动作。
+
+`EffectTicks` 位于 resolver 之前。因此本 tick 在 `GameplayResolve` 新建的 Duration/Period Effect
+不会倒退补 tick；它第一次参与 duration/period 推进是在下一次 `FixedUpdate`。同理，resolver
+新建的 Ability Task 不会倒退到本 tick 已结束的 `AbilityTasks`。
 
 对于未来的 AI、寻路或异步计算也采用相同规则：结果若在 `GameplayResolve` 前进入
 `RequestProducers`，则当前 tick 生效；若结果在该阶段之后才就绪，就明确属于下一 tick，
@@ -244,11 +265,28 @@ startup 派生效果或技能严格在当前 batch 生效，应使用 `ApplyGame
 - `apply_gameplay_effect()`：应用前检查当前 Requirement，并在返回前完成本次效果引起的收敛；
 - `execute_gameplay_effect_plan()`：执行已准备计划，并收敛由该计划标记的变化。
 
-这里的“同步”表示返回前完成该调用路径的逻辑结算、Requirement 收敛和本地队列 drain，
-不表示数据库式原子事务：由 `Commands` 创建或销毁的实体可能尚未 flush，执行失败也不承诺
-回滚此前全部副作用。初始化、测试或明确需要立即结算时可以使用这些 API。运行时如果已经
-存在全局排队请求，不要在同一逻辑阶段混用同步 mutation，否则它会越过全局 FIFO 中尚未
-消费的请求。
+Effect 同步入口接收 `&mut EffectSystemParams`；Ability 同步入口接收
+`&mut AbilitySystemParams`。后者通过 `DerefMut` 可借用为前者，但 Effect 模块本身不查询 ASC：
+
+```rust
+pub fn apply_gameplay_effect(
+    target: Entity,
+    effect_def: &Arc<GameplayEffect>,
+    params: &mut EffectSystemParams,
+    payload: &EffectPayload,
+) -> Result<(), GameplayEffectApplicationError>;
+
+pub fn execute_gameplay_effect_plan(
+    plan: GameplayEffectApplicationPlan,
+    params: &mut EffectSystemParams,
+) -> Result<(), GameplayEffectApplicationError>;
+```
+
+这里的“同步”表示返回前完成该调用路径的逻辑结算与 Requirement 收敛；Ability 激活路径还会
+完成其局部队列 drain。它不表示数据库式原子事务：由 `Commands` 创建或销毁的实体可能尚未
+flush，执行失败也不承诺回滚此前全部副作用。初始化、测试或明确需要立即结算时可以使用这些
+API。运行时如果已经存在全局排队请求，不要在同一逻辑阶段混用同步 mutation，否则它会越过
+全局 FIFO 中尚未消费的请求。
 
 ## 容量、延迟与性能
 
@@ -286,6 +324,7 @@ startup 派生效果或技能严格在当前 batch 生效，应使用 `ApplyGame
 - `tests/gas_tests/runtime_paths_test.rs`：阶段边界、当前 tick 与下一 tick；
 - `tests/gas_tests/effects/requirements.rs` 与 `stacking.rs`：请求间 Requirement、免疫、堆叠和跨实体 Tag 可见性；
 - `tests/gas_tests/abilities/chaining.rs` 与 `lifecycle.rs`：startup Instant、链式激活和 deferred cancellation。
+- `tests/gas_tests/gameplay_targeting_test.rs`：Targeting FIFO、direct continuation 与多目标请求。
 
 继续阅读：
 

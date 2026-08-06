@@ -1,141 +1,156 @@
 # 06 — Gameplay 效果
 
-## 概述
+## 职责
 
-Gameplay 效果是核心的 Buff/Debuff 系统。它们对属性应用修饰器、授予标签，可以是即时、持续或无限的。
+Gameplay Effects 定义并执行 Buff、Debuff、即时数值变化、周期效果、标签授予、免疫、移除条件
+和堆叠。定义通过 `Arc<GameplayEffect>` 共享；有限和无限效果存放在目标实体的
+`ActiveGameplayEffects` 中。
 
-源码分为两组门面：`gameplay_effect.rs + gameplay_effect/` 负责定义、上下文、时间、标签和
-堆叠策略；`active_gameplay_effect.rs + active_gameplay_effect/` 负责 planning、应用事务、活跃
-状态、Requirement 收敛、移除和 tick 系统；`effect_system_params.rs` 定义 Effect 专用的 ECS
-访问边界。完整所有权边界见
-[17 — 源码布局与维护边界](./17-source-layout-and-maintenance.md)。
+Effects 只依赖较窄的 `EffectSystemParams`，不要求调用者提供 ASC 或 Active Ability 查询。
+能力侧的系统参数通过 `effects` 字段组合并复用同一套 Effect API。
 
-## 持续时间类型
+## 源码布局
 
-| 类型                 | 行为                                   |
-| -------------------- | -------------------------------------- |
-| `Instant`            | 一次性修饰器应用（修改 base 值）       |
-| `DurationTicks(ModifierMagnitude)` | 幅度解析为 N 个 fixed-update tick，之后自动移除 |
-| `Infinite`           | 持久存在，直到显式移除                 |
+```text
+src/gas/
+├── gameplay_effects.rs
+└── gameplay_effects/
+    ├── gameplay_effect.rs
+    ├── gameplay_effect/
+    │   ├── context.rs          # EffectPayload and EffectContext
+    │   ├── definition.rs       # GameplayEffect
+    │   ├── timing.rs           # Duration and period definitions
+    │   ├── effect_tags.rs      # Tags, requirements, and immunity
+    │   └── stacking.rs         # Stacking policies
+    ├── gameplay_effect_spec.rs # Evaluated definition snapshot
+    ├── effect_system_params.rs # Effect-only ECS access
+    ├── active_gameplay_effect.rs
+    └── active_gameplay_effect/
+        ├── planning.rs         # Validation, plan, and public errors
+        ├── application.rs      # Synchronous entry and stack lookup
+        ├── execution.rs        # Plan execution and modifier application
+        ├── state.rs            # Target-owned active storage
+        ├── requirements.rs     # Ongoing/removal fixed point
+        ├── removal.rs          # Cleanup and public removal/query API
+        └── ticking.rs          # Duration and period systems
+```
 
-## 效果定义 (`GameplayEffect`)
+排队请求类型位于 `src/gas/gameplay_execution/request.rs`，不是 Effects 目录的一部分。
 
-`GameplayEffect` 是通过 `GameplayEffect::new()` 构造的不可变定义，组合 Modifier、持续时间、
-可选周期、应用概率、堆叠策略和 Effect 标签。字段布局属于实现细节；精确构造签名以 rustdoc
-为准。
+## 公共 API
 
-### `EffectDurationTicks`
+### 定义、时间与标签
 
 ```rust
+impl GameplayEffect {
+    pub fn new(
+        modifiers: Vec<Modifier>,
+        duration: EffectDurationTicks,
+        period: Option<EffectPeriodTicks>,
+        probability_to_apply: f32,
+        stacking_policy: StackingPolicy,
+        tags: EffectTags,
+    ) -> Self;
+    pub fn make_spec(self: &Arc<Self>, context: &EffectContext) -> GameplayEffectSpec;
+    pub fn get_tags(&self) -> &EffectTags;
+    pub fn has_only_add_modifiers(&self) -> bool;
+    pub fn get_probability_to_apply(&self) -> f32;
+}
+
 pub enum EffectDurationTicks {
     Instant,
-    DurationTicks(ModifierMagnitude),  // 支持 Calculated 幅度
+    DurationTicks(ModifierMagnitude),
     Infinite,
+}
+
+impl EffectPeriodTicks {
+    pub fn new(period: ModifierMagnitude, execute_on_applied: bool) -> Self;
 }
 ```
 
-持续时间和周期幅度解析为 tick 时，正的非整数向上取整，大于等于 `u32::MAX` 的值饱和到
-`u32::MAX`，非有限值和小于等于 0 的值解析为 0。`DurationTicks(0)` 会以
-`InvalidDuration` 拒绝；对持续/无限效果，period 为 0 不会创建周期计数器，而是按普通持续
-modifier 应用，`execute_on_applied` 也不会额外执行。需要周期语义时应显式保证 period 大于 0。
-
-### `EffectPeriodTicks`
-
-为 `DurationTicks` 或 `Infinite` 效果启用周期性修饰器执行（例如每 3 tick 造成一次伤害）。
-`Instant` 效果会忽略 period 配置。
-
-使用 `EffectPeriodTicks::new(period_ticks, execute_on_applied)` 构造周期规则；第一个参数支持
-Flat 或 Calculated 幅度，第二个参数控制新建正周期 Active Effect 时是否立即 pulse。
-
-`execute_on_applied` 只作用于新建的正周期 Active Effect。重应用并堆叠到已有周期效果时不会
-立即 pulse，只会按 stack duration/period policy 更新其运行时状态。
-
-## 效果标签 (`EffectTags`)
-
-`EffectTags` 组合效果身份标签、激活期间授予的标签、来源/目标的 application、ongoing、
-removal 条件、免疫查询以及应用前需要移除的效果标签。字段布局属于实现细节；公开 getter 和
-构造签名以 rustdoc 为准。
-
-### `TagRequirements`
-
-`TagRequirements` 是 Gameplay Tags 领域的通用条件类型，详细 API 见
-[03 — Gameplay 标签](./03-gameplay-tags.md#tagrequirements)。Gameplay Effects 为兼容旧路径
-继续重导出该类型。
-
-空的 application/ongoing requirement 会通过检查；空的 removal requirement 被特殊视为
-“未配置移除条件”，不会触发移除。`remove_effects_with_tags` 匹配现有效果的 `asset_tags`
-而不是该效果授予目标的 `granted_tags`。当前实现会同时展开效果 asset tag 和查询 tag 的父
-标签，再检查任意交集；因此两个 sibling tag 只要共享祖先也会匹配。例如查询
-`Effect.Buff.Power` 也会命中 `Effect.Damage.Fire`，因为二者都包含 `Effect`。公开
-`has_active_effect_with_tags()` 与 `remove_active_effects_with_tags()` 使用相同语义。
-
-### `GameplayEffectImmunityQuery`
+`EffectTags::new()` 是位置参数构造器，顺序必须与下列签名一致：
 
 ```rust
-pub struct GameplayEffectImmunityQuery {
-    source_tags: TagRequirements,
-    effect_tags: TagRequirements,
-}
+pub fn new(
+    asset_tags: Vec<GameplayTag>,
+    granted_tags: Vec<GameplayTag>,
+    source_application_tags: TagRequirements,
+    target_application_tags: TagRequirements,
+    source_ongoing_tags: TagRequirements,
+    target_ongoing_tags: TagRequirements,
+    source_removal_tags: TagRequirements,
+    target_removal_tags: TagRequirements,
+    granted_application_immunity: Vec<GameplayEffectImmunityQuery>,
+    remove_effects_with_tags: Vec<GameplayTag>,
+) -> EffectTags;
+```
 
+所有字段都通过 `get_*` 方法读取。`get_required_tags()` 与 `get_blocked_tags()` 是目标应用条件
+的兼容快捷 getter。
+
+```rust
 impl GameplayEffectImmunityQuery {
+    pub fn new(source: TagRequirements, effect: TagRequirements) -> Self;
     pub fn matches(
         &self,
         source_tags: Option<&GameplayTagContainer>,
         effect_asset_tags: &[GameplayTag],
-        tag_manager: &GameplayTagManager,
+        tag_manager: &Res<GameplayTagManager>,
     ) -> Result<bool, GameplayTagError>;
+    pub fn matches_tag_bits(
+        &self,
+        source_tags: Option<&GameplayTagContainer>,
+        effect_asset_bits: Option<&GameplayTagBits>,
+    ) -> bool;
 }
 ```
 
-## 堆叠策略 (StackingPolicy)
+### 堆叠策略
 
 ```rust
-pub struct StackingPolicy {
-    stacking_type: StackingType,
-    stack_limit: u32,
-    magnitude_policy: StackMagnitudePolicy,
-    duration_policy: StackDurationPolicy,
-    period_policy: StackPeriodPolicy,
-    overflow_policy: StackOverflowPolicy,
-    expiration_policy: StackExpirationPolicy,
+let stacking_policy = StackingPolicy::new(
+    stacking_type,
+    stack_limit,
+    magnitude_policy,
+    duration_policy,
+    period_policy,
+    overflow_policy,
+    expiration_policy,
+);
+```
+
+| 类型 | 选项 |
+| --- | --- |
+| `StackingType` | `None`, `AggregateBySource`, `AggregateByTarget` |
+| `StackMagnitudePolicy` | `None`, `Linear` |
+| `StackDurationPolicy` | `KeepExisting`, `RefreshOnSuccessfulStack` |
+| `StackPeriodPolicy` | `KeepCurrentTick`, `ResetOnSuccessfulStack` |
+| `StackOverflowPolicy` | `RejectApplication`, `RefreshDuration` |
+| `StackExpirationPolicy` | `RemoveAllStacks`, `RemoveSingleStack` |
+
+`non_stacking()` 使用全部“保持/不缩放”策略；`linear_refreshing(type, limit)` 使用线性幅度、
+成功堆叠时刷新 duration、重置 period、溢出拒绝、到期移除全部层数。
+
+### Payload 与计算上下文
+
+```rust
+impl EffectPayload {
+    pub fn new(source: Entity, causer: Option<Entity>, level: u32) -> Self;
+    pub fn with_instigator(self, instigator: Entity) -> Self;
+    pub fn with_source_snapshot(self, snapshot: AttributeSetSnapshot) -> Self;
+    pub fn get_source(&self) -> Entity;
+    pub fn get_instigator(&self) -> Entity;
+    pub fn get_causer(&self) -> Option<Entity>;
+    pub fn get_level(&self) -> u32;
+    pub fn get_source_snapshot(&self) -> Option<&AttributeSetSnapshot>;
 }
 ```
 
-### `StackingType`
+`new()` 默认令 `instigator == source`。`EffectContext` 实现
+`ModifierEvaluationContext`；自定义 calculator 应依赖该 trait，而不是读取 Context 的 Query
+字段。
 
-| 变体                | 行为                   |
-| ------------------- | ---------------------- |
-| `None`              | 不堆叠；每次应用独立   |
-| `AggregateBySource` | 与同一来源的效果堆叠   |
-| `AggregateByTarget` | 与同一目标上的效果堆叠 |
-
-除上表条件外，只有共享同一个 `Arc<GameplayEffect>` 定义实例（`Arc::ptr_eq`）的规格才会互相
-堆叠；内容相同但分别构造的两个定义不会合并。`stack_limit == 0` 表示不限制堆叠数。
-
-### 子策略
-
-| 策略                    | 选项                                        | 说明                      |
-| ----------------------- | ------------------------------------------- | ------------------------- |
-| `StackMagnitudePolicy`  | `None`, `Linear`                            | 幅度如何随堆叠数缩放      |
-| `StackDurationPolicy`   | `KeepExisting`, `RefreshOnSuccessfulStack`  | 新堆叠时是否刷新持续时间  |
-| `StackPeriodPolicy`     | `KeepCurrentTick`, `ResetOnSuccessfulStack` | 新堆叠时是否重置周期 tick |
-| `StackOverflowPolicy`   | `RejectApplication`, `RefreshDuration`      | 达到上限时拒绝，或按原层数重应用 |
-| `StackExpirationPolicy` | `RemoveAllStacks`, `RemoveSingleStack`      | 单层过期时的行为          |
-
-### 便捷构造函数
-
-```rust
-StackingPolicy::non_stacking()                                          // 不堆叠
-StackingPolicy::linear_refreshing(StackingType::AggregateBySource, 5)   // 线性、刷新
-```
-
-当前 `RefreshDuration` 在到达上限时只允许以原 `stack_count` 继续执行堆叠路径；是否真的刷新
-持续时间仍由 `StackDurationPolicy::RefreshOnSuccessfulStack` 决定，周期计数是否重置则由
-`StackPeriodPolicy` 决定。与 `StackDurationPolicy::KeepExisting` 组合时不会刷新持续时间。
-
-## 效果应用流程
-
-### 直接应用
+### 应用、计划与移除
 
 ```rust
 pub fn apply_gameplay_effect(
@@ -144,229 +159,188 @@ pub fn apply_gameplay_effect(
     params: &mut EffectSystemParams,
     payload: &EffectPayload,
 ) -> Result<(), GameplayEffectApplicationError>;
-```
 
-该同步入口会在应用前检查当前 Active Effect Requirement 状态，并在返回前完成本次应用
-产生的 Tag Requirement 收敛。因此连续同步调用时，后一个效果能稳定看到前一个效果的
-堆叠、免疫、移除和抑制结果。它不参与全局 FIFO 排序；运行时生产系统应写入
-`GameplayExecutionQueue`，不要在同一逻辑阶段混用排队应用与同步应用。
-
-### 两阶段 API
-
-```rust
-// 阶段 1：准备（检查条件、查找可堆叠、收集待移除）
-let plan = prepare_gameplay_effect(target, effect, &mut effect_params, &payload)?;
-
-// 阶段 2：执行
-execute_gameplay_effect_plan(plan, &mut effect_params)?;
-```
-
-`execute_gameplay_effect_plan()` 返回前也会收敛由该计划标记的 Requirement 变化。plan 应在
-prepare 后立即、在相同逻辑状态中执行：执行阶段会重验清理条件、目标组件、属性和标签 ID，
-但不会重新检查 application requirement、免疫或概率决定。
-
-两阶段 API 不是可长期保存的命令，也不提供数据库式原子事务。执行会先移除 plan 收集的旧
-效果，再应用或创建新效果；如果后续因容量或已变化的 ECS 状态失败，不承诺恢复已移除效果。
-
-`GameplayEffectApplicationError` 区分无效概率、概率拒绝、标签条件、免疫、无效持续时间、
-缺少目标组件、Active Effect 容量耗尽、目标未初始化属性、堆叠溢出、无效标签和无效属性 ID。
-`MissingAttribute { target, id }` 表示目标有 `AttributeSet`，但没有 modifier 所需的属性。
-`is_rejection()` 可用于区分正常的 Gameplay 拒绝与配置/状态错误。
-
-FixedUpdate 系统遇到不可恢复的执行错误时会记录一次错误并移除对应 Active Effect，
-避免每个 tick 重试同一个永久错误而产生日志风暴。
-
-### `prepare_gameplay_effect` 检查顺序
-
-1. **概率** — 根据 `probability_to_apply` 掷骰
-2. **应用条件** — 来源 + 目标标签要求
-3. **应用免疫** — 检查目标是否免疫
-4. **生成 Spec** — 通过 `EffectContext` 解析幅度
-5. **执行条件预检** — 检查目标组件、属性初始化状态、标签和 ID
-6. **收集待移除** — 按 `asset_tags` 查找匹配 `remove_effects_with_tags` 的效果
-7. **查找可堆叠** — 查找已有的可堆叠活跃效果
-
-### `GameplayEffectApplicationKind`
-
-```rust
-enum GameplayEffectApplicationKind {
-    Instant,                                          // 应用即完成
-    StackExisting { handle: ActiveEffectHandle, new_stack_count: u32 },  // 堆叠到已有
-    CreateActive,                                     // 创建新的活跃效果
-}
-```
-
-## 活跃效果生命周期
-
-### 目标持有的 `ActiveGameplayEffects`
-
-持续/无限效果不再各自生成 Bevy 实体，而是直接存放在目标实体的 Component 中：
-
-```rust
-#[derive(Component, Default)]
-pub struct ActiveGameplayEffects {
-    // 稳定槽位 + 空闲槽位列表
-}
-
-pub struct ActiveEffectHandle {
+pub fn prepare_gameplay_effect(
     target: Entity,
-    slot: u32,
-    generation: u32,
+    effect: &Arc<GameplayEffect>,
+    params: &mut EffectSystemParams,
+    payload: &EffectPayload,
+) -> Result<GameplayEffectApplicationPlan, GameplayEffectApplicationError>;
+
+pub fn execute_gameplay_effect_plan(
+    plan: GameplayEffectApplicationPlan,
+    params: &mut EffectSystemParams,
+) -> Result<(), GameplayEffectApplicationError>;
+
+pub fn remove_active_effect(
+    handle: ActiveEffectHandle,
+    params: &mut EffectSystemParams,
+) -> Result<bool, GameplayEffectApplicationError>;
+
+pub fn remove_active_effects_with_tags(
+    target: Entity,
+    tags: &[GameplayTag],
+    params: &mut EffectSystemParams,
+) -> Result<usize, GameplayEffectApplicationError>;
+```
+
+`GameplayEffectApplicationPlan` 是不透明、应立即执行的计划。它只公开
+`get_modifier_specs()` 和 `is_instant()`；内部 application kind 不是公共 API。
+
+### 活跃效果只读访问
+
+`ActiveGameplayEffects` 公开 `len()`、`is_empty()`、`get(handle)` 和
+`handles(target)`。`ActiveGameplayEffect` 公开 spec、source、target、stack count、inhibited、
+duration 和 period getter。容器不公开 mutation；移除必须通过 Effects API 完成，才能同步
+清理属性和标签。
+
+`ActiveEffectHandle` 公开 `new()` 与 target/slot/generation getter。正常代码应保存 API 返回或
+遍历得到的 handle，而不是猜测槽位。
+
+### 错误
+
+```rust
+pub enum GameplayEffectApplicationError {
+    InvalidProbability { probability: f32 },
+    ProbabilityRejected,
+    ApplicationRequirementsNotMet,
+    BlockedByImmunity,
+    InvalidDuration,
+    MissingActiveGameplayEffects { target: Entity },
+    ActiveEffectCapacityExceeded { target: Entity },
+    MissingAttributeSet { target: Entity },
+    MissingAttribute { target: Entity, id: AttributeId },
+    MissingTagContainer { target: Entity },
+    StackOverflowRejected,
+    GameplayTag(GameplayTagError),
+    AttributeId(AttributeIdError),
 }
 ```
 
-基础 Component 不再反向要求 `ActiveGameplayEffects`。完整 GAS Actor 应通过
-`GameplayAbilitySystemBundle` 显式组合 ASC、Attributes、Tags 和 Active Effects；只使用 Tags
-或 Attributes 的实体无需携带效果存储。目标内的槽位顺序稳定；移除后通常递增 generation，
-因此旧句柄即使遇到槽位复用也不会误
-命中新效果。generation 达到 `u32::MAX` 时该槽位退休、不再复用。句柄携带 target，跨目标
-误用同样会返回缺失。
+`is_rejection()` 仅对概率拒绝、应用条件失败、免疫阻止和堆叠溢出拒绝返回 `true`。其余错误
+表示配置或 ECS 状态问题。
 
-`ActiveGameplayEffects` 的公开接口只提供只读访问；不要直接移除或用 `Default` 替换目标上的
-容器。所有 mutation 必须通过效果应用/移除 API，才能同步清理 Modifier 与 Tag 引用计数。
+## 关键语义
 
-这种存储使同一个 Gameplay FIFO 中较早请求创建的效果，对后续请求的堆叠、免疫和移除
-检查立即可见，不依赖 `Commands` 在系统结束时 flush。
+### 时间换算与执行模式
 
-### 持续时间 Tick
+`ModifierMagnitude` 转 tick 时使用以下规则：正的非整数向上取整；大值饱和到 `u32::MAX`；
+非有限值和小于等于 0 的值变为 0。有限 duration 为 0 会返回 `InvalidDuration`。
 
-每个 `FixedUpdate`，`tick_effect_duration_system` 递减剩余 tick。归零时效果被移除（修饰器清理、标签移除）。
+| 定义 | 运行时行为 |
+| --- | --- |
+| `Instant` | 不创建 Active Effect；modifier 直接修改 base；period 被忽略 |
+| Duration/Infinite + `period: None` | modifier 作为持续聚合值 |
+| Duration/Infinite + period 解析为 0 | 与无 period 一样作为持续聚合值；`execute_on_applied` 无效 |
+| Duration/Infinite + 正 period | 不保留 duration modifier；到点时以 instant 方式修改 base |
 
-抑制不会暂停持续时间：被抑制的有限效果仍会倒计时并可能到期。
+新建正周期效果且 `execute_on_applied == true` 时，会在创建 tick 立即 pulse 一次。该 pulse 发生
+在首次 ongoing Requirement 收敛之前。
 
-Duration 清理后会先执行 Requirement 固定点收敛，再进入 Period Tick。因此某个授予标签
-刚好过期时，依赖该标签的周期效果不会额外多执行一次。
+### 目标组件要求
 
-### 周期 Tick
+| 配置 | 必需组件 |
+| --- | --- |
+| 非 Instant | `ActiveGameplayEffects` |
+| 至少一个 modifier | `AttributeSet` 且所有目标属性已初始化 |
+| 非空 `granted_tags` | `GameplayTagContainer` |
 
-`tick_effect_period_system` 追踪每个效果的周期计数器。当计数器达到周期间隔时，以 Instant
-方式修改属性 base 值。抑制期间周期计数器暂停；解除抑制后从原计数继续。
+Instant 效果也会验证 `granted_tags`，但不会持久授予它们；因此 Instant 的 granted tags 应为空。
+完整 GAS Actor 推荐使用 `GameplayAbilitySystemBundle`，纯即时属性目标可只组合所需组件。
 
-`Instant` 效果不会创建 `ActiveGameplayEffect`，其 `granted_tags` 不会被持久授予。它会先清理
-`remove_effects_with_tags` 匹配的旧效果，再执行自身 instant modifier。需要在一段时间内授予
-标签时应使用 `DurationTicks` 或 `Infinite`。
+### Prepare 与 Execute
 
-当前预检仍会验证 Instant 效果中配置的 `granted_tags`，并在它们非空时要求目标具有
-`GameplayTagContainer`，否则返回 `MissingTagContainer`，但执行阶段不会真正授予这些标签。
-因此 Instant 效果应把 `granted_tags` 保持为空，避免无效且容易误解的配置。
+Prepare 的顺序是：
 
-新建正周期效果设置 `execute_on_applied = true` 时，首次 instant pulse 发生在创建后、第一次
-ongoing requirement 收敛之前。因此即使 ongoing requirement 初始不满足，也会先执行这一次
-pulse，随后效果才进入抑制；不希望该行为时应关闭 `execute_on_applied` 或改用 application
-requirement。
+1. 验证概率并掷骰；
+2. 检查 source/target application requirements；
+3. 检查目标上未抑制 Active Effect 授予的 immunity；
+4. 通过 `EffectContext` 求值 spec；
+5. 验证 duration、目标组件、属性初始化和 granted tag ID；
+6. 收集 `remove_effects_with_tags` 匹配项；
+7. 在未计划移除的效果中查找堆叠目标并决定层数。
 
-### 抑制 (Inhibition)
+Execute 会重新验证结构性 ECS 状态和待清理数据，然后先移除计划中的旧效果，再执行 instant、
+stack 或 create。它不会重新掷骰，也不会重新检查 application requirement、immunity 或堆叠
+决策，并且不提供数据库式回滚。Plan 不应跨帧保存。
 
-当持续标签要求不满足时，效果被**抑制**：
+`apply_gameplay_effect()` 在调用前后执行 Requirement 收敛；运行时生产系统若需要与技能激活
+共享严格 FIFO，应使用 `GameplayExecutionQueue::push_application()`。
 
-- 修饰器从聚合器中暂时移除
-- 授予的标签暂时移除
-- 该效果授予的 application immunity 暂停参与传入效果检查
-- 条件恢复后，修饰器和标签自动恢复
+### 标签、免疫与移除
 
-Requirement 解析会按目标 Entity、slot、generation 的稳定顺序运行到固定点。一次队列请求
-若创建或移除了 Active Effect，解析器会在下一请求前按需收敛；队列产生的 Tag、抑制和移除
-因此能在当前 tick 内被后续请求观察。若配置形成自抑制等非收敛循环，参与循环的效果会按
-稳定顺序 fail-closed 移除，避免每个 tick 反复振荡。
+- `asset_tags` 标识效果定义；`granted_tags` 只在未抑制 Active Effect 存活期间存在。
+- application requirements 在应用前检查一次。
+- ongoing requirements 不满足时移除 duration modifier、granted tags 和 immunity 参与资格；
+  条件恢复后重新添加。
+- 非空 removal requirements 通过时永久移除效果；空 removal requirement 表示未配置。
+- `remove_effects_with_tags`、`has_active_effect_with_tags()` 和批量移除都匹配 asset tags。
 
-### 移除
+Asset tag 匹配会同时展开效果标签和查询标签的祖先，再检查任意交集。这意味着共享祖先的
+sibling 标签也可能匹配；需要精确类别时，不要让过宽的共同父标签进入移除查询。
 
-效果可通过以下方式移除：
+Requirement 以 target entity、slot、generation 的稳定顺序迭代到固定点。检测到非收敛循环
+时，参与循环的效果会 fail-closed 移除。
 
-- 持续时间到期
-- 移除标签要求被满足
-- 显式调用 `remove_active_effect()`，或用 `remove_active_effects_with_tags()` 按 `asset_tags` 匹配
+### 堆叠
 
-## 统一 Gameplay 执行队列
+只有共享同一个 `Arc<GameplayEffect>` 实例（`Arc::ptr_eq`）的 spec 才能堆叠。按 source 聚合
+还要求 source 相同；按 target 聚合只要求位于同一目标容器。`stack_limit == 0` 表示无限制。
+
+`StackMagnitudePolicy::Linear` 将每个 spec 的原始 value 乘层数。已存在效果保留首次捕获的
+spec；后续应用更新层数和策略允许的计时器，不会用新 payload 重新捕获其 modifier 幅度。
+
+`RefreshDuration` 溢出策略保持原层数并继续成功堆叠路径；只有搭配
+`RefreshOnSuccessfulStack` 才实际刷新 duration。`RemoveSingleStack` 到期时减一层并把有限
+duration 重置为定义值。
+
+### FixedUpdate 顺序
+
+完整插件中的 EffectTicks 顺序为：
+
+```text
+duration tick
+→ requirement convergence
+→ period tick
+→ requirement convergence
+```
+
+所以到期清理及其标签变化先收敛，周期效果不会在同一 tick 多 pulse 一次。抑制不暂停有限
+duration，但会暂停 period current tick。
+
+之后流水线依次运行 AbilityTasks、RequestProducers、Targeting、PreGameplayConvergence、
+GameplayResolve、UpdateEffectTagRequirements、Cleanup 和 RecalculateAttributes。
+
+## 示例
+
+推荐的运行时生产方式：
 
 ```rust
-#[derive(Resource)]
-pub struct GameplayExecutionQueue {
-    // GameplayExecutionRequest::ApplyGameplayEffect
-    // GameplayExecutionRequest::ActivateAbility
+fn queue_poison(
+    mut queue: ResMut<GameplayExecutionQueue>,
+    request: Res<PoisonRequest>,
+) {
+    let payload = EffectPayload::new(request.source, request.causer, request.level);
+    queue.push_application(request.target, request.effect.clone(), payload);
 }
-```
 
-加入效果请求：
-
-```rust
-execution_queue.push_application(target, effect, payload);
-```
-
-游戏层生产系统应注册到公共生产阶段：
-
-```rust
 app.add_systems(
     FixedUpdate,
-    queue_effect_requests.in_set(GameplayAbilitySystemSet::RequestProducers),
+    queue_poison.in_set(GameplayAbilitySystemSet::RequestProducers),
 );
 ```
 
-队列由 `process_gameplay_execution_queue_system` 在 `GameplayResolve` 阶段消费。技能激活和
-效果应用共享一条 FIFO，因此 `效果 → 技能 → 效果` 的跨类型顺序不会被拆成两个批次。
-系统在当前 `FixedUpdate` 中处理完整 drain，包括消费期间追加的派生请求；不会按请求数量
-隐式分帧。只有在 `GameplayResolve` 之后才生产的请求，按阶段定义进入下一 tick。
+队列会在同一 `GameplayResolve` drain 中消费期间追加的派生请求，并保持 Ability/Effect 的跨类型
+FIFO。Resolver 只记录错误；生产者若需要同步取得 `Result`，应在合适的独立 system 中调用
+`apply_gameplay_effect()`。
 
-## `EffectContext` 与 `EffectPayload`
+## 边界与注意事项
 
-### `EffectPayload`
-
-携带效果执行元数据：
-
-```rust
-pub struct EffectPayload {
-    source: Entity,
-    instigator: Entity,
-    causer: Option<Entity>,
-    level: u32,
-    source_snapshot: Option<AttributeSetSnapshot>,
-}
-```
-
-- `source`：提供来源属性和来源标签等 Gameplay 数据的实体。
-- `instigator`：发起产生该效果之行为的实体；默认等于 `source`，拥有者与实际发起者
-  不同时可通过 `with_instigator()` 覆盖。
-- `causer`：直接造成效果的可选物理实体，例如武器、投射物或爆炸区域。
-
-运行时代码不得使用 `instigator` 或 `causer` 代替 `source` 查询消耗、冷却、来源属性
-或来源标签。
-
-### `EffectSystemParams`
-
-Effect 的准备、应用、移除和 Requirement 收敛统一接收较窄的 `EffectSystemParams`。它只包含
-Tag/Attribute manager、确定性随机资源，以及 Attribute、Tag、Active Effect 查询和内部 dirty
-状态，不包含 ASC、Active Ability 或 Commands。`AbilitySystemParams` 内嵌该参数并实现
-`DerefMut`，因此 Ability 编排仍可直接调用 Effect API。
-
-### `EffectContext`
-
-包装 `EffectPayload` 并提供世界查询引用，供 `ModifierMagnitudeCalculation` 使用：
-
-```rust
-pub struct EffectContext<'w, 's> {
-    pub target: Option<Entity>,
-    pub payload: &'w EffectPayload,
-    pub attribute_id_manager: &'w AttributeIdManager,
-    pub attr_set_query: &'w Query<'w, 's, &'static AttributeSet>,
-    pub tag_container_query: &'w Query<'w, 's, &'static GameplayTagContainer>,
-}
-
-impl EffectContext<'_, '_> {
-    pub fn source(&self) -> Entity;
-    pub fn instigator(&self) -> Entity;
-    pub fn causer(&self) -> Option<Entity>;
-    pub fn level(&self) -> u32;
-    pub fn source_snapshot(&self) -> Option<&AttributeSetSnapshot>;
-    pub fn attribute_id_manager(&self) -> &AttributeIdManager;
-}
-```
-
-`EffectContext` 实现中立的 `ModifierEvaluationContext`。自定义幅度计算只依赖该 trait，不能再
-直接访问 ASC Query 或 Effect 存储；可通过 trait 方法读取 target/source/instigator/causer、
-level、来源快照、属性注册表和来源/目标标签。
-
-## 查询活跃效果
-
-从目标实体取得 `ActiveGameplayEffects` 后，可使用 `handles(target)` 按稳定槽位顺序遍历，
-并通过 `get(handle)` 读取运行时效果。旧的全局 `ActiveGameplayEffectTargetIndex` 已删除，
-不再需要索引对账系统，也不存在效果实体被外部 despawn 后留下的悬空索引。
+- 不要依赖 `GameplayEffect`、`EffectTags`、Plan 或 Active Effect 的私有字段布局。
+- 不要直接替换或修改 `ActiveGameplayEffects`；这会绕过 modifier/tag 清理。
+- Stale handle 返回 `None` 或 `Ok(false)`；槽位复用会增加 generation，达到 `u32::MAX` 后退休。
+- `EffectPayload::get_source()` 返回的实体才用于来源属性和标签查询；instigator 与 causer 是元数据，不能代替
+  source 支付 cost 或读取来源状态。
+- 正周期执行失败、Requirement 转换失败或到期清理失败时，系统记录错误并强制移除效果，避免
+  永久重试同一无效状态。
+- 两阶段 API 是同一逻辑状态内的短暂优化边界，不是长期命令或事务。

@@ -1,39 +1,72 @@
 # bevy_tools
 
-`bevy_tools` 是一个基于 Bevy ECS 的轻量 Gameplay Ability System 库。它提供一套可组合的战斗/技能运行时，包括 GameplayTag、Attribute、GameplayEffect、GameplayAbility、AbilityTask 和 AbilitySystemComponent。
+`bevy_tools` 是面向 Bevy 0.19 的 ECS-first Gameplay Ability System（GAS）库，提供
+Gameplay Tags、Attributes、Modifiers、Gameplay Effects、Gameplay Abilities、Ability Tasks、
+Targeting，以及确定性的 fixed-tick Gameplay 执行队列。
 
-完整的架构说明、API 导航、运行时流程与扩展指南请参阅
-[项目知识库](./docs/README.md)。
+项目使用 Rust edition 2024，运行时依赖只有：
 
-项目依赖：
+- `bevy = 0.19.0`
+- `rand = 0.10.2`
 
-- Rust edition 2024
-- Bevy `0.19.0`
-- rand `0.10.2`
+## 快速开始
 
-## 核心目标
+```rust
+use bevy::prelude::*;
+use bevy_tools::prelude::*;
 
-这个项目试图把常见 GAS 流程拆成几个清晰层级：
+fn main() {
+    App::new()
+        .add_plugins(DefaultPlugins)
+        .add_plugins(GameplayAbilitySystemPlugin)
+        .add_systems(Startup, spawn_gameplay_actor)
+        .run();
+}
 
-- `GameplayTag`：描述状态、分类、阻挡、免疫、需求等标签语义
-- `AttributeSet`：保存生命、攻击力、资源等属性，并支持 modifier 聚合
-- `GameplayEffect`：描述属性修改、持续时间、周期效果、堆叠、标签授予和免疫
-- `GameplayAbility`：描述技能定义、消耗、冷却、启动任务和标签规则
-- `AbilityTask`：承担技能执行行为，例如等待、触发事件、应用 effect
-- `AbilitySystemComponent`：挂在角色实体上，管理技能授予、激活和生命周期
-- `GameplayAbilitySystemBundle`：显式组合完整 GAS Actor 的 ASC、Tags、Attributes 与 Active Effects
+fn spawn_gameplay_actor(mut commands: Commands) {
+    commands.spawn(GameplayAbilitySystemBundle::default());
+}
+```
 
-项目整体思路是：Ability 负责启动和组织行为，Effect 负责真正修改属性或授予状态，Task 负责把行为拆成可 tick、可取消、可扩展的执行单元。
+`GameplayAbilitySystemBundle` 显式组合完整 Gameplay Actor 所需的
+`AbilitySystemComponent`、`GameplayTagContainer`、`AttributeSet` 和
+`ActiveGameplayEffects`。只需要标签或属性的实体可以单独挂载对应 Component。
 
-## 快速检查
-
-运行标签注册示例：
+标签注册的可运行示例见
+[`examples/tag_registration.rs`](./examples/tag_registration.rs)：
 
 ```bash
 cargo run --example tag_registration
 ```
 
-提交前检查：
+## 架构入口
+
+- [知识库导航](./docs/README.md)：按使用、运行时、领域和维护场景组织的文档入口
+- [项目与架构总览](./docs/01-overview.md)：领域边界、数据所有权和 fixed-tick 数据流
+- [使用模式](./docs/12-usage-patterns.md)：伤害、DoT、Buff、连招和事件驱动示例
+- [源码布局与维护边界](./docs/17-source-layout-and-maintenance.md)：真实目录结构和修改路由
+
+公共导入建议：常用类型使用 `bevy_tools::prelude::*`，完整 API 从
+`bevy_tools::gas::<domain>` 导入；crate root 的显式重导出继续作为兼容入口。
+
+## 项目原则
+
+设计优先级依次为正确性、可读性和性能，并遵循以下约束：
+
+- Gameplay 状态由 Component、Resource、System、Event/Message 表达；
+- 持续时间、周期和任务等待均使用 `FixedUpdate` tick；
+- 技能激活与效果应用共享确定性的跨类型 FIFO；
+- 定义通过 `Arc<GameplayEffect>` / `Arc<GameplayAbility>` 共享；
+- Tags 和 Attributes 可独立使用，完整 GAS 组合由 Bundle 明确表达；
+- 不依赖容器遍历顺序表达 Gameplay 语义。
+
+## 当前边界
+
+- `GameplayAbilitySpec` 保存输入 ID 和按下状态，但尚未内置玩家输入到技能激活的完整适配层；
+- 尚未提供 serde/ron 配置序列化；
+- Ability cost 必须是仅含 `ModifierOperation::Add` 的 Instant Effect。
+
+## 开发检查
 
 ```bash
 cargo fmt
@@ -42,8 +75,4 @@ cargo test
 cargo build
 ```
 
-## TODO
-
-- 玩家通过输入激活技能流程
-- 序列化与反序列化
-- 技能消耗支持非 ModifierOperation::Add 的其他消耗类型
+许可证：MIT。

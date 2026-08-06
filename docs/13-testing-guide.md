@@ -1,59 +1,75 @@
 # 13 — 测试指南
 
-## 测试组织
+## 测试与示例组织
 
-```
+```text
 tests/
 ├── gas_tests.rs                         # GAS 集成测试 crate 门面
 ├── gas_tests/
 │   ├── support.rs                       # App、builder、tick 和查询 helper
-│   ├── effects.rs                       # Effect 测试门面
+│   ├── effects.rs                       # Effect 行为测试门面
 │   ├── effects/
-│   │   ├── application.rs               # 应用校验、错误和回滚
-│   │   ├── stacking.rs                  # 堆叠、上限和刷新策略
-│   │   ├── requirements.rs              # 免疫、抑制和条件收敛
+│   │   ├── application.rs               # 应用校验、错误与执行边界
+│   │   ├── stacking.rs                  # 堆叠、上限与刷新策略
+│   │   ├── requirements.rs              # 免疫、抑制与固定点收敛
 │   │   ├── ticking.rs                   # Duration 与 Period tick
 │   │   └── removal.rs                   # 显式与标签驱动移除
-│   ├── abilities.rs                     # Ability 测试门面
+│   ├── abilities.rs                     # Ability 行为测试门面
 │   ├── abilities/
-│   │   ├── activation.rs                # 激活条件和实例策略
+│   │   ├── activation.rs                # 激活条件与实例策略
 │   │   ├── commit.rs                    # Cost 与 Cooldown
-│   │   ├── lifecycle.rs                 # 取消、结束和清理
+│   │   ├── lifecycle.rs                 # 取消、结束与清理
 │   │   ├── tasks.rs                     # WaitTicks 与任务结束
-│   │   └── chaining.rs                  # 链式上下文和深度限制
-│   ├── gameplay_tags_test.rs            # 标签注册、位集、容器
-│   ├── attributes_test.rs               # 属性初始化、重算、聚合器
-│   ├── gameplay_targeting_test.rs       # 目标管线、确定性、技能集成
-│   ├── queues_test.rs                   # 队列处理、运行条件
-│   └── runtime_paths_test.rs            # 端到端运行时路径
-├── randoms_tests.rs                     # RNG 确定性
-└── unique_names_tests.rs                # 字符串驻留、冲突检测
+│   │   └── chaining.rs                  # 链上下文、深度与循环限制
+│   ├── attributes_test.rs               # 属性注册、冷热槽位、重算与聚合
+│   ├── gameplay_tags_test.rs            # 标签注册、位集与引用计数
+│   ├── gameplay_targeting_test.rs       # 目标管线、确定性与技能集成
+│   ├── queues_test.rs                   # 跨类型 FIFO、运行条件与批次语义
+│   └── runtime_paths_test.rs            # Plugin 管线、Bundle 与公共运行路径
+├── randoms_tests.rs                     # RNG 种子确定性与概率边界
+└── unique_names_tests.rs                # 驻留复用与名称区分
+
+examples/
+└── tag_registration.rs                 # 完整 App 中的标签注册
 ```
 
-Effect 与 Ability 测试按行为拆分，而不是按实现文件逐一镜像。这样移动私有函数不会引起测试
-目录抖动；新增行为时应选择它验证的外部语义，例如 Requirement 收敛测试放在
-`effects/requirements.rs`。
+Effect 与 Ability 测试按外部行为拆分，不镜像私有实现文件。移动私有函数不应迫使测试目录
+改名；新增行为时应放入最接近其 Gameplay 语义的模块。跨领域执行顺序、Bundle 组合和公共
+导入路径优先放在 `runtime_paths_test.rs` 或 `queues_test.rs`。
 
-## 运行测试
+## 运行命令
 
 ```bash
-# 运行所有测试
+# All unit, integration, and doc tests
 cargo test
 
-# 运行特定测试模块
+# GAS integration-test crate
 cargo test --test gas_tests
 
-# 只运行 Effect Requirement 测试
+# One nested behavior module
 cargo test --test gas_tests effects::requirements
 
-# 带输出运行
-cargo test -- --nocapture
+# Supporting infrastructure only
+cargo test --test randoms_tests
+cargo test --test unique_names_tests
 
-# 运行特定测试
-cargo test test_name
+# One test-name filter with captured output visible
+cargo test test_name -- --nocapture
+
+# List discoverable tests before choosing a filter
+cargo test --test gas_tests -- --list
+
+# Compile or run the checked example
+cargo check --example tag_registration
+cargo run --example tag_registration
 ```
 
-## 提交前检查清单
+`cargo run --example tag_registration` 会启动 Bevy App，适合人工验证；CI 只需编译示例，
+不应等待窗口退出。
+
+## 提交前检查
+
+项目最低检查集：
 
 ```bash
 cargo fmt
@@ -62,72 +78,105 @@ cargo test
 cargo build
 ```
 
-所有代码应无编译警告，并通过所有测试。
+`cargo clippy --all-targets` 会覆盖 library、测试与 example。只做只读格式检查时可使用
+`cargo fmt --check`；如果新增或调整 example，也可以先执行 `cargo check --examples` 获得更快
+反馈。
 
-运行时代码按照项目约定不使用 `unwrap()`、`expect()` 和 `panic!()`。测试中的
-`unwrap()` / `expect()` 可作为“此步骤必须成功”的显式断言使用；生产代码必须通过
-`Result`、`?`、`match` 或 `let ... else` 处理失败路径。
+运行时代码禁止 `unwrap()`、`expect()` 和 `panic!()`。集成测试中的 `unwrap()` / `expect()`
+可作为“此步骤必须成功”的断言；不要把测试 helper 中的写法复制到 `src/` 或 example。
 
-## 编写新测试
+## 测试 App 与 Fixture
 
-### 测试结构
-
-测试使用 `#[cfg(test)] mod tests { ... }` 放在各文件中，或作为独立测试文件放在 `tests/` 目录下。
-
-### 通用测试模式
+集成测试的通用 App 与当前 `support.rs` 保持一致：
 
 ```rust
-use bevy::app::App;
+use bevy::prelude::*;
 use bevy_tools::prelude::*;
 
-#[test]
-fn test_my_feature() {
+fn test_app() -> App {
     let mut app = App::new();
-    app.add_plugins(GameplayAbilitySystemPlugin);
-
-    // 在 Startup 系统中注册标签、属性等
-    // 完整 GAS Actor 使用 GameplayAbilitySystemBundle；纯领域测试只生成所需 Component
-    // 应用效果或激活技能
-    // 推进 FixedUpdate tick
-    // 断言预期状态
+    app.add_plugins((MinimalPlugins, GameplayAbilitySystemPlugin));
+    app
 }
 ```
 
-### 推进时间
+注册标签/属性的 helper 使用 `RunSystemOnce` 执行 `GameplayTagRegister` 或
+`AttributeIdRegister`。测试可以用 `unwrap()` 明确断言注册成功；生产系统仍必须传播或处理
+错误。
 
-由于所有计时基于 tick，推进 `FixedUpdate` 来推进时间：
+Fixture 应按验证目标最小化：
+
+- 纯 Tag 测试只生成 `GameplayTagContainer`；
+- 纯 Attribute 测试只生成 `AttributeSet`；
+- Duration/Infinite Effect 的目标显式包含 `ActiveGameplayEffects`；
+- 完整 Ability/Effect Actor 使用 `GameplayAbilitySystemBundle`；
+- 不得依赖插入 Tag 或 Attribute Component 时隐式生成 Active Effect 存储。
+
+当前共享 `spawn_attribute_set` helper 为 Effect 测试方便，同时生成 `AttributeSet` 与
+`ActiveGameplayEffects`；纯属性测试不应使用它来证明组件独立性。
+
+Effect-only 测试的新 system 应优先声明 `EffectSystemParams`：
 
 ```rust
-// 推进 N 个 tick
-for _ in 0..n_ticks {
+fn converge_test_effects(mut params: EffectSystemParams) {
+    bevy_tools::gas::gameplay_effects::resolve_active_effect_tag_requirements(&mut params);
+}
+```
+
+`AbilitySystemParams` 因实现了到 `EffectSystemParams` 的 `DerefMut`，现有综合 helper 仍能调用
+Effect API；这属于 Ability 编排兼容路径，不应成为新的 Effect-only 测试默认写法。
+
+## 推进 FixedUpdate
+
+所有 Gameplay 时间使用 tick。精确推进一个 tick：
+
+```rust
+for _ in 0..tick_count {
     app.world_mut().run_schedule(FixedUpdate);
 }
 ```
 
-不要在测试中继续依赖插入 `AttributeSet` 或 `GameplayTagContainer` 时隐式产生
-`ActiveGameplayEffects`。需要持续/无限效果存储的 fixture 应显式加入该 Component，或直接使用
-`GameplayAbilitySystemBundle`；纯 Tags/Attributes 测试应验证它们能够独立存在。
+不要用 `app.update()` 断言精确 tick 边界，因为它受 Bevy 固定时间累积影响。需要只验证某个
+系统的局部行为时，可以通过 `RunSystemOnce` 调用对应公开 system；验证插件排序、请求同 tick
+可见性或 Requirement 收敛时，必须运行完整 `FixedUpdate` schedule。
 
-集成测试直接运行 `FixedUpdate` schedule，从而保证每次循环恰好推进一个 Gameplay tick；
-`app.update()` 会受 Bevy 固定时间累积影响，不适合断言精确 tick 边界。
+队列测试至少区分三种语义：
 
-### 关键测试领域
+1. `RequestProducers` 或 `Targeting` 在 resolver 前入队，请求在当前 tick 消费；
+2. resolver drain 期间追加的派生请求仍在本次 drain 消费；
+3. `GameplayResolve` 之后入队，请求明确保留到下一 tick。
 
-| 领域       | 应测试的内容                                 |
-| ---------- | -------------------------------------------- |
-| 标签注册   | 父标签自动注册、容量限制                     |
-| 标签容器   | 添加/移除、引用计数、has_tag/has_all/has_any |
-| 属性初始化 | 基础值、重算、聚合器                        |
-| 修饰器聚合 | 顺序：Override → Add → PercentAdd → Multiply |
-| 即时效果   | Base 值修改、post_execute 回调               |
-| 持续效果   | 修饰器应用、过期清理                         |
-| 周期效果   | Tick 计数、execute_on_applied                |
-| 堆叠       | 堆叠上限、幅度缩放、持续时间刷新             |
-| 抑制       | 持续标签要求、修饰器/标签恢复                |
-| 免疫       | 阻止应用、免疫查询匹配                       |
-| 技能激活   | 冷却、消耗、阻止标签、激活要求               |
-| 技能任务   | WaitTicks 倒计时、on_finished 动作           |
-| 技能链式   | 深度限制、循环检测                           |
-| 目标抓取   | 管线验证、过滤、排序、锥形、批量请求、多目标效果 |
-| 队列       | Push/pop、FIFO、单 tick 全量消费、运行条件       |
-| 清理       | Ending/Cancelled 技能销毁、索引清理          |
+## 公共 API 路径测试
+
+prelude 是精简入口，不是完整 API 镜像。测试常见用法可导入 `bevy_tools::prelude::*`；错误、
+handle/spec、管理器和系统函数应从 `bevy_tools::gas::<domain>` 或 crate root 显式导入。
+
+公开 API 调整时至少验证：
+
+- owning domain facade 的路径可用；
+- `bevy_tools::gas` 聚合路径与 crate-root 兼容路径符合设计；
+- 只有高频、低歧义项进入 prelude；
+- 新增内部 `pub` 项不会因通配重导出意外泄漏；
+- `Random` 与 `UniqueName*` 仍由 crate root 公开，而不是误放入 GAS prelude。
+
+`examples/tag_registration.rs` 当前使用 crate-root 兼容导入，验证既有根路径；知识库示例优先
+使用精简 prelude，专项 API 则展示领域门面路径。
+
+## 关键测试领域
+
+| 领域 | 应验证的内容 |
+| --- | --- |
+| 标签注册 | 父标签自动注册、容量、无效句柄与冲突区分 |
+| 标签容器 | 引用计数、继承、`has_tag` / `has_all` / `has_any` |
+| 属性 | 冷热注册、初始化、dirty 位图、快照与延迟重算 |
+| 修饰器 | `Override → Add → PercentAdd → Multiply`、中立 Source ID、计算上下文 |
+| 即时效果 | Base 修改、post-execute、无需 Active Effect 存储 |
+| 持续/周期效果 | Modifier 生命周期、到期、Period 与 `execute_on_applied` |
+| 堆叠 | 来源/目标聚合、上限、幅度、Duration/Period 策略 |
+| Requirement/免疫 | 抑制、恢复、移除、固定点收敛与 fail-closed |
+| 技能 | 激活、Cost、Cooldown、阻止/取消标签与实例策略 |
+| 技能任务/链 | startup、WaitTicks、完成动作、深度与循环检测 |
+| Targeting | 管线校验、稳定排序、多目标 continuation |
+| 统一 FIFO | Ability/Effect 跨类型顺序、完整 drain、阶段边界 |
+| 组件组合 | Bundle 四组件齐全，Tag/Attribute 独立存在 |
+| 支撑设施 | RNG 同种子序列、名称复用、空名称与不同字符串区分 |

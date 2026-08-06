@@ -1,32 +1,47 @@
 # 07 — Gameplay 技能
 
-## 概述
+## 职责
 
-Gameplay 技能代表角色可执行的动作——法术、攻击、冲刺等。它们支持冷却、消耗、激活效果、启动任务和链式激活。
+Gameplay Ability 描述角色能够执行的动作，例如攻击、法术和冲刺。该领域只拥有技能定义、
+已授予规格、激活上下文、技能链、活跃实例和任务数据；激活、Commit 与清理由
+`ability_system` 编排，跨类型请求顺序由 `gameplay_execution` 维护。
 
-## 源码结构
+## 源码布局
 
 ```text
 src/gas/
-├── gameplay_abilities.rs                     # 领域门面与显式公共重导出
+├── gameplay_abilities.rs
 └── gameplay_abilities/
-    ├── gameplay_ability.rs                   # 不可变技能定义与 AbilityTags
-    ├── gameplay_ability_spec.rs              # 已授予技能的可变运行时规格
-    ├── active_gameplay_ability.rs             # 活跃技能门面
+    ├── gameplay_ability.rs
+    ├── gameplay_ability_spec.rs
+    ├── active_gameplay_ability.rs
     ├── active_gameplay_ability/
-    │   ├── chain.rs                           # 技能链、深度限制与循环检测
-    │   ├── context.rs                         # 激活来源、原因、快照与目标数据
-    │   └── state.rs                           # 活跃实例 Component、句柄与生命周期状态
-    ├── ability_task.rs                        # 技能任务门面
-    └── ability_task/                          # 详见 08 — 技能任务
+    │   ├── chain.rs
+    │   ├── context.rs
+    │   └── state.rs
+    ├── ability_task.rs
+    └── ability_task/
+        ├── definition.rs
+        ├── state.rs
+        ├── completion.rs
+        └── ticking.rs
 ```
 
-`gameplay_abilities.rs` 和两个同名门面文件只负责声明子模块与显式重导出，不承载业务流程。
-`GameplayAbility` 与 `GameplayAbilitySpec` 保持分离：前者是可共享的定义，后者保存某个 ASC
-已授予技能的等级、输入和活跃实例计数。活跃实例相关代码再按技能链、激活上下文和 ECS
-状态拆开，避免修改链路校验时影响生命周期存储。
+| 文件 | 职责 |
+| ---- | ---- |
+| `gameplay_ability.rs` | 不可变技能定义与 `AbilityTags` |
+| `gameplay_ability_spec.rs` | 某个 ASC 已授予技能的等级、输入状态和活跃计数 |
+| `active_gameplay_ability/chain.rs` | 链 ID、深度限制和重复 Handle 检查 |
+| `active_gameplay_ability/context.rs` | Instigator、Causer、来源快照、Target Data 和激活原因 |
+| `active_gameplay_ability/state.rs` | 活跃实例 Component、Handle 别名和状态 |
+| `ability_task/` | startup 定义与跨 tick 运行时任务，详见 [08 — 技能任务](./08-ability-tasks.md) |
 
-## 技能定义 (`GameplayAbility`)
+模块文件使用显式重导出；调用方应从 `gameplay_abilities`、`gas::prelude` 或 crate 根导入公共
+类型，不依赖私有子模块路径。
+
+## 技能定义与已授予规格
+
+### `GameplayAbility`
 
 ```rust
 pub struct GameplayAbility {
@@ -40,118 +55,44 @@ pub struct GameplayAbility {
 }
 ```
 
+通过 `GameplayAbility::new(...)` 创建定义，并通过 Getter 只读访问。定义通常放入 `Arc`，同一
+份定义可被多个 `GameplayAbilitySpec` 共享。
+
 ### `AbilityTags`
 
-```rust
-pub struct AbilityTags {
-    ability_asset_tags: Vec<GameplayTag>,        // 此技能的身份标签
-    cancel_abilities_with_tags: Vec<GameplayTag>, // 取消带有这些标签的其他技能
-    block_abilities_with_tags: Vec<GameplayTag>,  // 阻止带有这些标签的其他技能
-    activation_required_tags: Vec<GameplayTag>,   // 有来源标签容器时必须全部拥有
-    activation_blocked_tags: Vec<GameplayTag>,    // 有来源标签容器时必须全部不拥有
-}
-```
+| 字段 | 语义 |
+| ---- | ---- |
+| `ability_asset_tags` | 技能身份；供其他技能按标签取消 |
+| `cancel_abilities_with_tags` | 激活成功前需要取消的活跃技能身份标签 |
+| `block_abilities_with_tags` | 技能活跃期间写入来源 ASC 的阻止标签 |
+| `activation_required_tags` | 来源有 `GameplayTagContainer` 时必须全部拥有 |
+| `activation_blocked_tags` | 来源有 `GameplayTagContainer` 时必须全部不拥有 |
 
-### `GameplayAbilitySpec`
+ASC 的阻止标签与实体自己的 `GameplayTagContainer` 是两套状态：前者只服务技能互斥，后者
+用于 Gameplay Tag、Cooldown granted tag 和 Requirement。来源没有标签容器时，required、
+blocked 与 cooldown tag 检查会跳过；需要这些能力的实体应使用
+`GameplayAbilitySystemBundle` 或显式附加标签容器。
 
-已授予技能的运行时实例：
-
-```rust
-pub struct GameplayAbilitySpec {
-    handle: AbilitySpecHandle,
-    ability: Arc<GameplayAbility>,
-    level: u32,
-    input_id: Option<u16>,     // 可选的输入绑定
-    input_pressed: bool,       // 绑定输入当前是否处于按下状态
-    active_count: u32,         // 当前活跃实例数
-}
-```
-
-当前 `AbilitySystemComponent` 不会自动附带 `GameplayTagContainer`。来源缺少标签容器时，
-required、blocked 和 cooldown granted-tag 检查会被跳过；任何使用这些能力的实体都应显式
-附加 `GameplayTagContainer`。
-
-`input_pressed` 默认为 `false`。输入处理系统应在绑定输入按下、松开时分别通过
-`set_input_pressed(true)` 和 `set_input_pressed(false)` 更新它；可使用
-`is_input_pressed()` 查询当前状态。该字段只记录瞬时输入状态，不负责自动激活技能。
-
-### `AbilitySpecHandle`
+### `GameplayAbilitySpec` 与 `AbilitySpecHandle`
 
 ```rust
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct AbilitySpecHandle(u32);
-```
 
-## 激活流程
-
-### `try_activate_ability_by_handle()`
-
-独立的同步技能激活调用路径：
-
-```rust
-pub fn try_activate_ability_by_handle(
-    source: Entity,
-    target: Entity,
+pub struct GameplayAbilitySpec {
     handle: AbilitySpecHandle,
-    activation_context: AbilityActivationContext,
-    params: &mut AbilitySystemParams,
-) -> Result<(), AbilityActivationError>;
-```
-
-该函数会先收敛 Active Effect 的 Tag 条件，并在返回前完整消费本次激活产生的 startup
-Instant 后续请求。它使用独立的局部 batch，不会插队消费全局 `GameplayExecutionQueue`
-中已经存在的请求。因此运行时生产系统应使用 `GameplayExecutionQueue::push_activation()`；
-不要在同一逻辑阶段混用全局排队请求和该同步入口。同步入口适合初始化、测试或调用者明确
-需要一个独立即时结算边界的场景。这里的同步不表示 `Commands` 已 flush，也不承诺失败时
-回滚此前全部 Gameplay 副作用。
-
-**激活序列：**
-
-```
-1. 检查活跃计数（多实例控制）
-2. passes_ability_activation_requirements()
-   ├── 阻止标签检查（来源 ASC 的 blocked_ability_tags）
-   ├── 激活阻止标签检查（来源标签）
-   ├── 激活要求标签检查（来源标签）
-   └── 冷却标签检查（来源是否有冷却标签？）
-3. prepare_ability_commit_plans()
-   ├── 准备消耗计划
-   └── 准备冷却计划
-4. 取消匹配 cancel_abilities_with_tags 的活跃技能
-5. start_ability()
-   ├── 在来源 ASC 上设置 block_abilities_with_tags
-   ├── 递增 active_count
-   └── 生成 ActiveGameplayAbility 实体
-6. execute_ability_commit_plans()
-   ├── 依次执行消耗与冷却效果
-   └── 失败时回滚已启动技能的 bookkeeping；不提供全部 Gameplay mutation 回滚
-7. 应用 activation_effects（尽力而为）
-8. start_startup_ability_tasks()
-   ├── Instant：立即派发到当前 Gameplay batch
-   └── WaitTicks：生成运行时任务实体
-9. 若 end_on_activation → 将状态设为 Ending
-```
-
-### `AbilityActivationError`
-
-```rust
-pub enum AbilityActivationError {
-    InvalidChain(AbilityChainError),
-    MissingAbilitySystemComponent { source: Entity },
-    AbilityNotFound { source: Entity, handle: AbilitySpecHandle },
-    MultipleInstancesNotAllowed { source: Entity, handle: AbilitySpecHandle },
-    ActivationRequirementsNotMet { source: Entity, handle: AbilitySpecHandle },
-    CommitPreparationFailed { source: Entity, handle: AbilitySpecHandle, error: AbilityCommitError },
-    StartFailed { source: Entity, handle: AbilitySpecHandle, error: GameplayTagError },
-    CancellationFailed { source: Entity, handle: AbilitySpecHandle, error: GameplayTagError },
-    CommitExecutionFailed { source: Entity, handle: AbilitySpecHandle, error: AbilityCommitError },
+    ability: Arc<GameplayAbility>,
+    level: u32,
+    input_id: Option<u16>,
+    input_pressed: bool,
+    active_count: u32,
 }
 ```
 
-`AbilityCommitError` 进一步区分 Cost 配置、Cost/Cooldown 准备、支付能力以及执行错误。
-`AbilityActivationError::is_rejection()` 用于区分正常的激活拒绝与结构性错误；队列在边界
-分别使用 debug 和 error 级别记录。验证或 Commit 准备阶段失败发生在取消旧技能之前；一旦
-进入取消阶段，后续 start 或 Commit 执行失败不会恢复已经取消的旧技能。
+`input_pressed` 默认为 `false`，只记录外部输入系统写入的瞬时状态，不会自动激活技能。
+`active_count` 用于多实例检查；仍有活跃实例时，ASC 不允许清除对应规格。
+
+## 激活上下文与技能链
 
 ### `AbilityActivationContext`
 
@@ -164,55 +105,112 @@ pub struct AbilityActivationContext {
     target_data: Option<AbilityTargetData>,
     reason: AbilityActivationReason,
 }
-
-pub enum AbilityActivationReason {
-    Direct,
-    Input { input_id: u16 },
-    Chained { parent_ability: ActiveAbilityHandle },
-    TaskEvent { event_id: UniqueName },
-    GameplayEffect,
-}
 ```
 
-当前公共构造路径会生成 `Direct`，链式 API 会生成 `Chained`；`Input`、`TaskEvent` 和
-`GameplayEffect` 目前是预留原因，尚无公共 context 构造器或 setter。
+公共构造与变换 API：
 
-`instigator` 默认等于技能来源实体，可通过 `with_instigator()` 指定实际发起者。
-`causer` 表示直接造成技能行为的可选物理实体。两者都会沿链式技能激活继承，并传播到
-技能产生的 `EffectPayload`；消耗、冷却、来源属性和来源标签仍始终从技能的 `source`
-读取。
+| API | 作用 |
+| --- | ---- |
+| `AbilityActivationContext::direct(source, chain)` | 创建 `Direct` 上下文，默认 Instigator 为 `source` |
+| `with_instigator(entity)` | 指定实际发起者 |
+| `with_causer(Option<Entity>)` | 指定直接造成行为的物理实体 |
+| `with_source_snapshot(snapshot)` | 固定来源属性快照 |
+| `with_target_data(data)` | 附加确定有序的目标集合 |
+| `child_for_chained_ability(parent, handle)` | 继承上下文并推进技能链，原因改为 `Chained` |
 
-`target_data` 保存目标抓取模块返回的完整有序目标集合。旧 `target: Entity` 继续表示首要
-目标；存在 Target Data 时，激活效果会逐个应用到其中的实体。详见
-[15 — Gameplay 目标抓取](./15-gameplay-targeting.md)。
+`instigator`、`causer` 和来源快照会传播到技能产生的 `EffectPayload`。消耗与冷却仍应用到技能
+`source`。Target Data 存在时，`activation_effects` 会按“效果定义顺序，再按 Target Data
+实体顺序”逐个应用；旧 `target: Entity` 继续表示首要目标。
 
-`TargetingContinuation::ActivateAbility` 会保证旧 `target` 等于 `primary_entity()`；直接调用
-`GameplayExecutionQueue::push_activation()` 时不会验证这一点，调用方应自行保持两者一致。
+`TargetingContinuation::ActivateAbility` 会把旧 `target` 设为 `primary_entity()`。直接调用
+`GameplayExecutionQueue::push_activation()` 不验证二者一致性，调用方需要自行保持一致。
+
+当前公共构造路径产生 `Direct`，链式 API 产生 `Chained`；`Input`、`TaskEvent` 和
+`GameplayEffect` 原因目前没有公共 Setter 或专用构造器。
 
 ### `AbilityChainContext`
 
-追踪链式技能激活，防止无限循环：
-
 ```rust
-pub struct AbilityChainContext {
-    chain_id: u64,
-    depth: u8,                              // 最大：ABILITY_CHAIN_MAX_DEPTH (8)
-    visited: Vec<AbilitySpecHandle>,        // 循环检测
-}
-
 impl AbilityChainContext {
+    pub const MAX_DEPTH: u8;
+
     pub fn root(handle: AbilitySpecHandle, chain_id: u64) -> Self;
     pub fn next(&self, handle: AbilitySpecHandle) -> Result<Self, AbilityChainError>;
+    pub fn validate_for_handle(&self, handle: AbilitySpecHandle)
+        -> Result<(), AbilityChainError>;
 }
 ```
 
-## 活跃技能生命周期
+`GameplayExecutionQueue::new_root_chain(handle)` 是常规根链入口，它按入队顺序分配队列局部
+chain ID。`next()` 拒绝重复 Handle，并限制深度不超过
+`GameplayAbilitySystemSettings::ABILITY_CHAIN_MAX_DEPTH`。消费激活请求时还会用
+`validate_for_handle()` 检查上下文末尾 Handle 与请求 Handle 是否一致。
 
-### `ActiveGameplayAbility`
+## 两种激活入口
 
-技能激活时生成的 `Component`：
+### 推荐：统一执行队列
+
+运行时生产系统应位于 `GameplayAbilitySystemSet::RequestProducers`，并写入统一队列：
 
 ```rust
+let chain = execution_queue.new_root_chain(handle);
+let context = AbilityActivationContext::direct(source, chain);
+execution_queue.push_activation(source, target, handle, context);
+```
+
+请求会在当前 `FixedUpdate` 的 `GameplayResolve` 阶段与效果应用请求按跨类型 FIFO 结算。详细
+阶段契约见 [16 — Gameplay 执行模块](./16-gameplay-execution.md)。
+
+### 独立同步入口
+
+```rust
+pub fn try_activate_ability_by_handle(
+    source: Entity,
+    target: Entity,
+    handle: AbilitySpecHandle,
+    activation_context: AbilityActivationContext,
+    params: &mut AbilitySystemParams,
+) -> Result<(), AbilityActivationError>;
+```
+
+该入口先收敛 Active Effect Requirement，再使用一个局部 `GameplayExecutionQueue` 执行根激活，
+并在返回前 drain 根激活的 startup `Instant` 派生请求。它不会查看或消费全局队列，所以不要在
+同一逻辑阶段把它与尚未消费的全局请求混用。派生请求失败由 resolver 记录日志，不会改写已经
+成功的根激活返回值。
+
+“同步”只表示这条逻辑路径在返回前完成本地结算，不表示 `Commands` 已 flush，也不表示事务式
+回滚。
+
+## 激活关键流程
+
+根激活按以下顺序执行：
+
+1. 验证可选技能链上下文与请求 Handle。
+2. 查询来源 ASC 和已授予规格，检查多实例限制。
+3. 检查 ASC 阻止标签、来源 required/blocked tag 和 cooldown granted tag。
+4. 准备 Cost 与 Cooldown Effect Plan，并确认 Cost 可支付。
+5. 预验证本技能需要写入的阻止标签。
+6. 取消身份标签匹配 `cancel_abilities_with_tags` 的活跃技能。
+7. 写入阻止标签、递增 `active_count`，通过 `Commands` 创建 `ActiveGameplayAbility`，同时写入
+   pending overlay。
+8. 执行已准备的 Cost 与 Cooldown；失败时回滚新技能的启动 bookkeeping。
+9. 收敛 Commit 产生的 Requirement 变化。
+10. 尽力应用 `activation_effects`；单个目标或效果拒绝不会使根激活失败。
+11. 按定义顺序启动 startup tasks；`Instant` 直接派发，`WaitTicks` 创建任务实体。
+12. startup `EndAbility` 或 `end_on_activation` 将实例标记为 `Ending`。
+
+验证与 Plan 准备失败发生在取消旧技能之前。进入取消阶段后，后续启动或 Commit 失败不会恢复
+已经取消的旧技能；Commit 也不提供数据库式的全部副作用回滚。
+
+`AbilityActivationError::is_rejection()` 将正常玩法拒绝与结构性错误区分开：多实例限制、激活
+条件和可恢复的 Cost/Cooldown 拒绝属于 rejection；缺少 ASC/规格、无效链、标签容量和执行错误
+属于运行时或配置错误。
+
+## 活跃实例与生命周期
+
+```rust
+pub type ActiveAbilityHandle = Entity;
+
 #[derive(Component, Clone)]
 pub struct ActiveGameplayAbility {
     source: Entity,
@@ -223,60 +221,39 @@ pub struct ActiveGameplayAbility {
 }
 ```
 
-### `AbilityActivationStatus`
-
-```
-Active ──► Ending ──► (销毁)
-   │
-   └──► Cancelled ──► (销毁)
+```text
+Active ──► Ending ──► Cleanup/despawn
+   └────► Cancelled ──► Cleanup/despawn
 ```
 
-| 状态         | 说明                         |
-| ------------ | ---------------------------- |
-| `Active`     | 运行中；任务正在 tick        |
-| `Ending`     | 正常关闭；任务停止，清理开始 |
-| `Cancelled`  | 强制关闭；任务停止，清理开始 |
+`end_ability()` 与 `cancel_ability()` 只在 Handle 存在且实例来源匹配时更新状态并返回 `true`。
+默认运行时随后在 `Cleanup` 阶段递减规格活跃计数、移除阻止标签，并递归销毁活跃实例及其任务
+子实体。
 
-### 生命周期方法
+技能激活时由 `cancel_abilities_with_tags` 触发的取消是内部批处理路径：它会在同一 batch 更新
+状态和 ASC bookkeeping，并用 pending overlay 处理尚未 flush 的实例，避免同一实例被重复清理。
 
-| 函数 | 说明 |
-| ---- | ---- |
-| `end_ability(source, active_handle, params) -> bool` | 将匹配来源的实例设为 `Ending` |
-| `cancel_ability(source, active_handle, params) -> bool` | 将匹配来源的实例设为 `Cancelled` |
-| `can_activate_ability(source, target, &ability, level, params) -> bool` | 标签与数值费用快速预检 |
-| `commit_ability(source, &ability, level, params) -> Result` | 独立应用消耗 + 冷却，不启动技能实例 |
+## FixedUpdate 边界
 
-`can_activate_ability()` 不检查授予句柄、活跃实例数、技能链、取消或 startup 预检，也不保证
-后续 `try_activate_ability_by_handle()` 一定成功。它用传入 `target` 构造计算型费用的预检上下文，
-而实际 commit 将费用应用到 `source`；依赖目标的费用计算应避免把它当作最终授权结果。
+- 在 `AbilityTasks`、`RequestProducers` 或 `Targeting` 阶段产生的 Gameplay 请求可由当前 tick 的
+  `GameplayResolve` 消费。
+- `GameplayResolve` 正在 drain 时，startup `Instant` 追加的效果或链式激活继续由当前 drain
+  消费。
+- `GameplayResolve` 创建的 startup `WaitTicks` 任务错过了本 tick 的 `AbilityTasks` 阶段，最早
+  在下一次 `FixedUpdate` 推进。
+- 在 `GameplayResolve` 返回后才写入统一队列的请求留到下一次 `FixedUpdate`。
 
-`cleanup_finished_abilities_system` 销毁处于 `Ending` 或 `Cancelled` 状态的技能，递减活跃计数，移除阻止标签。
+## 测试导航
 
-## 统一 Gameplay 执行队列
+| 测试文件 | 覆盖范围 |
+| -------- | -------- |
+| `tests/gas_tests/abilities/activation.rs` | 多实例、required/blocked tag、阻止标签和缺失规格 |
+| `tests/gas_tests/abilities/commit.rs` | Cost、Cooldown、准备失败与 activation effect 容错 |
+| `tests/gas_tests/abilities/chaining.rs` | 循环/深度保护、上下文继承和 pending 父技能取消 |
+| `tests/gas_tests/abilities/lifecycle.rs` | 标签取消、活跃计数、清除规格和清理幂等性 |
+| `tests/gas_tests/runtime_paths_test.rs` | 插件阶段、startup `Instant` 与 Bundle 组合 |
+| `tests/gas_tests/gameplay_targeting_test.rs` | Target Data 与多目标 activation effects |
 
-```rust
-#[derive(Resource)]
-pub struct GameplayExecutionQueue { /* ... */ }
-```
-
-技能激活与效果应用共享 `GameplayExecutionQueue`。加入激活请求：
-
-```rust
-execution_queue.push_activation(source, target, handle, context);
-```
-
-`GameplayResolve` 在当前 `FixedUpdate` 中按跨类型 FIFO 处理完整 drain，不会根据请求数量
-把技能隐式推迟到后续 tick。一个激活请求产生的 startup Instant 后续请求会追加到同一
-FIFO，并在同一次 drain 内处理。
-
-链式激活（带循环/深度保护）：
-
-```rust
-execution_queue.push_chained_activation(
-    source, target, handle, parent_ability, &parent_context,
-)?;
-```
-
-## 技能任务
-
-详见 [08 — 技能任务](./08-ability-tasks.md)。
+继续阅读：[08 — 技能任务](./08-ability-tasks.md)、
+[09 — 技能系统组件](./09-ability-system-component.md)、
+[15 — Gameplay 目标抓取](./15-gameplay-targeting.md)。

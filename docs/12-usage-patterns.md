@@ -1,329 +1,113 @@
 # 12 — 使用模式与示例
 
-## 模式 1：直接伤害技能
+## 职责
 
-一个火球术，经过短暂前摇后造成即时伤害。
+本文只组合已经公开的 GAS API，展示常见的能力与效果写法。类型的完整语义分别见
+[Gameplay Effects](./06-gameplay-effects.md)、[Gameplay Abilities](./07-gameplay-abilities.md)
+和 [Gameplay 执行模块](./16-gameplay-execution.md)。示例使用精简 prelude，并从 owning domain
+显式导入不属于 prelude 的任务、周期、堆叠和错误类型：
 
 ```rust
-// 1. Define the instant damage effect.
-let damage_effect = Arc::new(GameplayEffect::new(
-    vec![Modifier::new(
-        health_id,
-        ModifierOperation::Add,
-        ModifierMagnitude::Calculated(Box::new(FireballDamageCalc { attack_id })),
-    )],
-    EffectDurationTicks::Instant,
-    None,       // 无周期
-    1.0,        // 100% 概率
-    StackingPolicy::non_stacking(),
+use bevy::prelude::*;
+use bevy_tools::prelude::*;
+use bevy_tools::gas::gameplay_abilities::{
+    AbilityTaskDef,
+    AbilityTaskEvent,
+    AbilityTaskOnFinishedDef,
+};
+use bevy_tools::gas::gameplay_effects::{
+    EffectPeriodTicks,
+    GameplayEffectImmunityQuery,
+    StackingType,
+};
+use bevy_tools::gas::gameplay_tags::GameplayTagError;
+use bevy_tools::UniqueName;
+use std::sync::Arc;
+```
+
+## 源码入口
+
+| 用途 | 源码 |
+|---|---|
+| 完整角色组件组合 | `src/gas/ability_system/component.rs` |
+| 固定 tick 阶段与插件 | `src/gas/runtime_plugin.rs` |
+| 能力定义、激活上下文 | `src/gas/gameplay_abilities/` |
+| Task 定义与完成动作 | `src/gas/gameplay_abilities/ability_task/` |
+| 效果定义、时长、标签与堆叠 | `src/gas/gameplay_effects/gameplay_effect/` |
+| 统一请求队列与请求值 | `src/gas/gameplay_execution/` |
+
+## 使用前提
+
+完整 GAS 角色应显式安装插件并生成 `GameplayAbilitySystemBundle`：
+
+```rust
+app.add_plugins(GameplayAbilitySystemPlugin);
+
+let actor = commands
+    .spawn(GameplayAbilitySystemBundle::default())
+    .id();
+```
+
+`GameplayTag` 与 `AttributeId` 必须先通过各自的注册接口取得；需要使用的属性还必须在角色的
+`AttributeSet` 上初始化。只使用标签或属性的实体可以单独安装对应组件，不需要
+`ActiveGameplayEffects`。
+
+以下辅助函数可用于不需要任何标签行为的效果：
+
+```rust
+fn empty_effect_tags() -> EffectTags {
     EffectTags::new(
-        vec![damage_tag],           // asset_tags
-        vec![],                     // granted_tags
-        TagRequirements::default(), // source_application
-        TagRequirements::default(), // target_application
-        TagRequirements::default(), // source_ongoing
-        TagRequirements::default(), // target_ongoing
-        TagRequirements::default(), // source_removal
-        TagRequirements::default(), // target_removal
-        vec![],                     // immunity
-        vec![],                     // remove_effects_with_tags
-    ),
-));
-
-// 2. Define the fireball ability.
-let fireball = Arc::new(GameplayAbility::new(
-    AbilityTags::new(
-        vec![fireball_tag],
         vec![],
         vec![],
+        TagRequirements::default(),
+        TagRequirements::default(),
+        TagRequirements::default(),
+        TagRequirements::default(),
+        TagRequirements::default(),
+        TagRequirements::default(),
         vec![],
-        vec![stun_tag],  // 眩晕时阻止
-    ),
-    vec![
-        // Apply damage after a 5-tick wind-up.
-        AbilityTaskDef::wait_ticks(5,
-            AbilityTaskOnFinishedDef::ApplyGameplayEffectToTarget {
-                effect: damage_effect.clone(),
-            },
-        ),
-        // Startup tasks are sibling timelines, so end at the next absolute offset.
-        AbilityTaskDef::wait_ticks(6, AbilityTaskOnFinishedDef::EndAbility),
-    ],
-    Some(cooldown_effect),  // 30 tick 冷却
-    Some(cost_effect),      // 25 法力消耗
-    vec![],                 // 无激活效果
-    false,                  // 激活时不结束
-    false,                  // 仅单实例
-));
-
-// 3. Grant the definition through an ASC obtained by game setup code.
-fn grant_fireball(
-    asc: &mut AbilitySystemComponent,
-    fireball: Arc<GameplayAbility>,
-) -> AbilitySpecHandle {
-    asc.give_ability(fireball, 1, Some(0))
+        vec![],
+    )
 }
+```
 
-struct FireballCast {
-    player: Entity,
+## 公共请求入口与执行时序
+
+外部系统不应直接调用内部 resolver。应在
+`GameplayAbilitySystemSet::RequestProducers` 或更早的阶段向
+`GameplayExecutionQueue` 写入请求：
+
+```rust
+fn enqueue_direct_activation(
+    queue: &mut GameplayExecutionQueue,
+    source_attributes: &mut AttributeSet,
+    source: Entity,
     target: Entity,
     handle: AbilitySpecHandle,
-}
-
-#[derive(Resource)]
-struct FireballBinding {
-    player: Entity,
-    target: Entity,
-    handle: AbilitySpecHandle,
-}
-
-#[derive(Resource, Default)]
-struct PendingFireballCasts {
-    requests: std::collections::VecDeque<FireballCast>,
-}
-
-fn collect_fireball_input(
-    input: Res<ButtonInput<KeyCode>>,
-    binding: Res<FireballBinding>,
-    mut casts: ResMut<PendingFireballCasts>,
-    mut was_pressed: Local<bool>,
 ) {
-    let pressed = input.pressed(KeyCode::KeyQ);
-    if pressed && !*was_pressed {
-        casts.requests.push_back(FireballCast {
-            player: binding.player,
-            target: binding.target,
-            handle: binding.handle,
-        });
-    }
-    *was_pressed = pressed;
+    let snapshot = source_attributes.make_snapshot(source);
+    let chain = queue.new_root_chain(handle);
+    let context = AbilityActivationContext::direct(source, chain)
+        .with_source_snapshot(snapshot);
+
+    queue.push_activation(source, target, handle, context);
 }
-
-fn cast_fireball(
-    mut queue: ResMut<GameplayExecutionQueue>,
-    mut attributes: Query<&mut AttributeSet>,
-    mut casts: ResMut<PendingFireballCasts>,
-) {
-    while let Some(cast) = casts.requests.pop_front() {
-        let Ok(mut source_attributes) = attributes.get_mut(cast.player) else {
-            error!("fireball source has no AttributeSet");
-            continue;
-        };
-        let snapshot = source_attributes.make_snapshot(cast.player);
-        let chain = queue.new_root_chain(cast.handle);
-        let context = AbilityActivationContext::direct(cast.player, chain)
-            .with_source_snapshot(snapshot);
-        queue.push_activation(cast.player, cast.target, cast.handle, context);
-    }
-}
-
-app.init_resource::<PendingFireballCasts>()
-    .insert_resource(FireballBinding {
-        player,
-        target,
-        handle,
-    })
-    .add_systems(
-        FixedUpdate,
-        (collect_fireball_input, cast_fireball)
-            .chain()
-            .in_set(GameplayAbilitySystemSet::RequestProducers),
-    );
 ```
 
-输入系统只在按键边沿向 `PendingFireballCasts::requests` 追加一项；producer 会取走每项请求，
-因此不会因 Resource 持续存在而在每个 fixed tick 重复施法。`.chain()` 同时保证先生产再消费，
-避免同一 set 中未排序的两个可变借用系统偶发把请求留到下一 tick。
+队列是 FIFO，并在 `GameplayResolve` 中完整 drain；resolver 在处理请求时派生的新请求也会在
+同一次 drain 中继续处理。`GameplayResolve` 之后才产生的请求会留到下一 fixed tick。完整阶段
+顺序见 [Gameplay 执行模块](./16-gameplay-execution.md#同-tick-与下一-tick-边界)。
 
-内置 task 只有一个完成动作，因此上例用 5/6 两个相对激活时刻的绝对等待点表达“伤害后
-结束”。如果必须在同一个 tick 同时应用伤害并结束技能，应增加组合完成动作，或让
-`WaitTicks::EmitEvent` 的 Observer 按明确顺序执行两项操作。
+## 模式 1：带快照计算的直接伤害技能
 
-## 模式 2：持续伤害 (DoT)
-
-一个中毒效果，每 3 tick 造成 10 点伤害，持续 15 tick，并在应用时立即执行一次。
+计算器只依赖独立的 `ModifierEvaluationContext`，因此 modifier 不需要依赖 Effect 或 ASC：
 
 ```rust
-let poison_effect = Arc::new(GameplayEffect::new(
-    vec![Modifier::new(
-        health_id,
-        ModifierOperation::Add,
-        ModifierMagnitude::Flat(-10.0),  // 10 damage per period
-    )],
-    EffectDurationTicks::DurationTicks(ModifierMagnitude::Flat(15.0)),
-    Some(EffectPeriodTicks::new(
-        ModifierMagnitude::Flat(3.0),
-        true,  // 应用时立即执行
-    )),
-    1.0,
-    StackingPolicy::linear_refreshing(StackingType::AggregateByTarget, 3),
-    // ... tags
-));
-```
-
-Duration 在 Period 之前递减并清理。所以上例会在应用时以及之后的第 3、6、9、12 个 fixed
-tick 造成伤害；第 15 tick 先到期移除，不会再执行一次周期伤害。
-
-## 模式 3：带持续标签要求的 Buff
-
-一个速度 Buff，仅在来源存活且未眩晕时生效。
-
-```rust
-let speed_buff = Arc::new(GameplayEffect::new(
-    vec![Modifier::new(
-        speed_id,
-        ModifierOperation::PercentAdd,
-        ModifierMagnitude::Flat(0.3),  // +30% 速度
-    )],
-    EffectDurationTicks::Infinite,
-    None,
-    1.0,
-    StackingPolicy::non_stacking(),
-    EffectTags::new(
-        vec![buff_tag, speed_buff_tag],
-        vec![speed_buff_granted_tag],
-        TagRequirements::default(),
-        TagRequirements::default(),
-        // 来源持续条件：必须存活且未眩晕
-        TagRequirements::new(
-            vec![alive_tag],
-            vec![stun_tag],
-        )?,
-        TagRequirements::default(),
-        TagRequirements::default(),
-        TagRequirements::default(),
-        vec![],
-        vec![],
-    ),
-));
-```
-
-## 模式 4：链式技能（连招）
-
-三连击，每击链式激活下一击。
-
-```rust
-// 第 1 击链到第 2 击
-let hit1 = Arc::new(GameplayAbility::new(
-    /* ... */,
-    vec![
-        AbilityTaskDef::wait_ticks(3,
-            AbilityTaskOnFinishedDef::ApplyGameplayEffectToTarget {
-                effect: hit1_damage.clone(),
-            },
-        ),
-        // Sibling task at the next absolute offset activates hit 2.
-        AbilityTaskDef::wait_ticks(4,
-            AbilityTaskOnFinishedDef::ActivateAbility {
-                handle: hit2_spec_handle,
-            },
-        ),
-        AbilityTaskDef::wait_ticks(5, AbilityTaskOnFinishedDef::EndAbility),
-    ],
-    /* ... */
-));
-
-// 第 2 击链到第 3 击
-let hit2 = Arc::new(GameplayAbility::new(
-    /* ... */,
-    vec![
-        AbilityTaskDef::wait_ticks(3,
-            AbilityTaskOnFinishedDef::ApplyGameplayEffectToTarget {
-                effect: hit2_damage.clone(),
-            },
-        ),
-        // Sibling task at the next absolute offset activates hit 3.
-        AbilityTaskDef::wait_ticks(4,
-            AbilityTaskOnFinishedDef::ActivateAbility {
-                handle: hit3_spec_handle,
-            },
-        ),
-        AbilityTaskDef::wait_ticks(5, AbilityTaskOnFinishedDef::EndAbility),
-    ],
-    /* ... */
-));
-```
-
-startup task 列表不是串行 continuation。若把上例的 `ActivateAbility` 写成 sibling `Instant`，
-下一击会在当前激活 drain 中立刻入队，而不会等待伤害任务。当前内置完成动作也不能在同一个
-Wait 完成点同时“造成伤害 + 激活下一击”；需要同 tick 连招时应扩展组合完成动作，或用
-`EmitEvent` Observer 依次写入两个请求。
-
-## 模式 5：事件驱动技能逻辑
-
-使用 `AbilityTaskEvent` 在技能时间线的特定节点触发自定义游戏逻辑。
-
-```rust
-#[derive(Resource)]
-struct AbilityEventIds {
-    custom: UniqueName,
-}
-
-fn observe_ability_events(
-    event: On<AbilityTaskEvent>,
-    event_ids: Res<AbilityEventIds>,
-) {
-    if event.get_event_id() == event_ids.custom {
-        // Spawn VFX or request audio playback here.
-    }
-}
-
-app.insert_resource(AbilityEventIds {
-    custom: my_custom_event_id,
-})
-.add_observer(observe_ability_events);
-
-// In the ability definition:
-AbilityTaskDef::wait_ticks(10,
-    AbilityTaskOnFinishedDef::EmitEvent {
-        event_id: my_custom_event_id,
-    },
-)
-```
-
-`AbilityTaskEvent` 由 `Commands::trigger()` 发送给 Observer，不使用 `EventReader`。若 Observer
-还要生产 Gameplay 请求，其生效 tick 取决于事件所在阶段，详见
-[16 — Gameplay 执行模块](./16-gameplay-execution.md#同-tick-与下一-tick-边界)。
-
-## 模式 6：免疫授予
-
-一个效果，授予对任意来源、带 Stun asset tag 的效果的免疫。
-
-```rust
-let stun_immunity = Arc::new(GameplayEffect::new(
-    vec![],  // 无修饰器——纯粹授予免疫
-    EffectDurationTicks::DurationTicks(ModifierMagnitude::Flat(60.0)),
-    None,
-    1.0,
-    StackingPolicy::non_stacking(),
-    EffectTags::new(
-        vec![immunity_tag],
-        vec![],
-        TagRequirements::default(),
-        TagRequirements::default(),
-        TagRequirements::default(),
-        TagRequirements::default(),
-        TagRequirements::default(),
-        TagRequirements::default(),
-        vec![GameplayEffectImmunityQuery::new(
-            TagRequirements::new(vec![], vec![])?,           // 任意来源
-            TagRequirements::new(vec![stun_tag], vec![])?,   // 带 Stun 标签的效果
-        )],
-        vec![],
-    ),
-));
-```
-
-## 模式 7：基于快照的伤害计算
-
-伤害随施法时刻的施法者攻击力缩放。
-
-```rust
-struct FireballDamageCalc {
+struct FireballDamage {
     attack_id: AttributeId,
 }
 
-impl ModifierMagnitudeCalculation for FireballDamageCalc {
+impl ModifierMagnitudeCalculation for FireballDamage {
     fn calculate(&self, context: &dyn ModifierEvaluationContext) -> f32 {
         let attack = context
             .source_snapshot()
@@ -334,30 +118,322 @@ impl ModifierMagnitudeCalculation for FireballDamageCalc {
                     .flatten()
             })
             .unwrap_or(0.0);
-        let level = context.level() as f32;
 
-        // Base 50 + 150% attack + 10 per ability level.
-        -(50.0 + attack * 1.5 + level * 10.0)
+        -(50.0 + attack * 1.5 + context.level() as f32 * 10.0)
     }
+}
+
+fn make_fireball_damage(
+    health_id: AttributeId,
+    attack_id: AttributeId,
+    damage_tag: GameplayTag,
+) -> Arc<GameplayEffect> {
+    Arc::new(GameplayEffect::new(
+        vec![Modifier::new(
+            health_id,
+            ModifierOperation::Add,
+            ModifierMagnitude::Calculated(Box::new(FireballDamage { attack_id })),
+        )],
+        EffectDurationTicks::Instant,
+        None,
+        1.0,
+        StackingPolicy::non_stacking(),
+        EffectTags::new(
+            vec![damage_tag],
+            vec![],
+            TagRequirements::default(),
+            TagRequirements::default(),
+            TagRequirements::default(),
+            TagRequirements::default(),
+            TagRequirements::default(),
+            TagRequirements::default(),
+            vec![],
+            vec![],
+        ),
+    ))
 }
 ```
 
-`AbilityActivationContext::direct()` 默认不捕获快照。模式 1 的 producer 在入队前调用
-`AttributeSet::make_snapshot()` 并通过 `with_source_snapshot()` 附加结果；若省略这一步，上面的
-安全 fallback 会把攻击力视为 0，而不是读取施法者当前属性。
-
-## 模式 8：条件效果移除
-
-一个效果在目标获得特定标签时自动移除自身。
+能力的 startup tasks 是从激活时刻开始的并列时间线，不是依次执行的 continuation：
 
 ```rust
-EffectTags::new(
-    /* ... */,
-    TagRequirements::default(),  // source_removal
-    TagRequirements::new(        // target_removal：目标有 Dead 标签时移除
-        vec![dead_tag],
+fn make_fireball_ability(
+    damage_effect: Arc<GameplayEffect>,
+    cooldown_effect: Arc<GameplayEffect>,
+    cost_effect: Arc<GameplayEffect>,
+    fireball_tag: GameplayTag,
+    stun_tag: GameplayTag,
+) -> Arc<GameplayAbility> {
+    Arc::new(GameplayAbility::new(
+        AbilityTags::new(
+            vec![fireball_tag],
+            vec![],
+            vec![],
+            vec![],
+            vec![stun_tag],
+        ),
+        vec![
+            AbilityTaskDef::wait_ticks(
+                5,
+                AbilityTaskOnFinishedDef::ApplyGameplayEffectToTarget {
+                    effect: damage_effect,
+                },
+            ),
+            AbilityTaskDef::wait_ticks(6, AbilityTaskOnFinishedDef::EndAbility),
+        ],
+        Some(cooldown_effect),
+        Some(cost_effect),
         vec![],
-    )?,
-    /* ... */
-)
+        false,
+        false,
+    ))
+}
+
+fn grant_fireball(
+    ability_system: &mut AbilitySystemComponent,
+    ability: Arc<GameplayAbility>,
+) -> AbilitySpecHandle {
+    ability_system.give_ability(ability, 1, Some(0))
+}
 ```
+
+`AbilityActivationContext::direct()` 不会自动捕获属性；要让上面的计算器读取施法时刻攻击力，
+producer 必须像本节的队列示例一样附加 `AttributeSetSnapshot`。若没有快照，示例计算器显式回退
+到 `0.0`。作为 ability cost 的效果必须是 Instant 且只包含 `Add` modifier。当前支付检查按
+Modifier 独立比较检查开始时的当前值，因此同一个 Cost 对同一属性应只配置一个扣减 Modifier；
+多个扣减项不会先合并，合计值可能越过零。
+
+## 模式 2：周期伤害（DoT）
+
+下面的中毒每 3 tick 造成 10 点伤害，持续 15 tick，并在应用时立即执行一次：
+
+```rust
+fn make_poison(health_id: AttributeId) -> Arc<GameplayEffect> {
+    Arc::new(GameplayEffect::new(
+        vec![Modifier::new(
+            health_id,
+            ModifierOperation::Add,
+            ModifierMagnitude::Flat(-10.0),
+        )],
+        EffectDurationTicks::DurationTicks(ModifierMagnitude::Flat(15.0)),
+        Some(EffectPeriodTicks::new(
+            ModifierMagnitude::Flat(3.0),
+            true,
+        )),
+        1.0,
+        StackingPolicy::linear_refreshing(StackingType::AggregateByTarget, 3),
+        empty_effect_tags(),
+    ))
+}
+```
+
+运行时先递减和清理 duration，再处理 period。因此它会在应用时以及之后的第 3、6、9、12 个
+fixed tick 执行；第 15 tick 先到期，不会再执行一次。正 period 使用即时修改 base value 的
+脉冲；period 求值为 `0` 时则退化为持续 modifier，`execute_on_applied` 不再产生额外脉冲。
+
+## 模式 3：带 ongoing 条件的 Buff
+
+`source_ongoing_tags` 和 `target_ongoing_tags` 控制 active effect 是否处于启用状态：
+
+```rust
+fn make_speed_buff(
+    speed_id: AttributeId,
+    buff_tag: GameplayTag,
+    granted_tag: GameplayTag,
+    alive_tag: GameplayTag,
+    stun_tag: GameplayTag,
+) -> Result<Arc<GameplayEffect>, GameplayTagError> {
+    let source_ongoing = TagRequirements::new(vec![alive_tag], vec![stun_tag])?;
+    let tags = EffectTags::new(
+        vec![buff_tag],
+        vec![granted_tag],
+        TagRequirements::default(),
+        TagRequirements::default(),
+        source_ongoing,
+        TagRequirements::default(),
+        TagRequirements::default(),
+        TagRequirements::default(),
+        vec![],
+        vec![],
+    );
+
+    Ok(Arc::new(GameplayEffect::new(
+        vec![Modifier::new(
+            speed_id,
+            ModifierOperation::PercentAdd,
+            ModifierMagnitude::Flat(0.3),
+        )],
+        EffectDurationTicks::Infinite,
+        None,
+        1.0,
+        StackingPolicy::non_stacking(),
+        tags,
+    )))
+}
+```
+
+条件不满足时，modifier、授予标签和免疫都会暂时移除；duration 仍继续倒计时，period 暂停。
+条件重新满足后它们会恢复。条件循环不能收敛时，参与循环的效果会 fail-closed 移除。
+
+## 模式 4：链式激活
+
+每个 `WaitTicks` 都以当前能力的激活时刻为起点。三连击的前两段可分别使用下面的 startup
+task 列表：
+
+```rust
+let hit_one_tasks = vec![
+    AbilityTaskDef::wait_ticks(
+        3,
+        AbilityTaskOnFinishedDef::ApplyGameplayEffectToTarget {
+            effect: hit_one_damage,
+        },
+    ),
+    AbilityTaskDef::wait_ticks(
+        4,
+        AbilityTaskOnFinishedDef::ActivateAbility {
+            handle: hit_two_handle,
+        },
+    ),
+    AbilityTaskDef::wait_ticks(5, AbilityTaskOnFinishedDef::EndAbility),
+];
+
+let hit_two_tasks = vec![
+    AbilityTaskDef::wait_ticks(
+        3,
+        AbilityTaskOnFinishedDef::ApplyGameplayEffectToTarget {
+            effect: hit_two_damage,
+        },
+    ),
+    AbilityTaskDef::wait_ticks(
+        4,
+        AbilityTaskOnFinishedDef::ActivateAbility {
+            handle: hit_three_handle,
+        },
+    ),
+    AbilityTaskDef::wait_ticks(5, AbilityTaskOnFinishedDef::EndAbility),
+];
+```
+
+若把 `ActivateAbility` 放在 sibling `Instant` task 中，下一段会在当前激活的队列 drain 中立即
+入队。单个 `AbilityTaskOnFinishedDef` 只能表达一种完成动作；一个完成点需要触发多个项目级动作
+时，可使用 `EmitEvent` 交给 Observer 按明确顺序处理，或新增项目级组合 task。Observer 派生
+请求是否仍在同一 tick 消费取决于事件产生阶段，见下一节。
+
+## 模式 5：事件驱动逻辑
+
+`AbilityTaskEvent` 通过 Bevy Observer 发送，不使用 `EventReader`：
+
+```rust
+#[derive(Resource)]
+struct AbilityEventIds {
+    release_projectile: UniqueName,
+}
+
+fn observe_ability_task(
+    event: On<AbilityTaskEvent>,
+    event_ids: Res<AbilityEventIds>,
+) {
+    if event.get_event_id() == event_ids.release_projectile {
+        // Produce project-specific work here.
+    }
+}
+
+app.insert_resource(AbilityEventIds {
+    release_projectile: release_projectile_event,
+})
+.add_observer(observe_ability_task);
+
+let release_task = AbilityTaskDef::wait_ticks(
+    10,
+    AbilityTaskOnFinishedDef::EmitEvent {
+        event_id: release_projectile_event,
+    },
+);
+```
+
+Observer 若再写入 gameplay 请求，应根据它实际运行的阶段判断是同 tick 还是下一 tick；不能仅凭
+“由 task 触发”推断执行时机。
+
+## 模式 6：授予效果免疫
+
+下面的 active effect 会阻止带 `stun_tag` asset tag 的新效果：
+
+```rust
+fn make_stun_immunity(
+    immunity_tag: GameplayTag,
+    stun_tag: GameplayTag,
+) -> Result<Arc<GameplayEffect>, GameplayTagError> {
+    let stun_effects = TagRequirements::new(vec![stun_tag], vec![])?;
+    let query = GameplayEffectImmunityQuery::new(
+        TagRequirements::default(),
+        stun_effects,
+    );
+    let tags = EffectTags::new(
+        vec![immunity_tag],
+        vec![],
+        TagRequirements::default(),
+        TagRequirements::default(),
+        TagRequirements::default(),
+        TagRequirements::default(),
+        TagRequirements::default(),
+        TagRequirements::default(),
+        vec![query],
+        vec![],
+    );
+
+    Ok(Arc::new(GameplayEffect::new(
+        vec![],
+        EffectDurationTicks::DurationTicks(ModifierMagnitude::Flat(60.0)),
+        None,
+        1.0,
+        StackingPolicy::non_stacking(),
+        tags,
+    )))
+}
+```
+
+免疫查询的 `source_tags` 匹配新效果的来源实体标签，`effect_tags` 匹配新效果的 asset tags；
+它不会匹配新效果将要授予目标的标签。只有已启用的 active effect 才提供免疫。
+
+## 模式 7：按标签移除效果
+
+`target_removal_tags` 使 active effect 在目标满足条件时移除自身；
+`remove_effects_with_tags` 则在本效果成功应用时，先清除目标上匹配 asset tag 的旧效果：
+
+```rust
+fn removal_effect_tags(
+    effect_tag: GameplayTag,
+    dead_tag: GameplayTag,
+    dispellable_tag: GameplayTag,
+) -> Result<EffectTags, GameplayTagError> {
+    let remove_when_dead = TagRequirements::new(vec![dead_tag], vec![])?;
+
+    Ok(EffectTags::new(
+        vec![effect_tag],
+        vec![],
+        TagRequirements::default(),
+        TagRequirements::default(),
+        TagRequirements::default(),
+        TagRequirements::default(),
+        TagRequirements::default(),
+        remove_when_dead,
+        vec![],
+        vec![dispellable_tag],
+    ))
+}
+```
+
+移除匹配使用继承后的 tag bits；父标签可匹配子标签。由于双方都采用继承集合，拥有共同祖先的
+兄弟标签也可能匹配，设计标签层级时应把这一点纳入规则。
+
+## 边界与维护建议
+
+- 所有 duration、period、task wait 都以 `FixedUpdate` tick 为单位，不是秒。
+- Instant 效果不创建 active entity；它忽略 period，也不会长期授予标签或免疫。
+- 有 modifier 的效果要求目标存在 `AttributeSet` 且目标属性已初始化；持续或无限效果还要求
+  `ActiveGameplayEffects`；授予标签的效果要求 `GameplayTagContainer`。
+- 先注册 tag/attribute，再构造长期复用的 `Arc<GameplayEffect>` 与
+  `Arc<GameplayAbility>`，避免把注册和热路径执行混在一起。
+- 同一效果定义是否可堆叠通过 `Arc::ptr_eq` 判断；需要共享堆叠身份时必须复用同一个 `Arc`。
+- 直接效果应用使用 `GameplayExecutionQueue::push_application()` 和 `EffectPayload`；能力激活使用
+  `new_root_chain()`、`AbilityActivationContext` 与 `push_activation()`。

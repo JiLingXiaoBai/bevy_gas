@@ -1,27 +1,35 @@
 # 08 — 技能任务
 
-## 概述
+## 职责
 
-技能任务在活跃技能内部编排行为。startup `Instant` 在技能激活流程中直接派发；只有需要
-跨 tick 保存状态的任务（当前为 `WaitTicks`）才生成实体，并由 `AbilityTasks` 系统推进。
+Ability Task 编排活跃技能中的定时行为。startup `Instant` 在技能激活函数内直接派发；只有需要
+跨 tick 保存状态的任务才以 `AbilityTask` Component 存活。目前唯一的跨 tick 类型是
+`WaitTicks`，所有时间单位都是 `FixedUpdate` tick。
 
-## 源码结构
+## 源码布局
 
 ```text
 src/gas/gameplay_abilities/
-├── ability_task.rs                # 门面；显式重导出公共 API 与 crate 内部完成入口
+├── ability_task.rs
 └── ability_task/
-    ├── definition.rs              # AbilityTaskDef 与 AbilityTaskOnFinishedDef
-    ├── state.rs                   # AbilityTask、AbilityTaskKind 与运行时完成动作
-    ├── completion.rs              # 完成分派、AbilityTaskEvent 与 Gameplay 请求转换
-    └── ticking.rs                 # 确定性任务遍历和 tick system
+    ├── definition.rs
+    ├── state.rs
+    ├── completion.rs
+    └── ticking.rs
 ```
 
-定义层只描述技能资产中的任务；状态层只保存需要跨 tick 存活的 ECS 数据；完成层集中处理
-任务结束产生的事件、效果请求和链式激活；tick 层负责按稳定顺序推进任务。startup
-`Instant` 与运行时任务复用同一个完成分派入口，因此拆分文件不会改变两条路径的副作用语义。
+| 文件 | 职责 |
+| ---- | ---- |
+| `ability_task.rs` | 门面与显式重导出 |
+| `definition.rs` | 资产定义 `AbilityTaskDef`、`AbilityTaskOnFinishedDef` 及实例化 |
+| `state.rs` | 跨 tick 的 Component、任务种类和已捕获完成动作 |
+| `completion.rs` | 完成分派、`AbilityTaskEvent` 和 Gameplay 请求生产 |
+| `ticking.rs` | 按稳定实体顺序推进运行时任务 |
 
-## 任务定义 (`AbilityTaskDef`)
+完成分派是 crate 内部入口，startup `Instant` 与运行时任务复用它；调用方不应依赖私有模块或
+内部完成枚举。
+
+## 定义层公共 API
 
 ```rust
 pub enum AbilityTaskDef {
@@ -35,17 +43,7 @@ pub enum AbilityTaskDef {
 }
 ```
 
-| 变体        | 行为                  |
-| ----------- | --------------------- |
-| `Instant`   | 作为 startup definition 时在激活调用内完成 |
-| `WaitTicks` | 创建运行时任务，之后等待 N 个 `AbilityTasks` tick |
-
-startup tasks 是同时启动的 sibling，不是依次等待的序列。多个 `WaitTicks` 使用相对激活时刻的
-绝对等待点；前一个任务完成不会自动触发后一个任务开始。
-
-### `AbilityTaskOnFinishedDef`
-
-定义任务完成时的行为：
+使用 `AbilityTaskDef::instant(...)` 和 `AbilityTaskDef::wait_ticks(...)` 创建定义。
 
 ```rust
 pub enum AbilityTaskOnFinishedDef {
@@ -58,19 +56,19 @@ pub enum AbilityTaskOnFinishedDef {
 }
 ```
 
-| 变体                          | 完成时的效果                          |
-| ----------------------------- | ------------------------------------- |
-| `None`                        | 无操作                                |
-| `EndAbility`                  | 将父技能状态设为 `Ending`             |
-| `EmitEvent`                   | 通过 `Commands::trigger` 触发 Observer Event |
-| `ApplyGameplayEffectToTarget`  | 向统一 Gameplay FIFO 加入一个效果请求        |
-| `ApplyGameplayEffectToTargets` | 按 Target Data 顺序加入多个效果请求          |
-| `ActivateAbility`              | 向统一 Gameplay FIFO 加入链式技能激活        |
+| 完成动作 | 行为 |
+| -------- | ---- |
+| `None` | 不产生副作用 |
+| `EndAbility` | 请求把父技能状态设为 `Ending` |
+| `EmitEvent` | 通过 `Commands::trigger()` 触发 `AbilityTaskEvent` Observer Event |
+| `ApplyGameplayEffectToTarget` | 向统一 Gameplay FIFO 追加一个效果应用请求 |
+| `ApplyGameplayEffectToTargets` | 有 Target Data 时按其顺序追加多个请求，否则回退到旧单目标 |
+| `ActivateAbility` | 从父上下文派生技能链并向统一 FIFO 追加激活请求 |
 
-## 运行时任务 (`AbilityTask`)
+任务定义实例化时会捕获 source、target、spec handle、level 和效果 `Arc`。效果请求还会从父技能
+激活上下文继承 Instigator、Causer 与来源属性快照。
 
-需要跨 tick 的任务作为实体 `Component` 存在。`AbilityTask::instant(...)` 仍可供游戏层手动
-生成，但 startup `AbilityTaskDef::Instant` 不会生成短命实体。
+## 运行时状态
 
 ```rust
 #[derive(Component, Clone)]
@@ -86,39 +84,51 @@ pub enum AbilityTaskKind {
 }
 ```
 
-### `AbilityTaskOnFinished`（运行时）
+公共构造与查询 API：
 
-```rust
-pub enum AbilityTaskOnFinished {
-    None,
-    EndAbility,
-    EmitEvent { source, target, spec_handle, event_id, level },
-    ActivateAbility { source, target, handle },
-    ApplyGameplayEffect { source, target, effect, level },
-    ApplyGameplayEffectToTargets { source, fallback_target, effect, level },
-}
-```
+| API | 作用 |
+| --- | ---- |
+| `AbilityTask::instant(active, action)` | 创建下次可见的 `AbilityTasks` 阶段即完成的运行时任务 |
+| `AbilityTask::wait_ticks(active, ticks, action)` | 创建按 tick 递减的运行时任务 |
+| `get_active_ability()` | 返回父活跃实例 Entity |
+| `get_kind()` | 返回当前任务种类和剩余 tick |
+| `get_on_finished()` | 返回捕获好的完成动作 |
 
-手动 spawn 的 `AbilityTask::instant(...)` 仍是运行时任务，必须等实体对下一次
-`AbilityTasks` 阶段可见后才会完成；只有 startup `AbilityTaskDef::Instant` 是 activation-inline。
-startup `WaitTicks` 也通过 deferred spawn 创建，`WaitTicks(0)` 最早在后续 `FixedUpdate` 的
-`AbilityTasks` 阶段完成。
+`AbilityTaskOnFinished` 是实例化后的运行时动作。它与定义枚举分离，因为其中已经捕获具体实体、
+等级、技能 Handle 和 Effect `Arc`。
 
-## 任务 Tick 系统
+## startup 与运行时任务的差异
 
-`tick_ability_tasks_system` 在每个 `FixedUpdate` 运行：
+| 场景 | 是否创建任务实体 | 首次执行时机 |
+| ---- | ---------------- | ------------ |
+| startup `Instant` | 否 | 激活函数内立即派发 |
+| startup `WaitTicks` | 是，并设为活跃技能子实体 | 激活发生在 `GameplayResolve` 时，最早下一次 `AbilityTasks` |
+| 游戏层手动生成 `AbilityTask::instant` | 是 | 该实体下一次对 `AbilityTasks` 可见时 |
+| 游戏层手动生成 `AbilityTask::wait_ticks` | 是 | 该实体下一次对 `AbilityTasks` 可见时开始计数 |
 
-1. 按任务实体的 `Entity::to_bits()` 稳定顺序遍历 `AbilityTask`
-2. 跳过父技能不处于 `Active` 状态的任务
-3. 调用 `task.tick()` — 完成时返回 `true`
-4. 完成时执行 `on_finished` 动作
-5. 销毁任务实体
+`WaitTicks(0)` 和 `WaitTicks(1)` 都会在第一次被任务系统处理时完成；`WaitTicks(2)` 会在第二次
+处理时完成。startup 任务从同一个激活时刻启动，是 sibling，不是前一个完成后才启动下一个的
+串行时间线。
 
-这里的排序发生在每个 tick 开始处理任务时；完成动作写入 `GameplayExecutionQueue` 的顺序
-与该稳定实体顺序一致。任务系统本身不直接消费队列，后续仍由统一 Gameplay resolver 按
-FIFO 处理。
+startup definitions 按定义顺序处理。遇到 `Instant EndAbility` 后停止启动后续 sibling；此前已
+排入 `Commands` 的 `WaitTicks` 会随结束中的父技能在 `Cleanup` 阶段递归清理。
 
-### `AbilityTaskEvent`
+## Tick 算法与生命周期
+
+`tick_ability_tasks_system` 位于 `GameplayAbilitySystemSet::AbilityTasks`，每个固定 tick 执行：
+
+1. 收集任务 Entity，并按 `Entity::to_bits()` 排序。
+2. 重新取得每个任务；若父活跃技能不存在，排队销毁任务。
+3. 若父技能不是 `Active`，排队销毁任务，不执行完成动作。
+4. `Instant` 立即完成；`WaitTicks` 在大于零时递减，并在结果为零时完成。
+5. 完成后分派 `on_finished`，然后排队销毁任务实体。
+6. `EndAbility` 会把父技能设为 `Ending`；默认插件稍后的 `Cleanup` 阶段负责 ASC bookkeeping
+   和递归销毁。
+
+任务实体顺序是确定性的 Entity bits 顺序，不是独立 FIFO。完成动作向
+`GameplayExecutionQueue` 写入时保留该顺序；队列随后在 `GameplayResolve` 按 FIFO 消费。
+
+## Event 与同 tick 边界
 
 ```rust
 #[derive(Event, Clone)]
@@ -132,67 +142,54 @@ pub struct AbilityTaskEvent {
 }
 ```
 
-当 `EmitEvent` 任务完成时通过 `Commands::trigger()` 发出。游戏代码应注册
-`On<AbilityTaskEvent>` Observer，在技能时间线的特定节点触发自定义逻辑；它不是由
-`EventReader` 消费的 buffered Message。
+`EmitEvent` 使用 `Commands::trigger()`，应通过 `On<AbilityTaskEvent>` Observer 消费，而不是
+`EventReader`。Observer 的回写时机取决于事件产生阶段：
 
-## 使用示例
+- 运行时任务在 `AbilityTasks` 产生事件。默认插件在后续 `GameplayResolve` 前应用 deferred
+  commands，因此 Observer 写入 Gameplay FIFO 的请求可在当前 fixed tick 消费。
+- startup `Instant` 在 `GameplayResolve` drain 内产生事件。Observer 要等 resolver 返回后才
+  运行，此时本 tick 的唯一 Gameplay 消费阶段已经结束；Observer 新写入的请求留到下一 tick。
+- `ApplyGameplayEffect*` 与 `ActivateAbility` 不依赖 Observer，它们在完成分派时直接入队。若在
+  resolver 内产生，会被同一次 drain 继续消费。
+
+需要严格同 batch 的玩法副作用时，应使用直接生产 Gameplay 请求的完成动作，不要依赖
+`EmitEvent` Observer 回写。
+
+## 示例
 
 ```rust
-let fireball = Arc::new(GameplayAbility::new(
-    ability_tags,
-    vec![
-        // 任务 1：等待 5 tick（前摇），然后应用伤害效果
-        AbilityTaskDef::wait_ticks(5, AbilityTaskOnFinishedDef::ApplyGameplayEffectToTarget {
+let startup_tasks = vec![
+    AbilityTaskDef::wait_ticks(
+        5,
+        AbilityTaskOnFinishedDef::ApplyGameplayEffectToTarget {
             effect: damage_effect.clone(),
-        }),
-        // 任务 2：等待 10 tick，然后结束技能
-        AbilityTaskDef::wait_ticks(10, AbilityTaskOnFinishedDef::EndAbility),
-    ],
+        },
+    ),
+    AbilityTaskDef::wait_ticks(10, AbilityTaskOnFinishedDef::EndAbility),
+];
+
+let ability = Arc::new(GameplayAbility::new(
+    ability_tags,
+    startup_tasks,
     cooldown,
     cost,
     activation_effects,
-    false,  // end_on_activation
-    false,  // allow_multiple_instances
+    false,
+    false,
 ));
 ```
 
-## 任务生命周期
+两个 `WaitTicks` 同时开始；第 5 次任务处理应用效果，第 10 次任务处理结束技能。
 
-```
-技能激活
-       │
-       ▼
-start_startup_ability_tasks()
-  └── 对 startup_tasks 中的每个 AbilityTaskDef：
-        ├── Instant → 激活流程内直接派发完成动作
-        └── WaitTicks → 生成 AbilityTask 实体
-       │
-       ▼
-每个 FixedUpdate：tick_ability_tasks_system()
-  └── WaitTicks 任务 → 递减 remaining_ticks
-        └── 当 remaining_ticks == 0 → 完成
-       │
-       ▼
-完成时：
-  ├── EndAbility → 父技能状态 = Ending
-  ├── EmitEvent → 触发 AbilityTaskEvent
-  ├── ApplyGameplayEffect → 写入 GameplayExecutionQueue
-  ├── ApplyGameplayEffectToTargets → 按目标顺序写入多个请求
-  └── ActivateAbility → 写入 GameplayExecutionQueue
-       │
-       ▼
-任务实体销毁
-```
+## 测试导航
 
-startup Instant 产生的效果或链式激活会追加到当前 `GameplayResolve` 正在 drain 的统一 FIFO，
-因此在技能激活所在 tick 内执行。若 startup Instant 在全局 resolver 内 `EmitEvent`，Observer
-只能在 resolver 返回后的 deferred sync point 运行，此时回写 Gameplay FIFO 的请求属于下一
-tick。由 `AbilityTasks` 完成的 `WaitTicks::EmitEvent` 位于 resolver 之前，Observer 默认仍可在
-当前 tick 入队。需要严格同 batch 顺序的 startup 玩法逻辑应直接建模为 Gameplay 请求，而
-不是依赖通知事件回写队列。
+| 测试文件 | 覆盖范围 |
+| -------- | -------- |
+| `tests/gas_tests/abilities/tasks.rs` | Wait tick 计数和 startup `EndAbility` 截断 sibling |
+| `tests/gas_tests/abilities/lifecycle.rs` | 父技能结束时递归清理 startup task |
+| `tests/gas_tests/queues_test.rs` | 缺失父实例、效果/技能入队、上下文继承和 Event payload |
+| `tests/gas_tests/runtime_paths_test.rs` | startup `Instant` 同 tick 与 `WaitTicks` 跨 tick |
+| `tests/gas_tests/gameplay_targeting_test.rs` | Target Data 多目标完成动作 |
 
-startup tasks 按定义顺序派发；遇到 `Instant EndAbility` 后停止启动后续 sibling task。此前已经
-spawn 的 `WaitTicks` 也会随结束中的父技能清理，不会形成“等待完成后再结束”的序列。
-公共同步入口 `try_activate_ability_by_handle()` 会使用局部 batch 完整处理 Instant 派生请求，
-而通过全局队列激活时则由当前 `GameplayResolve` drain 完成同样语义。
+继续阅读：[07 — Gameplay 技能](./07-gameplay-abilities.md)、
+[16 — Gameplay 执行模块](./16-gameplay-execution.md)。

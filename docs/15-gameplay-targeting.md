@@ -1,244 +1,209 @@
 # 15 — Gameplay 目标抓取
 
-## 概述
+## 职责与源码布局
 
-`gameplay_targeting` 将“寻找目标”与技能和效果执行解耦。目标定义是一组经过验证、
-按顺序执行的操作；运行时通过同步 API 或 FIFO `TargetingRequestQueue` 生成
-`AbilityTargetData`。
-
-目标抓取只负责产生候选结果。`GameplayEffect` 仍然一次作用于一个实体：技能定义中的
-`activation_effects` 会在该技能激活请求内部按目标顺序直接应用；
-`ApplyGameplayEffectToTargets` task 则按相同顺序向统一 Gameplay FIFO 写入多个效果请求。
-
-## 源码结构
+`gameplay_targeting` 负责从 ECS 状态生成确定有序的 `AbilityTargetData`。它不直接执行技能或
+效果；`ActivateAbility` continuation 只把激活请求写入统一 Gameplay FIFO。
 
 ```text
 src/gas/
-├── gameplay_targeting.rs                 # 领域门面与显式公共重导出
+├── gameplay_targeting.rs
 └── gameplay_targeting/
-    ├── ability_target_data.rs            # 有序目标数据与命中记录
-    ├── targeting_definition.rs           # 已验证的操作定义、Targetable 与配置错误
-    ├── acquisition.rs                    # 同步抓取算法、候选查询与运行时错误
-    ├── targeting_queue.rs                # 队列子领域门面
+    ├── ability_target_data.rs
+    ├── targeting_definition.rs
+    ├── acquisition.rs
+    ├── targeting_queue.rs
     └── targeting_queue/
-        ├── request.rs                    # 请求输入、ID、continuation 与结果事件
-        ├── queue.rs                      # FIFO Resource 与请求 ID 分配
-        └── processing.rs                 # drain、同步抓取、continuation 和事件派发
+        ├── request.rs
+        ├── queue.rs
+        └── processing.rs
 ```
 
-同步抓取职责集中在 `acquisition.rs`。抓取算法与队列调度分离：同步调用只依赖
-acquisition；排队调用则由 processing 复用同一抓取入口。`TargetingRequest` 保持为队列内部
-类型，外部只接触请求输入、稳定 ID、continuation、结果事件和队列 Resource。
+| 文件 | 职责 |
+| ---- | ---- |
+| `ability_target_data.rs` | 有序命中与目标数据 |
+| `targeting_definition.rs` | 操作定义、验证错误和 `Targetable` |
+| `acquisition.rs` | 同步选择/过滤算法、候选 Query 和运行时错误 |
+| `targeting_queue/request.rs` | 输入快照、稳定 ID、continuation 与结果 Event |
+| `targeting_queue/queue.rs` | 私有请求的 FIFO Resource 与 ID 分配 |
+| `targeting_queue/processing.rs` | 完整 drain、continuation 和 Event 派发 |
 
-## 实体要求
-
-范围、锥形和显式实体选择只会接受带有 `Targetable` Component 的实体。这样可以避免将
-相机、UI、特效等普通 Transform 实体误选为 Gameplay 目标。
-
-所有参与空间查询的实体需要 `GlobalTransform`：
-
-```rust
-commands.spawn((
-    Targetable,
-    Transform::from_xyz(3.0, 0.0, 0.0),
-    GlobalTransform::default(),
-    GameplayTagContainer::default(),
-));
-```
-
-`SelectSelf` 是例外：来源不需要 `Targetable`，但仍需要 `GlobalTransform`。
+`TargetingRequest` 是私有实现。公共调用方只使用输入、定义、continuation、请求 ID、结果 Event
+和队列 Resource。
 
 ## 目标数据
 
 ```rust
-pub struct AbilityTargetData {
-    origin: Vec3,
-    hits: Vec<AbilityTargetHit>,
-}
-
 pub struct AbilityTargetHit {
     entity: Entity,
     position: Vec3,
     normal: Option<Vec3>,
 }
-```
 
-- `origin`：此次抓取使用的世界坐标原点。
-- `entity`：目标实体。
-- `position`：抓取时记录的目标世界坐标。
-- `normal`：可选表面法线；当前实体/范围查询返回 `None`，预留给射线和物理命中适配。
-
-`primary_entity()` 返回排序后的第一个实体，用于兼容现有单目标激活 API；`entities()`
-按照确定顺序遍历全部目标。
-
-## 有序操作管线
-
-每个 `TargetingDefinition` 必须以恰好一个 Selection 操作开头，之后只能执行过滤、排序
-和截断：
-
-| 类别 | 操作 | 行为 |
-| ---- | ---- | ---- |
-| Selection | `SelectSelf` | 选择来源 |
-| Selection | `SelectExplicitEntity` | 选择请求中显式提供的实体 |
-| Selection | `SelectSphere` | 选择球形范围内的 `Targetable` 实体 |
-| Selection | `SelectCone` | 选择指定方向锥形范围内的实体 |
-| Filter | `FilterSource` | 排除来源 |
-| Filter | `FilterTags` | 使用 `TagRequirements` 过滤 |
-| Filter | `RequireAttributeSet` | 要求目标具有 `AttributeSet` |
-| Filter | `FilterDistance` | 要求目标不超过指定距离，适合显式目标复核 |
-| Sorting | `SortByDistance` | 按距原点的距离平方排序 |
-| Limit | `Limit` | 保留前 N 个目标 |
-
-构造函数会拒绝空管线、Selection 不在首位、多个 Selection、非法半径/角度和零上限，
-不会在运行时主动 panic。
-
-### 最近三个存活敌人
-
-```rust
-let definition = Arc::new(TargetingDefinition::new(vec![
-    TargetingOperation::SelectSphere { radius: 12.0 },
-    TargetingOperation::FilterSource,
-    TargetingOperation::FilterTags {
-        requirements: TagRequirements::new(
-            vec![enemy_tag, alive_tag],
-            vec![untargetable_tag],
-        )?,
-    },
-    TargetingOperation::RequireAttributeSet,
-    TargetingOperation::SortByDistance {
-        order: TargetingSortOrder::Ascending,
-    },
-    TargetingOperation::Limit { count: 3 },
-])?);
-```
-
-操作顺序具有语义。例如先 `Limit` 再排序只会排序已截断的候选；通常应当先过滤、再排序、
-最后限制数量。
-
-## 同步抓取
-
-自定义 System 可以直接调用 `acquire_targets()`。它接收：
-
-- 来源实体；
-- 捕获好的 `TargetingInput`；
-- 已验证的 `TargetingDefinition`；
-- 目标查询。
-
-成功时返回非空的 `AbilityTargetData`；没有合法目标时返回
-`TargetingError::NoTargetsFound`。
-
-`TargetingInput` 保存请求提交时的 `origin`、`direction` 和可选显式目标。使用捕获值而非
-执行过程中重新读取相机方向，可以清楚定义一次请求的输入快照。
-
-## 队列抓取和技能激活
-
-通常通过 `TargetingRequestQueue` 提交工作：
-
-```rust
-let request_id = targeting_queue.push_request(
-    source,
-    TargetingInput::new(origin, aim_direction),
-    definition,
-    TargetingContinuation::activate_ability(handle, context),
-);
-```
-
-生产该请求的系统应位于 `Targeting` 之前，通常注册到公共生产阶段：
-
-```rust
-app.add_systems(
-    FixedUpdate,
-    queue_targeting_requests.in_set(GameplayAbilitySystemSet::RequestProducers),
-);
-```
-
-每个请求无论成功或失败都会通过 `Commands::trigger()` 触发包含同一
-`TargetingRequestId` 的 `TargetingResultEvent`。成功且 continuation 为 `ActivateAbility` 时，
-系统还会：
-
-1. 把完整 `AbilityTargetData` 附加到 `AbilityActivationContext`；
-2. 以 `primary_entity()` 作为旧 API 的单一 `target`；
-3. 向统一的 `GameplayExecutionQueue` 写入激活请求；
-4. 随后触发成功结果事件。
-
-失败时不会写入技能激活，但 Observer 仍会收到 `Err(TargetingError)`。direct continuation 在
-结果事件的 deferred Observer 运行前已经入队，因此 Observer 不能撤销它；需要先审核、确认
-或允许取消时，应使用 `EmitResult`，再由 Observer 决定是否生产 Gameplay 请求。
-
-使用 `TargetingContinuation::EmitResult` 时只触发结果事件，不自动激活技能，适合 AI、
-UI 或游戏专用逻辑消费。
-
-队列在当前 `FixedUpdate` 中按 FIFO 顺序处理全部待处理请求，不会因为请求数量而隐式推迟
-到后续 tick。
-
-对每个出队请求，processing 固定按“执行同步抓取 → 成功时执行 direct continuation → 触发
-结果事件”的顺序处理。随后才读取下一个请求；这保证了 continuation 与事件的相对语义没有
-因文件拆分而改变。
-
-整批请求的 direct continuation 会先按 Targeting FIFO 写入 Gameplay 队列，系统返回后才应用
-deferred result triggers。因此 Observer 派生的请求排在该批所有 direct continuation 之后，
-不会与每个 Targeting 请求逐个交错。
-
-## 多目标效果
-
-技能的 `activation_effects` 在存在 Target Data 时，会在当前技能激活请求内部按顺序直接应用给
-每个实体。任务也可使用：
-
-```rust
-AbilityTaskOnFinishedDef::ApplyGameplayEffectToTargets {
-    effect: damage_effect,
+pub struct AbilityTargetData {
+    origin: Vec3,
+    hits: Vec<AbilityTargetHit>,
 }
 ```
 
-如果激活上下文没有 Target Data，该任务回退到 `ActiveGameplayAbility` 的旧单目标字段。
-每个目标独立执行效果的应用要求、免疫、概率和堆叠检查，因此一个目标拒绝效果不会阻止
-后续目标。只有 task 路径会为每个目标创建独立的统一 FIFO 请求；`activation_effects` 仍属于
-当前技能激活请求的内部执行步骤。
+`AbilityTargetHit::new()` 和 `AbilityTargetData::new()` 可用于游戏层适配器。常用只读 API：
 
-## FixedUpdate 时序
+| API | 作用 |
+| --- | ---- |
+| `get_origin()` | 返回请求捕获的世界坐标原点 |
+| `get_hits()` | 返回确定有序的全部 Hit |
+| `primary_entity()` | 返回第一个目标，兼容旧单目标技能 API |
+| `entities()` | 按 Hit 顺序遍历实体 |
+| `len()` / `is_empty()` | 查询目标数量 |
 
-```text
-EffectTicks → AbilityTasks → RequestProducers
-            │
-            ▼
-        Targeting
-            │
-            ▼
- PreGameplayConvergence
-            │
-            ▼
- GameplayResolve（效果 + 技能统一 FIFO）
-            │
-            ▼
-Requirement → Cleanup → RecalculateAttributes
+同步 acquisition 成功时保证数据非空；游戏层通过 `AbilityTargetData::new()` 手工创建的数据可以
+为空。
+
+## 定义与实体要求
+
+每个 `TargetingDefinition` 必须以恰好一个 Selection 开头，后续操作按给定顺序细化结果：
+
+| 类别 | 操作 | 行为 |
+| ---- | ---- | ---- |
+| Selection | `SelectSelf` | 选择来源；不要求 `Targetable` |
+| Selection | `SelectExplicitEntity` | 选择输入中的显式实体；要求 `Targetable` |
+| Selection | `SelectSphere` | 选择球形范围内的 `Targetable` 实体 |
+| Selection | `SelectCone` | 选择方向锥形范围内的 `Targetable` 实体 |
+| Filter | `FilterSource` | 排除来源 |
+| Filter | `FilterTags` | 使用 `TagRequirements` 过滤 |
+| Filter | `RequireAttributeSet` | 要求目标具有 `AttributeSet` |
+| Filter | `FilterDistance` | 要求距请求原点不超过上限 |
+| Sorting | `SortByDistance` | 按距离平方升序或降序排序 |
+| Limit | `Limit` | 截断为前 N 个 |
+
+`TargetingDefinition::new()` 拒绝空操作、Selection 不在首位、多个 Selection、负数或非有限
+radius/distance、非有限或超出 `[0, PI]` 的半角，以及 `Limit { count: 0 }`。
+
+操作顺序具有语义。通常应先过滤，再排序，最后 Limit；先 Limit 再排序只会重排已截断集合。
+
+候选 Query 要求实体有 `GlobalTransform`。Sphere、Cone 和 Explicit selection 还要求
+`Targetable`；`SelectSelf` 只要求来源有 `GlobalTransform`。`FilterTags` 配置非空时，没有
+`GameplayTagContainer` 的候选不会通过；空 requirements 对有无容器都通过。
+
+## 同步抓取 API
+
+```rust
+pub fn acquire_targets(
+    source: Entity,
+    input: TargetingInput,
+    definition: &TargetingDefinition,
+    query: &TargetingCandidateQuery,
+) -> Result<AbilityTargetData, TargetingError>;
 ```
 
-`AbilityTasks` 和 `RequestProducers` 中的系统可为当前 tick 产生目标请求；Targeting 成功后会
-在同一 tick 将技能激活写入统一 FIFO。技能的 startup task 位于后续 `GameplayResolve`，此时
-新建的 Targeting 请求只能等下一 tick。startup Instant 直接追加到 Gameplay FIFO 的效果或
-技能请求仍由当前 drain 消费。
+`TargetingInput::new(origin, direction)` 捕获请求提交时的空间输入，
+`with_explicit_target(entity)` 附加显式目标。Origin 总会检查有限值；Direction 仅在 Cone selection
+需要时检查有限且非零。缺失实体/Component、无效输入和最终空集合都会返回具体
+`TargetingError`，不会 panic。
 
-## 确定性
+## 队列 API 与 continuation
 
-- Selection 完成后先按 `Entity::to_bits()` 建立确定的基础顺序。
-- 距离排序使用 `f32::total_cmp()`，距离相同时以 Entity bits 打破平局。
-- `Limit` 因此不依赖 Bevy Query 的遍历顺序。
-- 多目标效果按照 `AbilityTargetData` 中的顺序入队。
-- 请求 origin、锥形 direction 以及定义中的半径、距离和角度会检查有限值；锥形方向不能为
-  零向量。候选实体 `GlobalTransform::translation()` 当前不会统一复验有限值。
+```rust
+pub fn push_request(
+    &mut self,
+    source: Entity,
+    input: TargetingInput,
+    definition: Arc<TargetingDefinition>,
+    continuation: TargetingContinuation,
+) -> TargetingRequestId;
+```
 
-当前空间计算仍使用 `f32`，不保证不同 CPU/平台上的位级锁步。严格锁步项目应在游戏层
-使用量化或定点坐标。
+`TargetingRequestQueue` 还公开 `len()`、`is_empty()` 与 `clear()`；出队只属于内部 processor。
+请求 ID 从 1 开始，按入队顺序分配，溢出后跳过 0。
 
-## 当前边界
+```rust
+pub enum TargetingContinuation {
+    EmitResult,
+    ActivateAbility {
+        handle: AbilitySpecHandle,
+        context: Box<AbilityActivationContext>,
+    },
+}
+```
 
-当前版本尚未提供：
+推荐使用 `TargetingContinuation::activate_ability(handle, context)` 创建激活 continuation。
 
-- 射线/形状投射与物理引擎适配；
-- 只有世界位置、没有实体的目标数据；
-- 等待玩家确认/取消的 `WaitTargetData` 任务；
-- 客户端预测、网络序列化和服务端目标复验；
-- 空间索引加速。
+processor 完整 drain 当前 Targeting FIFO。每个请求严格执行：
 
-范围选择目前扫描带 `GlobalTransform` 的查询结果。只有 Profiling 证明它成为瓶颈后，
-才应接入网格、BVH 或具体物理引擎的 broad phase。
+1. 调用同步 `acquire_targets()`。
+2. 成功且 continuation 为 `ActivateAbility` 时，把完整 Target Data 附加到 Context，以
+   `primary_entity()` 作为旧单目标字段，并写入 `GameplayExecutionQueue`。
+3. 通过 `Commands::trigger()` 排队触发包含同一 `TargetingRequestId` 的
+   `TargetingResultEvent`，无论成功或失败都会触发。
+4. 处理下一个 Targeting 请求。
+
+Direct continuation 在结果 Observer 之前已经入队，Observer 不能撤销它。需要审核、玩家确认
+或取消时使用 `EmitResult`，再由 `On<TargetingResultEvent>` Observer 决定是否生产 Gameplay
+请求。
+
+整批 direct continuations 都在 processor 内完成；deferred result triggers 在系统返回后才应用，
+所以 Observer 派生的 Gameplay 请求排在该批所有 direct continuation 之后，不会逐请求交错。
+
+## FixedUpdate 时序与边界
+
+```text
+EffectTicks
+    ↓
+AbilityTasks
+    ↓
+RequestProducers
+    ↓
+Targeting
+    ↓
+PreGameplayConvergence
+    ↓
+GameplayResolve
+    ↓
+UpdateEffectTagRequirements
+    ↓
+Cleanup
+    ↓
+RecalculateAttributes
+```
+
+| 产生位置 | 结果 |
+| -------- | ---- |
+| `AbilityTasks` / `RequestProducers` 或其他明确位于 `Targeting` 前的系统写入 Targeting FIFO | 当前 tick 抓取 |
+| Targeting processor 的 direct activation continuation | 当前 tick `GameplayResolve` |
+| `TargetingResultEvent` Observer 写入 Gameplay FIFO | 默认插件下仍在 `GameplayResolve` 前，当前 tick |
+| `TargetingResultEvent` Observer 再写 Targeting FIFO | processor 已结束，下一 tick 抓取 |
+| `Targeting` 阶段之后新写 Targeting FIFO | 下一 tick 抓取 |
+
+队列没有每 tick 数量上限，会完整处理进入本次 drain 的请求。Observer 在 processor 返回后新增
+的 Targeting 请求不会被本次已经结束的 drain 重新消费。
+
+## 多目标效果
+
+- 技能 `activation_effects` 在激活请求内部按效果定义顺序、再按 Target Data 顺序直接应用。
+- `ApplyGameplayEffectToTargets` task 按 Target Data 顺序向统一 Gameplay FIFO 追加独立请求。
+- Task 只有在 Context 没有 Target Data 时才回退到旧单目标；手工提供空 Target Data 会产生零个
+  多目标请求。
+- 每个目标独立进行要求、免疫、概率和堆叠检查；一个目标拒绝不会中断后续 FIFO 请求。
+
+## 确定性与当前边界
+
+- Sphere/Cone selection 先按 `Entity::to_bits()` 建立基础顺序。
+- 距离排序使用 `f32::total_cmp()`，相同距离用 Entity bits 打破平局。
+- 请求捕获 Origin、Direction 和显式目标，不在消费时重新读取输入设备。
+- 候选 `GlobalTransform::translation()` 当前没有统一复验有限值。
+- 空间计算仍使用 `f32`，不保证跨平台位级锁步。
+- 当前没有物理射线/形状投射、纯世界位置目标、玩家确认任务、网络预测/复验或空间索引。
+
+范围查询目前扫描候选 Query；只有 Profiling 证明它成为瓶颈后再接入网格、BVH 或物理 broad
+phase。
+
+## 测试导航
+
+| 测试文件 | 覆盖范围 |
+| -------- | -------- |
+| `tests/gas_tests/gameplay_targeting_test.rs` | 定义验证、Sphere/Cone/Explicit、排序、完整 drain、Target Data 激活和多目标效果 |
+| `tests/gas_tests/runtime_paths_test.rs` | 默认 FixedUpdate 阶段与 Gameplay 同 tick 边界 |
+| `tests/gas_tests/queues_test.rs` | Task 派生 Gameplay 请求的 FIFO 行为 |
+
+继续阅读：[07 — Gameplay 技能](./07-gameplay-abilities.md)、
+[16 — Gameplay 执行模块](./16-gameplay-execution.md)。

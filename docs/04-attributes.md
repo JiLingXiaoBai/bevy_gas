@@ -1,247 +1,281 @@
 # 04 — 属性系统
 
-## 概述
+## 职责
 
-属性系统管理数值（HP、MP、力量等），支持**修饰器聚合**和**延迟重算**。每个实体可拥有一个 `AttributeSet` 组件，最多容纳 256 个属性。属性 ID 保持普通连续编号，物理存储由全局 `AttributeIdManager` 分配到 32 个热点槽位或 224 个冷属性槽位。
+Attributes 负责全局属性 ID 注册、每实体基础值与当前值、持续修饰器聚合、脏值重算和不可变
+快照。它不负责效果的持续时间或堆叠策略；Gameplay Effects 只通过公开的
+`AttributeSet`/`ModifierSpec` API 修改属性。
 
-## 文件结构
+当前总容量为 256，其中 32 个 Hot 槽位内联存储，224 个 Cold 槽位放在 boxed 区域。
+容量由 `GameplayAbilitySystemSettings` 的关联常量定义。
+
+## 源码布局
 
 ```text
 src/gas/
-├── attributes.rs                    # 领域门面与显式公开重导出
+├── attributes.rs                    # Domain facade and explicit exports
 └── attributes/
-    ├── registry.rs                  # ID、冷热区域、Manager 与 Register
-    ├── aggregation.rs               # Aggregator 与内部稀疏 AggregatorSet
-    ├── snapshot.rs                  # AttributeSnapshot、AttributeSetSnapshot
-    ├── attribute_set.rs             # AttributeSet 子模块门面
+    ├── registry.rs                  # IDs, regions, manager, and register param
+    ├── aggregation.rs               # Public Aggregator and private sparse storage
+    ├── snapshot.rs                  # Immutable snapshots
+    ├── attribute_set.rs             # AttributeSet facade
     └── attribute_set/
-        ├── state.rs                 # 数值状态、组件、错误与 dirty 位图
-        ├── mutation.rs              # 初始化、即时/持续修改与移除
-        └── recalculation.rs         # 延迟重算、快照与 ECS system
+        ├── state.rs                 # Component state and errors
+        ├── mutation.rs              # Initialization and modifier mutation
+        └── recalculation.rs         # Lazy recalculation, snapshots, and system
 ```
 
-原本分散的单属性、AggregatorSet 和两类快照文件已经按共同变更原因合并；
-`AttributeSet` 的状态、写入和重算流程则分别放在职责明确的子模块中。
+`Attribute` 与 `AttributeAggregatorSet` 都是实现细节，不是外部扩展点。公开契约集中在本篇
+列出的 ID、`AttributeSet`、快照和 `Aggregator` API。
 
-## 核心类型
+## 公共 API
 
-### `AttributeId`
-
-标识特定属性类型的 `u16` 句柄。
+### 属性注册
 
 ```rust
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct AttributeId(u16);
 
 impl AttributeId {
     pub fn to_index(self) -> usize;
 }
-```
 
-### `AttributeIdManager`
-
-全局 `Resource`，统一管理 `UniqueName` → `AttributeId`、普通 ID → 冷热物理槽位，以及两个区域的注册计数。
-
-```rust
-#[derive(Resource)]
-pub struct AttributeIdManager {
-    name_to_index: HashMap<UniqueName, u16>,
-    next_id_index: u16,
-    locations: [Option<AttributeLocation>; 256],
-    hot_count: usize,
-    cold_count: usize,
-}
-
-impl AttributeIdManager {
-    pub fn get_attribute_id(&self, unique_name: UniqueName) -> Option<AttributeId>;
-    pub fn register_id_internal(
-        &mut self,
-        unique_name: UniqueName,
-        region: AttributeRegion,
-    ) -> Result<AttributeId, AttributeIdError>;
-    pub fn location(&self, id: AttributeId) -> Result<AttributeLocation, AttributeIdError>;
-    pub const fn hot_count(&self) -> usize;
-    pub const fn cold_count(&self) -> usize;
-}
-```
-
-### `AttributeIdRegister`
-
-用于按名称注册属性 ID 的 `SystemParam`。
-
-```rust
-#[derive(SystemParam)]
-pub struct AttributeIdRegister<'w> { ... }
-
-impl AttributeIdRegister<'_> {
-    pub fn request_or_register_attribute_id(
-        &mut self,
-        attribute_id_name: &str,
-        region: AttributeRegion,
-    ) -> Result<AttributeId, AttributeIdError>;
-}
-```
-
-同一名称再次注册时必须使用相同区域，否则返回 `AttributeIdError::RegionMismatch`。热点或冷区单独达到容量时返回 `RegionCapacityExceeded`。名称驻留失败通过 `AttributeIdError::UniqueName` 传播，不会触发 panic。
-
-### `AttributeRegion` / `AttributeLocation`
-
-注册顺序只决定普通 ID；`AttributeIdManager` 在热点和冷区分别维护连续物理槽位。
-
-```rust
 pub enum AttributeRegion {
     Hot,
     Cold,
 }
 
-pub struct AttributeLocation {
-    region: AttributeRegion,
-    slot: usize,
+pub struct AttributeLocation { /* private fields */ }
+
+impl AttributeLocation {
+    pub const fn region(self) -> AttributeRegion;
+    pub const fn slot(self) -> usize;
 }
 ```
 
-冷热分类属于全局静态设计信息，应在初始化阶段确定；运行时不会在两个区域之间迁移属性。
+`AttributeIdManager` 管理名称到普通 ID、以及 ID 到 Hot/Cold 物理槽位的全局映射：
 
-### `Attribute`
+| API | 语义 |
+| --- | --- |
+| `get_attribute_id(unique_name)` | 查找已注册 ID |
+| `location(id)` | 返回区域和区域内槽位 |
+| `hot_count()` / `cold_count()` | 返回两个区域的注册数 |
+| `register_id_internal(name, region)` | 低层注册入口；通常优先使用 `AttributeIdRegister` |
 
-`AttributeSet` 的模块内部值类型，具有基础值和当前值两层模型。外部代码不能直接构造或修改 `Attribute`，所有状态变化必须通过 `AttributeSet`：
+推荐在 system 中按字符串名称注册：
 
 ```rust
-struct Attribute {
-    base: f32,           // Base value changed by instant modifiers
-    current: f32,        // Current aggregated value
+impl AttributeIdRegister<'_> {
+    pub fn request_or_register_attribute_id(
+        &mut self,
+        name: &str,
+        region: AttributeRegion,
+    ) -> Result<AttributeId, AttributeIdError>;
 }
 ```
 
-**值流转：**
-
-```
-base + AttributeAggregatorSet.get(location) ──► Aggregator.evaluate() ──► current
-```
-
-`Attribute` 只保存数值，不再重复保存可由数组槽位确定的 `AttributeId`，也不拥有持续修饰器或自定义 executor。`AttributeSet` 的冷热 dirty 位图是唯一事实来源：位被取出时根据区域和槽位构造 `AttributeLocation`，查询稀疏 Aggregator 并调用 `Attribute::recalculate()`。存在 Aggregator 时使用该 Aggregator 配置的 executor 求值；不存在时 `current` 直接等于 `base`。
-
-**crate 内部主要方法：**
-
-| 方法                                   | 说明                              |
-| -------------------------------------- | --------------------------------- |
-| `new(base_value)`                      | 初始化基础值和当前值              |
-| `recalculate(aggregator)`              | 使用可选 Aggregator 无条件重算    |
-| `get_current_value() -> f32`           | 读取已经计算的当前值              |
-| `modify_base_value(spec)`              | 直接对 base 应用即时修饰器        |
-| `make_snapshot() -> AttributeSnapshot` | 捕获当前 base + current 值        |
-
-### `AttributeAggregatorSet`
-
-`AttributeSet` 内部的目标级运行时存储，按 `AttributeLocation` 管理所有持续修饰器：
+同一名称再次请求时必须使用原区域。
 
 ```rust
-struct AttributeAggregatorSet {
-    entries: Vec<AttributeAggregatorEntry>,
-}
-
-struct AttributeAggregatorEntry {
-    location: AttributeLocation,
-    aggregator: Aggregator,
+pub enum AttributeIdError {
+    UniqueName(UniqueNameError),
+    CapacityExceeded { max: usize },
+    RegionCapacityExceeded { region: AttributeRegion, max: usize },
+    RegionMismatch {
+        existing: AttributeRegion,
+        requested: AttributeRegion,
+    },
+    MissingLocation { id: AttributeId },
 }
 ```
-
-`entries` 按 `AttributeLocation` 升序排列，并通过二分查找访问；热点区域先于冷区，每个区域内按槽位升序排列。属性收到持续修饰器或配置自定义 executor 时创建对应 Aggregator。最后一个修饰器被移除后，使用默认 executor 的空 entry 会被删除；带自定义 executor 的空 entry 会继续保留。同一个 location 同时负责定位数值槽位、查找 Aggregator，以及按 `ModifierSourceId` 批量移除时设置正确的冷热 dirty bit，避免在 `Attribute` 中重复存储 ID。
-
-该结构是 UE `FActiveGameplayEffectsContainer::AttributeAggregatorMap` 在当前 ECS 布局中的对应物，但暂时仍作为 `AttributeSet` 的内部子结构，从而保持属性修改与 dirty 标记在一次组件可变借用中完成。
 
 ### `AttributeSet`
 
-每实体的 `Component`，持有所有属性。
+`AttributeSet::default()` 创建一个尚未初始化任何属性的组件。主要 API 为：
 
 ```rust
-#[derive(Component)]
-pub struct AttributeSet {
-    hot_attributes: [Option<Attribute>; 32],
-    cold_attributes: Box<[Option<Attribute>; 224]>,
-    aggregators: AttributeAggregatorSet,
-    hot_dirty: [u64; 1],
-    cold_dirty: [u64; 4],
-    post_execute: Option<AttributePostExecute>,
+impl AttributeSet {
+    pub fn initialize_attribute(
+        &mut self,
+        manager: &AttributeIdManager,
+        id: AttributeId,
+        base_value: f32,
+        executor: Option<fn(&Aggregator, f32) -> f32>,
+    ) -> Result<(), AttributeIdError>;
+
+    pub fn set_post_execute(&mut self, callback: Option<AttributePostExecute>);
+    pub fn recalculate_attribute(
+        &mut self,
+        manager: &AttributeIdManager,
+        id: AttributeId,
+    ) -> Result<(), AttributeIdError>;
+    pub fn recalculate_dirty(&mut self);
+    pub fn get_current_value(
+        &mut self,
+        manager: &AttributeIdManager,
+        id: AttributeId,
+    ) -> Result<Option<f32>, AttributeIdError>;
+
+    pub fn apply_instant_modifier(
+        &mut self,
+        manager: &AttributeIdManager,
+        spec: &ModifierSpec,
+    ) -> Result<(), AttributeSetError>;
+    pub fn apply_duration_modifier(
+        &mut self,
+        manager: &AttributeIdManager,
+        spec: &ModifierSpec,
+        source_id: impl Into<ModifierSourceId>,
+    ) -> Result<(), AttributeSetError>;
+    pub fn remove_modifiers(&mut self, source_id: impl Into<ModifierSourceId>);
+    pub fn remove_modifiers_for_attributes(
+        &mut self,
+        manager: &AttributeIdManager,
+        source_id: impl Into<ModifierSourceId>,
+        ids: impl IntoIterator<Item = AttributeId>,
+    ) -> Result<(), AttributeIdError>;
+
+    pub fn make_snapshot(&mut self, source: Entity) -> AttributeSetSnapshot;
 }
 ```
 
-`AttributeSet` 可以作为独立属性组件使用，不再通过
-`#[require(ActiveGameplayEffects)]` 隐式插入效果容器。这使纯属性模拟、快照生成和单元测试
-不必携带完整 GAS 状态。需要完整技能/属性/标签/效果能力的实体应显式生成：
+修改失败使用 `AttributeSetError`：
+
+```rust
+pub enum AttributeSetError {
+    AttributeId(AttributeIdError),
+    UninitializedAttribute { id: AttributeId },
+}
+```
+
+读取一个已注册但未初始化的属性返回 `Ok(None)`；即时和持续修改同一情况则返回
+`UninitializedAttribute`。`recalculate_attribute()` 只验证 ID 已注册，未初始化槽位是无操作。
+
+### Post-execute 回调
+
+```rust
+pub type AttributePostExecute =
+    fn(&mut AttributeSet, &AttributeIdManager, AttributeId, f32, f32);
+```
+
+回调只在成功执行即时修饰器后触发。参数依次为 set、manager、ID、修改前 current 和修改后
+current；修改后值已经重新应用仍然存在的持续聚合器。
+
+### 快照
+
+```rust
+impl AttributeSnapshot {
+    pub const fn new(base: f32, current: f32) -> Self;
+    pub const fn base(&self) -> f32;
+    pub const fn current(&self) -> f32;
+}
+
+impl AttributeSetSnapshot {
+    pub fn get_current_value(
+        &self,
+        manager: &AttributeIdManager,
+        id: AttributeId,
+    ) -> Result<Option<f32>, AttributeIdError>;
+    pub fn get_base_value(
+        &self,
+        manager: &AttributeIdManager,
+        id: AttributeId,
+    ) -> Result<Option<f32>, AttributeIdError>;
+    pub const fn get_source_entity(&self) -> Entity;
+}
+```
+
+完整 set 快照只能通过 `AttributeSet::make_snapshot()` 获得。它会先重算所有 dirty 属性，
+之后保存独立的 base/current 副本；后续修改源 set 不会改变快照。
+
+### 重算系统
+
+```rust
+pub fn recalculate_attribute_sets_system(
+    query: Query<&mut AttributeSet, Changed<AttributeSet>>,
+);
+```
+
+完整插件把该系统放在 `GameplayAbilitySystemSet::RecalculateAttributes`，位于效果、技能任务、
+Gameplay FIFO、Requirement 收敛和技能清理之后。
+
+## 关键语义
+
+### Base 与 Current
+
+- `base` 是持久基础值；即时修饰器直接改变它。
+- `current` 是 `base` 经过当前 Aggregator 求值后的缓存。
+- 初始化、持续修饰器变化和移除只设置对应 Hot/Cold dirty 位。
+- `get_current_value()`、快照或重算系统在需要时刷新缓存。
+
+这也是 `get_current_value()` 需要 `&mut self` 的原因：一次读取可能消费 dirty 位并更新
+current。
+
+### 即时与持续修改
+
+即时操作直接作用于 base：
+
+| `ModifierOperation` | 对 base 的行为 |
+| --- | --- |
+| `Add` | `base += value` |
+| `PercentAdd` | `base *= 1.0 + value` |
+| `Multiply` | `base *= value` |
+| `Override` | `base = value` |
+
+持续修改不改变 base，而是按 `ModifierSourceId` 保存在内部稀疏 Aggregator 中。移除一个不存在
+的来源是安全无操作。`remove_modifiers_for_attributes()` 会先解析全部 ID，再开始修改，避免无效
+ID 造成部分移除。
+
+重新调用 `initialize_attribute()` 会清空该槽位已有的 Aggregator 和持续修饰器，并用新 base
+重新初始化；`executor: None` 恢复默认求值器，`Some(function)` 安装函数指针执行器。
+
+### Hot/Cold 存储
+
+普通 `AttributeId` 按全局注册顺序连续增长；Hot 与 Cold 只影响物理槽位。两个区域分别使用
+连续槽位，因此 `AttributeId::to_index()` 不能替代 `AttributeIdManager::location()` 访问实体
+存储。
+
+### 显式 ECS 组合
+
+`AttributeSet` 不会隐式添加 `ActiveGameplayEffects`，可用于纯属性实体：
+
+```rust
+commands.spawn(AttributeSet::default());
+```
+
+完整 GAS Actor 使用：
 
 ```rust
 commands.spawn(GameplayAbilitySystemBundle::default());
 ```
 
-该 Bundle 同时包含 `AbilitySystemComponent`、`AttributeSet`、
-`GameplayTagContainer` 和 `ActiveGameplayEffects`。
-
-两个数值区域都通过 `AttributeIdManager` O(1) 定位。32 个热点槽位直接内联在组件中，避免高频访问时额外的堆分配和指针间接访问；容量较大的冷区继续使用 `Box`，控制 ECS 表内组件大小。热点修改只设置热点位图，重算时不会扫描或访问冷属性；冷区同理。Aggregator 不做冷热分区，而是使用单个稀疏有序 Vec，因为属性读取频率不等于 Aggregator 访问频率。未初始化槽位仍使用 `None` 表示，避免把默认值 `0.0` 与“不拥有该属性”混淆。
-
-`AttributeSet` 是属性修改的唯一入口。读取指定属性时会检查并清除对应 dirty bit；只有该 bit 原先被设置时才执行内部重算，重复读取干净属性不会再次求值。
-
-读取与写入采用不同语义：读取未初始化的合法属性返回 `Ok(None)`；即时或持续修饰器要求目标属性必须存在，未初始化时返回 `AttributeSetError::UninitializedAttribute`，不会静默跳过。无效 ID 则包装为 `AttributeSetError::AttributeId`。
-
-**主要方法：**
-
-| 方法                                                   | 说明                         |
-| ------------------------------------------------------ | ---------------------------- |
-| `initialize_attribute(manager, id, base, executor) -> Result` | 初始化属性并可配置聚合器 executor |
-| `set_post_execute(callback)`                           | 设置修改后回调               |
-| `recalculate_attribute(manager, id) -> Result`         | 只重算指定属性               |
-| `recalculate_dirty()`                                  | 按冷热位图重算脏属性         |
-| `get_current_value(manager, id) -> Result<Option<f32>, AttributeIdError>` | 获取属性的当前值 |
-| `apply_instant_modifier(manager, spec) -> Result<(), AttributeSetError>` | 应用即时修饰器；属性未初始化时失败 |
-| `apply_duration_modifier(manager, spec, source_id) -> Result<(), AttributeSetError>` | 应用持续修饰器；来源可转换为 `ModifierSourceId` |
-| `remove_modifiers(source_id)`                         | 移除特定运行时来源的所有修饰器 |
-| `remove_modifiers_for_attributes(manager, source_id, ids) -> Result` | 按属性 ID 精确移除该来源的修饰器 |
-| `make_snapshot(source_entity) -> AttributeSetSnapshot` | 创建所有属性的完整快照       |
-
-### `AttributePostExecute`
+## 示例
 
 ```rust
-pub type AttributePostExecute =
-    fn(&mut AttributeSet, &AttributeIdManager, AttributeId, f32, f32);
-//       set,               manager,         id,          old, new
-```
-
-即时修饰器改变属性值后调用的回调。适用于"HP 变化时"等副作用。
-
-### `AttributeSnapshot` / `AttributeSetSnapshot`
-
-捕获某一时刻属性状态的不可变快照。
-
-```rust
-pub struct AttributeSnapshot {
-    base: f32,
-    current: f32,
+fn create_combat_attributes(
+    manager: &AttributeIdManager,
+    health: AttributeId,
+    movement_speed: AttributeId,
+) -> Result<AttributeSet, AttributeIdError> {
+    let mut attributes = AttributeSet::default();
+    attributes.initialize_attribute(manager, health, 100.0, None)?;
+    attributes.initialize_attribute(manager, movement_speed, 6.0, None)?;
+    Ok(attributes)
 }
 
-#[derive(Component, Clone)]
-pub struct AttributeSetSnapshot {
-    hot: [Option<AttributeSnapshot>; 32],
-    cold: Box<[Option<AttributeSnapshot>; 224]>,
-    source_entity: Entity,
+fn read_health(
+    attributes: &mut AttributeSet,
+    manager: &AttributeIdManager,
+    health: AttributeId,
+) -> Result<Option<f32>, AttributeIdError> {
+    attributes.get_current_value(manager, health)
 }
 ```
 
-快照用于 `EffectPayload` 中，在效果应用时捕获来源实体的属性，从而支持基于"快照时刻"值的计算。读取快照时传入统一管理器：`snapshot.get_current_value(manager, id)`，返回 `Result<Option<f32>, AttributeIdError>`。其中 `Err` 表示 ID 与 Manager 不匹配，`Ok(None)` 表示该实体未初始化对应属性。
+## 边界与注意事项
 
-## 重算系统
-
-```rust
-pub fn recalculate_attribute_sets_system(
-    mut query: Query<&mut AttributeSet, Changed<AttributeSet>>,
-) {
-    for mut attr_set in query.iter_mut() {
-        attr_set.recalculate_dirty();
-    }
-}
-```
-
-在 `RecalculateAttributes` 集合中运行。外层使用 Bevy 的 `Changed<AttributeSet>` 过滤实体，组件内部再通过固定大小 dirty 位图只访问实际变化的热点或冷属性。位图按槽位升序处理，不依赖哈希容器遍历顺序。
-
-## 聚合器
-
-修饰器求值管线详见 [05 — 修饰器与聚合器](./05-modifiers-and-aggregator.md)。
+- `AttributeId` 不携带 manager 身份，不要混用不同注册表生命周期产生的 ID。
+- 不要依赖 `AttributeSet` 的数组、boxed 区域、dirty 位图或稀疏集合字段；它们是私有实现。
+- `AttributeAggregatorSet` 不是公共 API；需要自定义求值时使用公开的 `Aggregator` 函数指针
+  接口，详见 [05 — 修饰器与聚合器](./05-modifiers-and-aggregator.md)。
+- `set_post_execute()` 不是普通 change observer，只覆盖即时 modifier 成功执行路径。
+- 直接读取快照不会访问 World；snapshot 使用调用时传入的 manager 解析 ID。

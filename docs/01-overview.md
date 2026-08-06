@@ -1,130 +1,155 @@
-# 01 — 项目概述
+# 01 — 项目与架构总览
 
-## 什么是 `bevy_tools`？
+## 项目定位
 
-`bevy_tools` 是一个为 [Bevy](https://bevyengine.org/) 游戏引擎 (0.19) 打造的
-**Gameplay Ability System (GAS)** 库，设计灵感来源于虚幻引擎的 GAS 框架。
-它提供了模块化、ECS 友好的架构，用于构建复杂的 RPG / MOBA / ARPG 游戏机制。
+`bevy_tools` 是面向 Bevy 0.19 的 ECS-first Gameplay Ability System。它提供构建 RPG、MOBA、
+ARPG 等 Gameplay 规则所需的基础能力，但不替游戏决定输入映射、动画、表现层、网络同步或资源
+序列化格式。
 
-## 核心目标
+设计优先级是：
 
-| 优先级 | 目标         | 说明                                                                                  |
-| ------ | ------------ | ------------------------------------------------------------------------------------- |
-| 1      | **正确性**   | 所有系统在所有合法输入下必须产生正确结果                                              |
-| 2      | **可读性**   | 代码应易于理解和维护                                                                  |
-| 3      | **性能**     | 仅在 Profiling 后进行优化；优先选择缓存友好、栈分配的数据结构                         |
-| 4      | **确定性**   | Gameplay 逻辑应保持确定性 — 避免依赖 HashMap 遍历顺序、平台相关浮点行为、隐藏全局状态 |
-| 5      | **最小依赖** | 仅依赖 `bevy` 0.19 和 `rand` 0.10.2，不引入不必要的第三方 crate                       |
+1. 正确性；
+2. 可读性与长期维护性；
+3. 经 profiling 证明有价值的性能优化；
+4. 可观察且尽量确定的 fixed-tick Gameplay 语义；
+5. 最少的第三方依赖。
 
-## 架构总览
+## 领域边界
 
-```
-┌──────────────────────────────────────────────────────────────────┐
-│                     GameplayAbilitySystemPlugin                  │
-│  (PluginGroup: UniqueName + GameplayTag + Random + Runtime)      │
-├──────────────────────────────────────────────────────────────────┤
-│  FixedUpdate 管线 (有序 SystemSet)                               │
-│                                                                  │
-│  EffectTicks → AbilityTasks → RequestProducers → Targeting       │
-│       → PreGameplayConvergence → GameplayResolve                 │
-│       → UpdateEffectTagRequirements → Cleanup                    │
-│       → RecalculateAttributes                                    │
-├──────────────────────────────────────────────────────────────────┤
-│  核心模块                                                        │
-│                                                                  │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────┐    │
-│  │ GameplayTags │  │  属性系统    │  │      修饰器          │    │
-│  │ (位集)       │  │ (聚合器)     │  │ (加/百分比/乘/覆盖)  │    │
-│  └──────┬───────┘  └──────┬───────┘  └──────────┬───────────┘    │
-│         │                 │                     │                │
-│         ▼                 ▼                     ▼                │
-│  ┌──────────────────────────────────────────────────────────┐    │
-│  │                   GameplayEffects                        │    │
-│  │  即时 / 持续Tick / 无限                                  │    │
-│  │  堆叠 · 周期 · 免疫 · 抑制 · 标签要求                    │    │
-│  └──────────────────────────┬───────────────────────────────┘    │
-│                             │                                    │
-│                             ▼                                    │
-│  ┌──────────────────────────────────────────────────────────┐    │
-│  │                  GameplayTargeting                       │    │
-│  │  选择 · 过滤 · 排序 · 限制 · 确定性目标数据              │    │
-│  └──────────────────────────┬───────────────────────────────┘    │
-│                             ▼                                    │
-│  ┌──────────────────────────────────────────────────────────┐    │
-│  │                  GameplayAbilities                       │    │
-│  │  冷却 · 消耗 · 激活效果 · 技能任务                       │    │
-│  └──────────────────────────┬───────────────────────────────┘    │
-│                             │                                    │
-│                             ▼                                    │
-│  ┌──────────────────────────────────────────────────────────┐    │
-│  │               AbilitySystemComponent (ASC)               │    │
-│  │  每实体技能授予 · 激活 · 活跃计数                        │    │
-│  └──────────────────────────────────────────────────────────┘    │
-│                                                                  │
-│  GameplayExecution：技能 + 效果共享的跨类型 FIFO 与结算器        │
-├──────────────────────────────────────────────────────────────────┤
-│  支撑基础设施                                                    │
-│                                                                  │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────┐    │
-│  │ UniqueNames  │  │   Randoms    │  │     Settings         │    │
-│  │ (字符串驻留) │  │ (种子随机数) │  │ (全局常量)           │    │
-│  └──────────────┘  └──────────────┘  └──────────────────────┘    │
-└──────────────────────────────────────────────────────────────────┘
-```
+| 领域 | 拥有的概念 | 不负责 |
+| --- | --- | --- |
+| Gameplay Tags | 层级 Tag、位集、注册和引用计数容器 | Effect 生命周期和 Ability 激活 |
+| Attributes | Attribute ID、冷热存储、聚合器、快照和重算 | Modifier 何时生效 |
+| Modifiers | 修改操作、幅度求值接口、求值结果和来源 ID | Effect 持续时间与 Attribute 存储 |
+| Gameplay Effects | Effect 定义、应用计划、活跃效果、堆叠、免疫和条件收敛 | 技能实例生命周期 |
+| Gameplay Abilities | Ability 定义、规格、激活上下文、活跃实例和任务定义 | ASC 的授予索引和统一请求调度 |
+| Ability System | ASC、激活校验、cost/cooldown commit、结束和取消 | 通用目标搜索 |
+| Targeting | 可验证的选择/过滤/排序管线和目标结果 | Effect 应用与 Ability 规则判断 |
+| Gameplay Execution | Ability/Effect 共用的跨类型 FIFO 和 batch resolver | 定义具体 Gameplay 规则 |
+| Runtime Plugin | Resource 安装和 `FixedUpdate` 阶段排序 | 游戏侧请求生产策略 |
 
-## 源码树
+实际文件和子模块所有权集中记录在
+[17 — 源码布局与维护边界](./17-source-layout-and-maintenance.md)，本页不重复私有文件细节。
 
-```
-src/
-├── lib.rs                        # crate 文档与公共重导出
-├── gas.rs                        # GAS 门面模块与公共重导出
-├── gas/                          # Gameplay Ability System (核心)
-│   ├── runtime_plugin.rs          # PluginGroup、FixedUpdate 阶段和系统排序
-│   ├── prelude.rs                 # 精简常用 API
-│   ├── gameplay_tags.rs          # 标签领域门面
-│   ├── gameplay_tags/            # tag、bitset、registry、container、requirements
-│   ├── attributes.rs             # 属性领域门面
-│   ├── attributes/               # registry、aggregation、snapshot、attribute_set/*
-│   ├── modifiers.rs              # Modifier 领域门面
-│   ├── modifiers/                # definition、context、spec
-│   ├── gameplay_effects.rs       # Gameplay Effect 领域门面
-│   ├── gameplay_effects/
-│   │   ├── effect_system_params.rs # 独立 Effect ECS 访问边界
-│   │   ├── gameplay_effect.rs    # Effect 定义门面
-│   │   ├── gameplay_effect/      # context、timing、stacking、effect_tags、definition
-│   │   ├── active_gameplay_effect.rs  # Active Effect 运行时门面
-│   │   └── active_gameplay_effect/    # state、planning、application、execution、removal、requirements、ticking
-│   ├── gameplay_abilities.rs     # Ability 领域门面
-│   ├── gameplay_abilities/       # 定义、规格、active_gameplay_ability/* 与 ability_task/*
-│   ├── ability_system.rs         # ASC 领域门面
-│   ├── ability_system/            # component、params、commit、lifecycle、activation/*
-│   ├── gameplay_execution.rs     # Gameplay 执行门面模块
-│   ├── gameplay_execution/       # request、queue、resolver
-│   ├── gameplay_targeting.rs     # Targeting 领域门面
-│   ├── gameplay_targeting/       # target data、definition、acquisition、targeting_queue/*
-│   └── settings.rs               # 全局常量
-├── randoms.rs + randoms/         # 确定性 RNG 封装 (Bevy Resource)
-└── unique_names.rs + unique_names/ # 字符串驻留池 (hash → u32)
+## ECS 数据所有权
 
-examples/
-└── tag_registration.rs           # 可运行的标签注册示例
+完整 Gameplay Actor 使用 `GameplayAbilitySystemBundle` 显式组合四个彼此独立的 Component：
 
-tests/
-├── gas_tests.rs                  # GAS 集成测试门面
-├── gas_tests/                    # 按行为拆分的 Effect/Ability 测试与共享 support
-├── randoms_tests.rs
-└── unique_names_tests.rs
+| Component | 持有的数据 |
+| --- | --- |
+| `AbilitySystemComponent` | 已授予的 `GameplayAbilitySpec`、Handle 索引和 Ability 阻止状态 |
+| `GameplayTagContainer` | 当前拥有 Tag 的层级位集与每个位的引用计数 |
+| `AttributeSet` | 已初始化属性、稀疏 Aggregator 和 hot/cold dirty 位图 |
+| `ActiveGameplayEffects` | 目标当前持有的 Duration/Infinite Effect 稳定槽位 |
+
+`GameplayTagContainer` 和 `AttributeSet` 可以单独挂载；它们不会反向安装
+`ActiveGameplayEffects`。Bundle 也不会注册 Tag/Attribute ID、初始化具体属性值或授予技能，这些
+仍由游戏初始化系统显式完成。
+
+以下运行时状态不放进 Bundle：
+
+- `ActiveGameplayAbility`：一次活跃技能实例，存在于独立运行时实体；
+- `AbilityTask`：需要跨 tick 等待的任务实体；
+- `AttributeSetSnapshot`：按玩法需要显式捕获和挂载的来源属性快照；
+- 全局注册表、队列和内部同步状态：由 Plugin 作为 Resource 安装。
+
+## 定义与运行时数据流
+
+```mermaid
+flowchart LR
+    Game["游戏系统 / AI / 输入适配"] --> TargetQueue["TargetingRequestQueue"]
+    TargetQueue --> TargetData["AbilityTargetData / TargetingResultEvent"]
+    TargetData -- "ActivateAbility continuation" --> ExecQueue["GameplayExecutionQueue"]
+    Game --> ExecQueue
+
+    AbilityDef["Arc<GameplayAbility>"] --> AbilityRuntime["Ability System 激活与 commit"]
+    AbilityDef --> TaskDef["AbilityTaskDef"]
+    AbilityDef --> EffectDef["cost / cooldown / activation GameplayEffect"]
+
+    ExecQueue --> AbilityRuntime
+    ExecQueue --> EffectRuntime["Gameplay Effect prepare / execute"]
+    TaskDef --> TaskRuntime["Instant 完成动作 / WaitTicks 实体"]
+    TaskRuntime --> ExecQueue
+    AbilityRuntime --> TaskRuntime
+    AbilityRuntime --> EffectRuntime
+    EffectDef --> EffectRuntime
+
+    EffectRuntime --> ActiveEffects["ActiveGameplayEffects"]
+    EffectRuntime --> Tags["GameplayTagContainer"]
+    EffectRuntime --> Attributes["AttributeSet + Aggregator"]
+    Modifiers["Modifier / ModifierSpec"] --> EffectRuntime
+    Modifiers --> Attributes
 ```
 
-复杂领域统一采用 `foo.rs + foo/` 的门面布局；具体所有权和可见性约定见
-[17 — 源码布局与维护边界](./17-source-layout-and-maintenance.md)。
+图中的箭头表示主要运行时数据流，不等同于 Rust 模块的每一条编译依赖。同步
+`try_activate_ability_by_handle()` / `apply_gameplay_effect()` API 可以绕过全局 FIFO；常规运行时
+生产者应优先写入 `GameplayExecutionQueue`，以保留跨类型顺序。
 
-## 核心设计原则
+## FixedUpdate 管线
 
-1. **ECS 优先** — 一切皆为 Component、Resource、System 或 Event。不使用 OOP 风格的继承。
-2. **Tick 计时** — 所有持续时间、周期、任务等待均以 `FixedUpdate` tick 为单位，而非挂钟秒数。
-3. **统一执行 FIFO** — 技能激活和效果应用按跨类型 FIFO 在 `GameplayResolve` 完整消费；
-   请求量不会把 Gameplay mutation 隐式推迟到后续 tick。
-4. **脏标记模式** — `AttributeSet` 的冷热位图是唯一脏状态；`Changed<AttributeSet>` 驱动按位重算。
-5. **引用计数标签** — `GameplayTagContainer` 追踪每个位被设置的次数，防止重叠的效果授予/移除互相干扰。
-6. **Arc 共享定义** — `GameplayEffect` 和 `GameplayAbility` 定义通过 `Arc` 共享；规格通过 `Arc::ptr_eq` 比较。
+`GameplayAbilitySystemRuntimePlugin` 配置以下稳定阶段：
+
+```text
+EffectTicks
+  → AbilityTasks
+  → RequestProducers
+  → Targeting
+  → PreGameplayConvergence
+  → GameplayResolve
+  → UpdateEffectTagRequirements
+  → Cleanup
+  → RecalculateAttributes
+```
+
+关键边界：
+
+- `EffectTicks` 内部按 Duration → Requirement → Period → Requirement 串行执行；
+- `AbilityTasks`、`RequestProducers`、`Targeting` 在 resolver 前产生的 Gameplay 请求可以在当前
+  fixed tick 消费；
+- `GameplayResolve` 完整 drain Ability/Effect 共用 FIFO，包括 drain 期间直接追加的有限请求；
+- resolver 之后才入队的请求属于下一 fixed tick；
+- Effect Requirement 在 tick、执行前后设置收敛点；
+- Cleanup 先结束 Ability，最后才统一重算仍为 dirty 的 Attribute。
+
+精确时序和 Observer/deferred command 边界分别见
+[02 — 插件系统与生命周期](./02-plugins-and-lifecycle.md) 与
+[16 — Gameplay 执行模块](./16-gameplay-execution.md)。
+
+## 公共 API 层次
+
+```rust
+// Common integration surface.
+use bevy_tools::prelude::*;
+
+// Complete domain surface.
+use bevy_tools::gas::gameplay_effects::{
+    GameplayEffectApplicationError,
+    prepare_gameplay_effect,
+};
+```
+
+- `bevy_tools::prelude` 有意保持精简；
+- `bevy_tools::gas::<domain>` 是按领域查找完整 API 的规范位置；
+- crate root 继续显式重导出现有 API，以降低迁移成本；
+- 私有实现文件不是稳定导入路径，公开项由同名领域门面显式控制。
+
+## 核心不变量
+
+1. **Tick 计时**：Effect duration、period 和 task wait 都以 `FixedUpdate` tick 表示；
+2. **显式组合**：完整 GAS Actor 使用 Bundle，低层 Component 保持可独立使用；
+3. **跨类型顺序**：Ability activation 与 Effect application 共享一个 FIFO；
+4. **请求间可见性**：同 batch 较早请求产生的 Active Effect、Tag 和 Attribute 变化对后续请求可见；
+5. **引用计数 Tag**：重叠授予和移除不会互相误清理；
+6. **带世代句柄**：Active Effect slot 复用不会让旧 Handle 命中新 Effect；
+7. **脏位图重算**：Attribute 只重算被标记的 hot/cold slot；
+8. **确定性顺序**：需要顺序时显式排序，不依赖 HashMap 或 Bevy 并行调度的偶然顺序；
+9. **共享不可变定义**：Effect/Ability 定义使用 `Arc`，运行时规格与状态独立保存；
+10. **具体错误**：外部输入、容量、配置和 ECS 状态失败返回 `Result`，不依赖 panic。
+
+## 下一步阅读
+
+- 接入 Plugin 与阶段：[02 — 插件系统与生命周期](./02-plugins-and-lifecycle.md)
+- 创建完整 Gameplay Actor：[09 — 技能系统组件](./09-ability-system-component.md)
+- 理解 Effect 结算：[06 — Gameplay 效果](./06-gameplay-effects.md)
+- 理解统一 FIFO：[16 — Gameplay 执行模块](./16-gameplay-execution.md)
+- 查找实际目录和修改位置：[17 — 源码布局与维护边界](./17-source-layout-and-maintenance.md)
