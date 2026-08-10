@@ -8,10 +8,11 @@ use bevy::prelude::*;
 use bevy_tools::{
     AbilityActivationContext, AbilityActivationReason, AbilityActivationRequest,
     AbilityActivationStatus, AbilityChainContext, AbilitySpecHandle, AbilitySystemComponent,
-    AbilityTask, AbilityTaskDef, AbilityTaskEvent, AbilityTaskOnFinished, AbilityTaskOnFinishedDef,
-    ActiveGameplayAbility, AttributeId, EffectDurationTicks, EffectPayload, GameplayAbility,
-    GameplayEffect, GameplayExecutionQueue, Modifier, ModifierEvaluationContext, ModifierMagnitude,
-    ModifierMagnitudeCalculation, ModifierOperation, StackingPolicy, UniqueName,
+    AbilityTask, AbilityTaskDef, AbilityTaskEvent, AbilityTaskExecutionContext,
+    AbilityTaskOnFinished, AbilityTaskOnFinishedDef, ActiveGameplayAbility, AttributeId,
+    EffectDurationTicks, EffectPayload, GameplayAbility, GameplayEffect, GameplayExecutionQueue,
+    Modifier, ModifierEvaluationContext, ModifierMagnitude, ModifierMagnitudeCalculation,
+    ModifierOperation, StackingPolicy, UniqueName,
 };
 use std::sync::Arc;
 
@@ -170,6 +171,55 @@ fn ability_activation_request_is_preserved_through_startup() {
 }
 
 #[test]
+fn startup_task_context_preserves_ability_handle_and_level() {
+    let mut app = test_app();
+    app.init_resource::<CapturedAbilityTaskEvent>();
+    app.world_mut().add_observer(capture_ability_task_event);
+
+    let source = app
+        .world_mut()
+        .spawn(AbilitySystemComponent::default())
+        .id();
+    let target = app.world_mut().spawn_empty().id();
+    let event_id = app
+        .world_mut()
+        .resource_mut::<bevy_tools::UniqueNamePool>()
+        .new_name("Ability.Event.StartupContext")
+        .unwrap();
+    let ability = Arc::new(GameplayAbility::new(
+        bevy_tools::AbilityTags::default(),
+        vec![AbilityTaskDef::instant(
+            AbilityTaskOnFinishedDef::EmitEvent { event_id },
+        )],
+        None,
+        None,
+        Vec::new(),
+        false,
+        false,
+    ));
+    let handle = app
+        .world_mut()
+        .entity_mut(source)
+        .get_mut::<AbilitySystemComponent>()
+        .unwrap()
+        .give_ability(ability, 9, None);
+
+    {
+        let mut queue = app.world_mut().resource_mut::<GameplayExecutionQueue>();
+        let context = AbilityActivationContext::direct(source, queue.new_root_chain(handle));
+        queue.push_activation(source, target, handle, context);
+    }
+    run_gameplay_execution_queue(&mut app);
+
+    let captured = app.world().resource::<CapturedAbilityTaskEvent>();
+    assert_eq!(captured.source, Some(source));
+    assert_eq!(captured.target, Some(target));
+    assert_eq!(captured.spec_handle, Some(handle));
+    assert_eq!(captured.event_id, Some(event_id));
+    assert_eq!(captured.level, Some(9));
+}
+
+#[test]
 fn gameplay_queue_processes_effect_requests_fifo() {
     let mut app = test_app();
     let health = register_attribute(&mut app, "Health");
@@ -313,9 +363,15 @@ fn task_without_active_ability_is_removed() {
     let mut app = test_app();
     let missing_active = app.world_mut().spawn_empty().id();
     app.world_mut().entity_mut(missing_active).despawn();
+    let context = AbilityTaskExecutionContext::new(
+        missing_active,
+        missing_active,
+        AbilitySpecHandle::new(0),
+        1,
+    );
     spawn_ability_task(
         &mut app,
-        AbilityTask::instant(missing_active, AbilityTaskOnFinished::None),
+        AbilityTask::instant(missing_active, context, AbilityTaskOnFinished::None),
     );
 
     assert_eq!(ability_task_count(&mut app), 1);
@@ -330,17 +386,14 @@ fn task_can_enqueue_gameplay_effect_application() {
     let source = app.world_mut().spawn_empty().id();
     let target = spawn_attribute_set(&mut app, health, 10.0);
     let active = spawn_active_ability(&mut app, source, target, AbilitySpecHandle::new(123));
+    let context = AbilityTaskExecutionContext::new(source, target, AbilitySpecHandle::new(123), 1);
     let effect = instant_add_effect(health, 5.0);
     spawn_ability_task(
         &mut app,
         AbilityTask::instant(
             active,
-            AbilityTaskOnFinished::ApplyGameplayEffect {
-                source,
-                target,
-                effect,
-                level: 1,
-            },
+            context,
+            AbilityTaskOnFinished::ApplyGameplayEffect { effect },
         ),
     );
 
@@ -380,6 +433,7 @@ fn task_effect_application_inherits_activation_context_payload() {
             context,
         ))
         .id();
+    let task_context = AbilityTaskExecutionContext::new(source, target, handle, 1);
     let effect = Arc::new(GameplayEffect::new(
         vec![Modifier::new(
             damage,
@@ -400,12 +454,8 @@ fn task_effect_application_inherits_activation_context_payload() {
         &mut app,
         AbilityTask::instant(
             active,
-            AbilityTaskOnFinished::ApplyGameplayEffect {
-                source,
-                target,
-                effect,
-                level: 1,
-            },
+            task_context,
+            AbilityTaskOnFinished::ApplyGameplayEffect { effect },
         ),
     );
 
@@ -434,15 +484,13 @@ fn task_can_enqueue_ability_activation() {
     ));
     let handle = give_ability(&mut app, source, ability);
     let active = spawn_active_ability(&mut app, source, target, AbilitySpecHandle::new(321));
+    let context = AbilityTaskExecutionContext::new(source, target, AbilitySpecHandle::new(321), 1);
     spawn_ability_task(
         &mut app,
         AbilityTask::instant(
             active,
-            AbilityTaskOnFinished::ActivateAbility {
-                source,
-                target,
-                handle,
-            },
+            context,
+            AbilityTaskOnFinished::ActivateAbility { handle },
         ),
     );
 
@@ -468,8 +516,9 @@ fn task_emit_event_triggers_observer_with_full_payload() {
         .new_name("Ability.Event.ComboWindow")
         .unwrap();
     let active = spawn_active_ability(&mut app, source, target, handle);
+    let context = AbilityTaskExecutionContext::new(source, target, handle, 9);
     let task = AbilityTaskDef::instant(AbilityTaskOnFinishedDef::EmitEvent { event_id })
-        .instantiate(active, source, target, handle, 9);
+        .instantiate(active, context);
     spawn_ability_task(&mut app, task);
 
     run_ability_tasks(&mut app);

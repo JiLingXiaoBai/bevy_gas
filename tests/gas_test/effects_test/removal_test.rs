@@ -14,18 +14,8 @@ fn remove_effects_with_tags_cleans_existing_effect_before_new_application() {
         StackingPolicy::non_stacking(),
         effect_tags(vec![buff_tag], Vec::new()),
     ));
-    let replacing_effect_tags = EffectTags::new(
-        Vec::new(),
-        Vec::new(),
-        TagRequirements::default(),
-        TagRequirements::default(),
-        TagRequirements::default(),
-        TagRequirements::default(),
-        TagRequirements::default(),
-        TagRequirements::default(),
-        Vec::new(),
-        vec![buff_tag],
-    );
+    let replacing_effect_tags =
+        EffectTags::new(Vec::new(), Vec::new()).with_remove_effects_with_tags(vec![buff_tag]);
     let replacing_effect = Arc::new(GameplayEffect::new(
         vec![add_modifier(damage, 1.0)],
         EffectDurationTicks::Instant,
@@ -69,18 +59,7 @@ fn tag_only_instant_cleanse_does_not_require_attribute_set() {
         None,
         1.0,
         StackingPolicy::non_stacking(),
-        EffectTags::new(
-            Vec::new(),
-            Vec::new(),
-            TagRequirements::default(),
-            TagRequirements::default(),
-            TagRequirements::default(),
-            TagRequirements::default(),
-            TagRequirements::default(),
-            TagRequirements::default(),
-            Vec::new(),
-            vec![effect_tag],
-        ),
+        EffectTags::new(Vec::new(), Vec::new()).with_remove_effects_with_tags(vec![effect_tag]),
     ));
 
     assert!(apply_effect(&mut app, target, target, active_effect));
@@ -125,18 +104,7 @@ fn queued_effect_can_remove_effect_created_earlier_in_same_batch() {
         None,
         1.0,
         StackingPolicy::non_stacking(),
-        EffectTags::new(
-            Vec::new(),
-            Vec::new(),
-            TagRequirements::default(),
-            TagRequirements::default(),
-            TagRequirements::default(),
-            TagRequirements::default(),
-            TagRequirements::default(),
-            TagRequirements::default(),
-            Vec::new(),
-            vec![buff_tag],
-        ),
+        EffectTags::new(Vec::new(), Vec::new()).with_remove_effects_with_tags(vec![buff_tag]),
     ));
     {
         let mut queue = app.world_mut().resource_mut::<GameplayExecutionQueue>();

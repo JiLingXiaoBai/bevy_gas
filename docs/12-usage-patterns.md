@@ -56,18 +56,7 @@ let actor = commands
 
 ```rust
 fn empty_effect_tags() -> EffectTags {
-    EffectTags::new(
-        vec![],
-        vec![],
-        TagRequirements::default(),
-        TagRequirements::default(),
-        TagRequirements::default(),
-        TagRequirements::default(),
-        TagRequirements::default(),
-        TagRequirements::default(),
-        vec![],
-        vec![],
-    )
+    EffectTags::new(vec![], vec![])
 }
 ```
 
@@ -138,18 +127,7 @@ fn make_fireball_damage(
         None,
         1.0,
         StackingPolicy::non_stacking(),
-        EffectTags::new(
-            vec![damage_tag],
-            vec![],
-            TagRequirements::default(),
-            TagRequirements::default(),
-            TagRequirements::default(),
-            TagRequirements::default(),
-            TagRequirements::default(),
-            TagRequirements::default(),
-            vec![],
-            vec![],
-        ),
+        EffectTags::new(vec![damage_tag], vec![]),
     ))
 }
 ```
@@ -244,17 +222,9 @@ fn make_speed_buff(
     stun_tag: GameplayTag,
 ) -> Result<Arc<GameplayEffect>, GameplayTagError> {
     let source_ongoing = TagRequirements::new(vec![alive_tag], vec![stun_tag])?;
-    let tags = EffectTags::new(
-        vec![buff_tag],
-        vec![granted_tag],
-        TagRequirements::default(),
-        TagRequirements::default(),
+    let tags = EffectTags::new(vec![buff_tag], vec![granted_tag]).with_ongoing_requirements(
         source_ongoing,
         TagRequirements::default(),
-        TagRequirements::default(),
-        TagRequirements::default(),
-        vec![],
-        vec![],
     );
 
     Ok(Arc::new(GameplayEffect::new(
@@ -368,18 +338,8 @@ fn make_stun_immunity(
         TagRequirements::default(),
         stun_effects,
     );
-    let tags = EffectTags::new(
-        vec![immunity_tag],
-        vec![],
-        TagRequirements::default(),
-        TagRequirements::default(),
-        TagRequirements::default(),
-        TagRequirements::default(),
-        TagRequirements::default(),
-        TagRequirements::default(),
-        vec![query],
-        vec![],
-    );
+    let tags = EffectTags::new(vec![immunity_tag], vec![])
+        .with_granted_application_immunity(vec![query]);
 
     Ok(Arc::new(GameplayEffect::new(
         vec![],
@@ -408,18 +368,9 @@ fn removal_effect_tags(
 ) -> Result<EffectTags, GameplayTagError> {
     let remove_when_dead = TagRequirements::new(vec![dead_tag], vec![])?;
 
-    Ok(EffectTags::new(
-        vec![effect_tag],
-        vec![],
-        TagRequirements::default(),
-        TagRequirements::default(),
-        TagRequirements::default(),
-        TagRequirements::default(),
-        TagRequirements::default(),
-        remove_when_dead,
-        vec![],
-        vec![dispellable_tag],
-    ))
+    Ok(EffectTags::new(vec![effect_tag], vec![])
+        .with_removal_requirements(TagRequirements::default(), remove_when_dead)
+        .with_remove_effects_with_tags(vec![dispellable_tag]))
 }
 ```
 

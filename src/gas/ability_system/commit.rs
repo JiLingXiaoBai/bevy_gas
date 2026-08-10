@@ -1,7 +1,9 @@
 use super::params::AbilitySystemParams;
-use crate::gameplay_abilities::{AbilityActivationContext, GameplayAbility};
+use crate::gameplay_abilities::{
+    AbilityActivationContext, GameplayAbility, effect_payload_from_ability_context,
+};
 use crate::gameplay_effects::{
-    EffectContext, EffectPayload, GameplayEffectApplicationError, GameplayEffectApplicationPlan,
+    EffectContext, GameplayEffectApplicationError, GameplayEffectApplicationPlan,
     execute_gameplay_effect_plan_in_batch, prepare_gameplay_effect, validate_gameplay_effect_plan,
 };
 use bevy::prelude::*;
@@ -96,8 +98,7 @@ pub(super) fn prepare_ability_commit_plans(
         if !cost_def.has_only_add_modifiers() {
             return Err(AbilityCommitError::CostModifiersMustBeAdditive);
         }
-        let payload =
-            effect_payload_from_optional_activation_context(source, level, activation_context);
+        let payload = effect_payload_from_ability_context(source, level, activation_context);
         let plan = prepare_gameplay_effect(source, cost_def, &mut params.effects, &payload)
             .map_err(AbilityCommitError::CostPreparation)?;
         if !plan.is_instant() {
@@ -112,8 +113,7 @@ pub(super) fn prepare_ability_commit_plans(
     };
 
     let cooldown_plan = if let Some(cooldown_def) = ability.get_cooldown() {
-        let payload =
-            effect_payload_from_optional_activation_context(source, level, activation_context);
+        let payload = effect_payload_from_ability_context(source, level, activation_context);
         let plan = prepare_gameplay_effect(source, cooldown_def, &mut params.effects, &payload)
             .map_err(AbilityCommitError::CooldownPreparation)?;
         Some(plan)
@@ -125,33 +125,6 @@ pub(super) fn prepare_ability_commit_plans(
         cost_plan,
         cooldown_plan,
     })
-}
-
-fn effect_payload_from_optional_activation_context(
-    source: Entity,
-    level: u32,
-    activation_context: Option<&AbilityActivationContext>,
-) -> EffectPayload {
-    activation_context.map_or_else(
-        || EffectPayload::new(source, None, level),
-        |activation_context| {
-            effect_payload_from_activation_context(source, level, activation_context)
-        },
-    )
-}
-
-pub(super) fn effect_payload_from_activation_context(
-    source: Entity,
-    level: u32,
-    activation_context: &AbilityActivationContext,
-) -> EffectPayload {
-    let payload = EffectPayload::new(source, activation_context.get_causer(), level)
-        .with_instigator(activation_context.get_instigator());
-    if let Some(source_snapshot) = activation_context.get_source_snapshot() {
-        payload.with_source_snapshot(source_snapshot.clone())
-    } else {
-        payload
-    }
 }
 
 pub(super) fn execute_ability_commit_plans(
@@ -217,7 +190,7 @@ pub(super) fn can_pay_ability_cost(
         return false;
     }
 
-    let payload = EffectPayload::new(source, None, level);
+    let payload = effect_payload_from_ability_context(source, level, None);
     let cost_spec = {
         let context = EffectContext {
             target: Some(target),

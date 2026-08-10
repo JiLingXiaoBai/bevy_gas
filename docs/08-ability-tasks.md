@@ -12,6 +12,7 @@ Ability Task 编排活跃技能中的定时行为。startup `Instant` 在技能�
 src/gas/gameplay_abilities/
 ├── ability_task.rs
 └── ability_task/
+    ├── context.rs
     ├── definition.rs
     ├── state.rs
     ├── completion.rs
@@ -21,8 +22,9 @@ src/gas/gameplay_abilities/
 | 文件 | 职责 |
 | ---- | ---- |
 | `ability_task.rs` | 门面与显式重导出 |
+| `context.rs` | 公开的任务共享执行上下文 |
 | `definition.rs` | 资产定义 `AbilityTaskDef`、`AbilityTaskOnFinishedDef` 及实例化 |
-| `state.rs` | 跨 tick 的 Component、任务种类和已捕获完成动作 |
+| `state.rs` | 跨 tick 的 Component、任务种类和仅保存动作数据的完成枚举 |
 | `completion.rs` | 完成分派、`AbilityTaskEvent` 和 Gameplay 请求生产 |
 | `ticking.rs` | 按稳定实体顺序推进运行时任务 |
 
@@ -65,15 +67,26 @@ pub enum AbilityTaskOnFinishedDef {
 | `ApplyGameplayEffectToTargets` | 有 Target Data 时按其顺序追加多个请求，否则回退到旧单目标 |
 | `ActivateAbility` | 从父上下文派生技能链并向统一 FIFO 追加激活请求 |
 
-任务定义实例化时会捕获 source、target、spec handle、level 和效果 `Arc`。效果请求还会从父技能
-激活上下文继承 Instigator、Causer 与来源属性快照。
+任务定义实例化时，source、target、spec handle 和 level 只存入一个
+`AbilityTaskExecutionContext`。`AbilityTaskOnFinished` 仅保存动作专属数据，例如 event ID、
+Ability handle 或 Effect `Arc`。效果请求还会从父技能激活上下文继承 Instigator、
+Causer 与来源属性快照。
 
 ## 运行时状态
 
 ```rust
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AbilityTaskExecutionContext {
+    source: Entity,
+    target: Entity,
+    spec_handle: AbilitySpecHandle,
+    level: u32,
+}
+
 #[derive(Component, Clone)]
 pub struct AbilityTask {
     active_ability: ActiveAbilityHandle,
+    context: AbilityTaskExecutionContext,
     kind: AbilityTaskKind,
     on_finished: AbilityTaskOnFinished,
 }
@@ -84,18 +97,35 @@ pub enum AbilityTaskKind {
 }
 ```
 
+`AbilityTaskExecutionContext::new(source, target, spec_handle, level)` 建立一份可复用的执行值；
+`get_source()`、`get_target()`、`get_spec_handle()` 和 `get_level()` 提供只读访问。
+
+```rust
+pub enum AbilityTaskOnFinished {
+    None,
+    EndAbility,
+    EmitEvent { event_id: UniqueName },
+    ActivateAbility { handle: AbilitySpecHandle },
+    ApplyGameplayEffect { effect: Arc<GameplayEffect> },
+    ApplyGameplayEffectToTargets { effect: Arc<GameplayEffect> },
+}
+```
+
+运行时枚举是 action-only；不得重复携带 source、target、spec handle 或 level。
+
 公共构造与查询 API：
 
 | API | 作用 |
 | --- | ---- |
-| `AbilityTask::instant(active, action)` | 创建下次可见的 `AbilityTasks` 阶段即完成的运行时任务 |
-| `AbilityTask::wait_ticks(active, ticks, action)` | 创建按 tick 递减的运行时任务 |
+| `AbilityTask::instant(active, context, action)` | 创建下次可见的 `AbilityTasks` 阶段即完成的运行时任务 |
+| `AbilityTask::wait_ticks(active, context, ticks, action)` | 创建按 tick 递减的运行时任务 |
 | `get_active_ability()` | 返回父活跃实例 Entity |
+| `get_context()` | 返回共享执行上下文 |
 | `get_kind()` | 返回当前任务种类和剩余 tick |
-| `get_on_finished()` | 返回捕获好的完成动作 |
+| `get_on_finished()` | 返回动作专属的完成数据 |
 
-`AbilityTaskOnFinished` 是实例化后的运行时动作。它与定义枚举分离，因为其中已经捕获具体实体、
-等级、技能 Handle 和 Effect `Arc`。
+`AbilityTaskOnFinished` 与定义枚举分离，因为它保存已实例化的 Effect `Arc` 或其他动作
+参数；与所有动作共享的执行数据由 `AbilityTask` 统一持有。
 
 ## startup 与运行时任务的差异
 
@@ -133,14 +163,14 @@ startup definitions 按定义顺序处理。遇到 `Instant EndAbility` 后停�
 ```rust
 #[derive(Event, Clone)]
 pub struct AbilityTaskEvent {
-    source: Entity,
-    target: Entity,
+    context: AbilityTaskExecutionContext,
     active_ability: ActiveAbilityHandle,
-    spec_handle: AbilitySpecHandle,
     event_id: UniqueName,
-    level: u32,
 }
 ```
+
+`get_context()` 返回共享执行上下文；兼容的 source、target、spec handle 和 level getter 仍保留，
+但都委托给 context，不再复制数据。
 
 `EmitEvent` 使用 `Commands::trigger()`，应通过 `On<AbilityTaskEvent>` Observer 消费，而不是
 `EventReader`。Observer 的回写时机取决于事件产生阶段：
@@ -180,6 +210,22 @@ let ability = Arc::new(GameplayAbility::new(
 ```
 
 两个 `WaitTicks` 同时开始；第 5 次任务处理应用效果，第 10 次任务处理结束技能。
+
+游戏层手动创建运行时任务时，应先组合共享上下文：
+
+```rust
+let context = AbilityTaskExecutionContext::new(source, target, spec_handle, level);
+
+let mut task_commands = commands.spawn(AbilityTask::wait_ticks(
+    active_ability,
+    context,
+    5,
+    AbilityTaskOnFinished::ApplyGameplayEffect {
+        effect: damage_effect,
+    },
+));
+task_commands.set_parent_in_place(active_ability);
+```
 
 ## 测试导航
 

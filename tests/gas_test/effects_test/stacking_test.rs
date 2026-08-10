@@ -13,6 +13,12 @@ fn linear_stacking_respects_stack_limit() {
         StackingPolicy::linear_refreshing(StackingType::AggregateByTarget, 2),
         empty_effect_tags(),
     ));
+    let stacking_policy = effect.get_stacking_policy();
+    assert!(matches!(
+        stacking_policy.get_stacking_type(),
+        StackingType::AggregateByTarget
+    ));
+    assert_eq!(stacking_policy.get_stack_limit(), 2);
 
     assert!(apply_effect(&mut app, target, target, effect.clone()));
     assert_eq!(current_value(&mut app, target, power), 15.0);

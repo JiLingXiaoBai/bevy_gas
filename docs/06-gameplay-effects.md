@@ -22,7 +22,7 @@ src/gas/
     │   ├── timing.rs           # Duration and period definitions
     │   ├── effect_tags.rs      # Tags, requirements, and immunity
     │   └── stacking.rs         # Stacking policies
-    ├── gameplay_effect_spec.rs # Evaluated definition snapshot
+    ├── gameplay_effect_spec.rs # Evaluated modifiers/timing with definition reference
     ├── effect_system_params.rs # Effect-only ECS access
     ├── active_gameplay_effect.rs
     └── active_gameplay_effect/
@@ -53,6 +53,7 @@ impl GameplayEffect {
     ) -> Self;
     pub fn make_spec(self: &Arc<Self>, context: &EffectContext) -> GameplayEffectSpec;
     pub fn get_tags(&self) -> &EffectTags;
+    pub fn get_stacking_policy(&self) -> StackingPolicy;
     pub fn has_only_add_modifiers(&self) -> bool;
     pub fn get_probability_to_apply(&self) -> f32;
 }
@@ -68,25 +69,50 @@ impl EffectPeriodTicks {
 }
 ```
 
-`EffectTags::new()` 是位置参数构造器，顺序必须与下列签名一致：
+`EffectTags::new()` 只接收效果资产标签与授予标签；应用、持续、移除条件以及免疫和清理
+规则都通过链式 builder 显式配置：
 
 ```rust
-pub fn new(
-    asset_tags: Vec<GameplayTag>,
-    granted_tags: Vec<GameplayTag>,
-    source_application_tags: TagRequirements,
-    target_application_tags: TagRequirements,
-    source_ongoing_tags: TagRequirements,
-    target_ongoing_tags: TagRequirements,
-    source_removal_tags: TagRequirements,
-    target_removal_tags: TagRequirements,
-    granted_application_immunity: Vec<GameplayEffectImmunityQuery>,
-    remove_effects_with_tags: Vec<GameplayTag>,
-) -> EffectTags;
+impl EffectTags {
+    pub fn new(
+        asset_tags: Vec<GameplayTag>,
+        granted_tags: Vec<GameplayTag>,
+    ) -> Self;
+
+    pub fn with_application_requirements(
+        self,
+        source: TagRequirements,
+        target: TagRequirements,
+    ) -> Self;
+
+    pub fn with_ongoing_requirements(
+        self,
+        source: TagRequirements,
+        target: TagRequirements,
+    ) -> Self;
+
+    pub fn with_removal_requirements(
+        self,
+        source: TagRequirements,
+        target: TagRequirements,
+    ) -> Self;
+
+    pub fn with_granted_application_immunity(
+        self,
+        immunity_queries: Vec<GameplayEffectImmunityQuery>,
+    ) -> Self;
+
+    pub fn with_remove_effects_with_tags(
+        self,
+        effect_tags: Vec<GameplayTag>,
+    ) -> Self;
+}
 ```
 
-所有字段都通过 `get_*` 方法读取。`get_required_tags()` 与 `get_blocked_tags()` 是目标应用条件
-的兼容快捷 getter。
+`new()` 会把所有可选规则初始化为空。三组 source/target requirement 在内部通过私有
+`SourceTargetTagRequirements` 成对保存，避免定义继续扩展成大量并行字段。所有配置都通过
+`get_*` 方法读取；`get_required_tags()` 与 `get_blocked_tags()` 是目标应用条件的兼容快捷
+getter。
 
 ```rust
 impl GameplayEffectImmunityQuery {
@@ -130,6 +156,10 @@ let stacking_policy = StackingPolicy::new(
 
 `non_stacking()` 使用全部“保持/不缩放”策略；`linear_refreshing(type, limit)` 使用线性幅度、
 成功堆叠时刷新 duration、重置 period、溢出拒绝、到期移除全部层数。
+
+`StackingPolicy` 只由不可变的 `GameplayEffect` 定义持有。`GameplayEffectSpec` 保留定义
+`Arc` 并捕获 modifier、duration 与 period 的求值结果，不再复制堆叠策略；Spec 的
+`get_stacking_policy()` 直接委托定义。
 
 ### Payload 与计算上下文
 

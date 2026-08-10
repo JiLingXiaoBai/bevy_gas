@@ -20,18 +20,9 @@ fn tags_with_requirements(
     target_ongoing_tags: TagRequirements,
     target_removal_tags: TagRequirements,
 ) -> EffectTags {
-    EffectTags::new(
-        Vec::new(),
-        granted_tags,
-        TagRequirements::default(),
-        TagRequirements::default(),
-        TagRequirements::default(),
-        target_ongoing_tags,
-        TagRequirements::default(),
-        target_removal_tags,
-        Vec::new(),
-        Vec::new(),
-    )
+    EffectTags::new(Vec::new(), granted_tags)
+        .with_ongoing_requirements(TagRequirements::default(), target_ongoing_tags)
+        .with_removal_requirements(TagRequirements::default(), target_removal_tags)
 }
 
 #[path = "effects_test/application_test.rs"]

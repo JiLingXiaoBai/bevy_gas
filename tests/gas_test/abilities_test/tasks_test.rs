@@ -7,9 +7,15 @@ fn wait_ticks_task_marks_active_ability_ending_after_delay() {
     let target = app.world_mut().spawn_empty().id();
     let handle = AbilitySpecHandle::new(7);
     let active_ability = spawn_active_ability(&mut app, source, target, handle);
+    let context = AbilityTaskExecutionContext::new(source, target, handle, 1);
     spawn_ability_task(
         &mut app,
-        AbilityTask::wait_ticks(active_ability, 2, AbilityTaskOnFinished::EndAbility),
+        AbilityTask::wait_ticks(
+            active_ability,
+            context,
+            2,
+            AbilityTaskOnFinished::EndAbility,
+        ),
     );
 
     run_ability_tasks(&mut app);

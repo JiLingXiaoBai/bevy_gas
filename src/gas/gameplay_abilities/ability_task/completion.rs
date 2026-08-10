@@ -1,62 +1,66 @@
 use super::{
-    AbilityActivationContext, AbilitySpecHandle, AbilityTaskOnFinished, ActiveAbilityHandle,
+    AbilityActivationContext, AbilitySpecHandle, AbilityTaskExecutionContext,
+    AbilityTaskOnFinished, ActiveAbilityHandle, effect_payload_from_ability_context,
 };
-use crate::gameplay_effects::EffectPayload;
 use crate::gameplay_execution::GameplayExecutionQueue;
 use crate::unique_names::UniqueName;
 use bevy::prelude::*;
 
+/// Event emitted by an ability task completion action.
 #[derive(Event, Clone)]
 pub struct AbilityTaskEvent {
-    source: Entity,
-    target: Entity,
+    context: AbilityTaskExecutionContext,
     active_ability: ActiveAbilityHandle,
-    spec_handle: AbilitySpecHandle,
     event_id: UniqueName,
-    level: u32,
 }
 
 impl AbilityTaskEvent {
+    /// Creates an ability task event from the task's shared execution context.
     pub fn new(
-        source: Entity,
-        target: Entity,
+        context: AbilityTaskExecutionContext,
         active_ability: ActiveAbilityHandle,
-        spec_handle: AbilitySpecHandle,
         event_id: UniqueName,
-        level: u32,
     ) -> Self {
         Self {
-            source,
-            target,
+            context,
             active_ability,
-            spec_handle,
             event_id,
-            level,
         }
     }
 
+    /// Returns the task's shared execution context.
+    pub fn get_context(&self) -> &AbilityTaskExecutionContext {
+        &self.context
+    }
+
+    /// Returns the ability owner that started the task.
     pub fn get_source(&self) -> Entity {
-        self.source
+        self.context.get_source()
     }
 
+    /// Returns the task's captured fallback target.
     pub fn get_target(&self) -> Entity {
-        self.target
+        self.context.get_target()
     }
 
+    /// Returns the active ability instance that owned the task.
     pub fn get_active_ability(&self) -> ActiveAbilityHandle {
         self.active_ability
     }
 
+    /// Returns the granted ability handle that owns the task.
     pub fn get_spec_handle(&self) -> AbilitySpecHandle {
-        self.spec_handle
+        self.context.get_spec_handle()
     }
 
+    /// Returns the event identifier supplied by the completion action.
     pub fn get_event_id(&self) -> UniqueName {
         self.event_id
     }
 
+    /// Returns the captured ability level.
     pub fn get_level(&self) -> u32 {
-        self.level
+        self.context.get_level()
     }
 }
 
@@ -67,6 +71,7 @@ pub(crate) enum AbilityTaskCompletion {
 
 pub(crate) fn dispatch_ability_task_completion(
     active_ability: ActiveAbilityHandle,
+    context: AbilityTaskExecutionContext,
     on_finished: AbilityTaskOnFinished,
     active_context: &AbilityActivationContext,
     commands: &mut Commands,
@@ -75,30 +80,13 @@ pub(crate) fn dispatch_ability_task_completion(
     match on_finished {
         AbilityTaskOnFinished::None => {}
         AbilityTaskOnFinished::EndAbility => return AbilityTaskCompletion::EndAbility,
-        AbilityTaskOnFinished::EmitEvent {
-            source,
-            target,
-            spec_handle,
-            event_id,
-            level,
-        } => {
-            commands.trigger(AbilityTaskEvent::new(
-                source,
-                target,
-                active_ability,
-                spec_handle,
-                event_id,
-                level,
-            ));
+        AbilityTaskOnFinished::EmitEvent { event_id } => {
+            commands.trigger(AbilityTaskEvent::new(context, active_ability, event_id));
         }
-        AbilityTaskOnFinished::ActivateAbility {
-            source,
-            target,
-            handle,
-        } => {
+        AbilityTaskOnFinished::ActivateAbility { handle } => {
             if let Err(error) = execution_queue.push_chained_activation(
-                source,
-                target,
+                context.get_source(),
+                context.get_target(),
                 handle,
                 active_ability,
                 active_context,
@@ -106,44 +94,28 @@ pub(crate) fn dispatch_ability_task_completion(
                 error!("failed to queue chained ability activation: {error}");
             }
         }
-        AbilityTaskOnFinished::ApplyGameplayEffect {
-            source,
-            target,
-            effect,
-            level,
-        } => {
-            let payload = effect_payload_from_activation_context(source, level, active_context);
-            execution_queue.push_application(target, effect, payload);
+        AbilityTaskOnFinished::ApplyGameplayEffect { effect } => {
+            let payload = effect_payload_from_ability_context(
+                context.get_source(),
+                context.get_level(),
+                Some(active_context),
+            );
+            execution_queue.push_application(context.get_target(), effect, payload);
         }
-        AbilityTaskOnFinished::ApplyGameplayEffectToTargets {
-            source,
-            fallback_target,
-            effect,
-            level,
-        } => {
-            let payload = effect_payload_from_activation_context(source, level, active_context);
+        AbilityTaskOnFinished::ApplyGameplayEffectToTargets { effect } => {
+            let payload = effect_payload_from_ability_context(
+                context.get_source(),
+                context.get_level(),
+                Some(active_context),
+            );
             if let Some(target_data) = active_context.get_target_data() {
                 for target in target_data.entities() {
                     execution_queue.push_application(target, effect.clone(), payload.clone());
                 }
             } else {
-                execution_queue.push_application(fallback_target, effect, payload);
+                execution_queue.push_application(context.get_target(), effect, payload);
             }
         }
     }
     AbilityTaskCompletion::Continue
-}
-
-fn effect_payload_from_activation_context(
-    source: Entity,
-    level: u32,
-    activation_context: &AbilityActivationContext,
-) -> EffectPayload {
-    let payload = EffectPayload::new(source, activation_context.get_causer(), level)
-        .with_instigator(activation_context.get_instigator());
-    if let Some(source_snapshot) = activation_context.get_source_snapshot() {
-        payload.with_source_snapshot(source_snapshot.clone())
-    } else {
-        payload
-    }
 }

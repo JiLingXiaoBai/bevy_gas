@@ -18,7 +18,7 @@ pub fn tick_ability_tasks_system(
     task_entities.sort_by_key(|entity| entity.to_bits());
 
     for task_entity in task_entities {
-        let (active_handle, active_context, on_finished) = {
+        let (active_handle, task_context, active_context, on_finished) = {
             let Ok((_, mut task)) = task_query.get_mut(task_entity) else {
                 continue;
             };
@@ -41,6 +41,7 @@ pub fn tick_ability_tasks_system(
 
             (
                 task.get_active_ability(),
+                *task.get_context(),
                 active_context,
                 task.get_on_finished().clone(),
             )
@@ -49,6 +50,7 @@ pub fn tick_ability_tasks_system(
         if matches!(
             dispatch_ability_task_completion(
                 active_handle,
+                task_context,
                 on_finished,
                 &active_context,
                 &mut commands,

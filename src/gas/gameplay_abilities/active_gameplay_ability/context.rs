@@ -1,5 +1,6 @@
 use super::{AbilityChainContext, AbilityChainError, AbilitySpecHandle, ActiveAbilityHandle};
 use crate::attributes::AttributeSetSnapshot;
+use crate::gameplay_effects::EffectPayload;
 use crate::gameplay_targeting::AbilityTargetData;
 use crate::unique_names::UniqueName;
 use bevy::prelude::Entity;
@@ -102,5 +103,24 @@ impl AbilityActivationContext {
 
     pub fn get_reason(&self) -> AbilityActivationReason {
         self.reason
+    }
+}
+
+/// Builds the canonical effect payload for an ability execution path.
+pub(crate) fn effect_payload_from_ability_context(
+    source: Entity,
+    level: u32,
+    activation_context: Option<&AbilityActivationContext>,
+) -> EffectPayload {
+    let Some(activation_context) = activation_context else {
+        return EffectPayload::new(source, None, level);
+    };
+
+    let payload = EffectPayload::new(source, activation_context.get_causer(), level)
+        .with_instigator(activation_context.get_instigator());
+    if let Some(source_snapshot) = activation_context.get_source_snapshot() {
+        payload.with_source_snapshot(source_snapshot.clone())
+    } else {
+        payload
     }
 }

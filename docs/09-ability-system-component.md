@@ -220,6 +220,10 @@ pub fn cancel_ability(
 `active_count`，并通过 `Commands` 生成 `ActiveGameplayAbility`。队列与同步入口使用同一个
 请求类型，不再维护字段重复的内部 Start Context。结束路径需要对称移除阻止标签和递减计数。
 
+私有 `StartupAbilityTaskContext` 仅保存 active handle、`&AbilityActivationRequest` 和 level。
+source、target、spec handle 与 activation context 直接从请求读取；启动函数只创建一次
+`AbilityTaskExecutionContext`，并在同一激活的所有 sibling startup task 间复用。
+
 `cleanup_finished_abilities_system` 位于 `GameplayAbilitySystemSet::Cleanup`：
 
 1. 清空上一次 drain 留下的 pending overlay。

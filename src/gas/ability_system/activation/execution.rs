@@ -1,7 +1,4 @@
-use super::super::commit::{
-    effect_payload_from_activation_context, execute_ability_commit_plans,
-    prepare_ability_commit_plans,
-};
+use super::super::commit::{execute_ability_commit_plans, prepare_ability_commit_plans};
 use super::super::lifecycle::{cancel_active_abilities_with_tags, finish_ability_with_status};
 use super::super::params::AbilitySystemParams;
 use super::error::{AbilityActivationError, ability_activation_failed};
@@ -9,6 +6,7 @@ use super::startup::{StartupAbilityTaskContext, start_startup_ability_tasks};
 use super::validation::passes_ability_activation_requirements;
 use crate::gameplay_abilities::{
     AbilityActivationContext, AbilityActivationStatus, AbilitySpecHandle,
+    effect_payload_from_ability_context,
 };
 use crate::gameplay_effects::{
     apply_gameplay_effect_in_batch, resolve_active_effect_tag_requirements,
@@ -196,7 +194,8 @@ pub(crate) fn execute_ability_activation_in_batch(
         .unwrap_or_else(|| vec![target]);
     for effect in ability.get_activation_effects() {
         for &activation_target in &activation_targets {
-            let payload = effect_payload_from_activation_context(source, level, activation_context);
+            let payload =
+                effect_payload_from_ability_context(source, level, Some(activation_context));
             if let Err(error) = apply_gameplay_effect_in_batch(
                 activation_target,
                 effect,
@@ -217,11 +216,8 @@ pub(crate) fn execute_ability_activation_in_batch(
         ability.get_startup_tasks(),
         StartupAbilityTaskContext {
             active_handle,
-            source,
-            target,
-            spec_handle: handle,
+            request: &request,
             level,
-            activation_context,
         },
         execution_queue,
         params,

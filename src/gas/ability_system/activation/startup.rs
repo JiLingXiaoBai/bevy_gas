@@ -1,8 +1,8 @@
 use super::super::component::AbilitySystemComponent;
 use super::super::params::{AbilitySystemParams, PendingActiveGameplayAbilities};
 use crate::gameplay_abilities::{
-    AbilityActivationContext, AbilityActivationStatus, AbilitySpecHandle, AbilityTaskCompletion,
-    AbilityTaskDef, ActiveAbilityHandle, ActiveGameplayAbility, dispatch_ability_task_completion,
+    AbilityActivationStatus, AbilityTaskCompletion, AbilityTaskDef, AbilityTaskExecutionContext,
+    ActiveAbilityHandle, ActiveGameplayAbility, dispatch_ability_task_completion,
 };
 use crate::gameplay_execution::{AbilityActivationRequest, GameplayExecutionQueue};
 use crate::gameplay_tags::{GameplayTagError, GameplayTagManager};
@@ -48,13 +48,11 @@ impl AbilitySystemComponent {
     }
 }
 
+/// Borrows the canonical activation request needed to start sibling ability tasks.
 pub(super) struct StartupAbilityTaskContext<'a> {
     pub(super) active_handle: ActiveAbilityHandle,
-    pub(super) source: Entity,
-    pub(super) target: Entity,
-    pub(super) spec_handle: AbilitySpecHandle,
+    pub(super) request: &'a AbilityActivationRequest,
     pub(super) level: u32,
-    pub(super) activation_context: &'a AbilityActivationContext,
 }
 
 pub(super) fn start_startup_ability_tasks(
@@ -63,19 +61,21 @@ pub(super) fn start_startup_ability_tasks(
     execution_queue: &mut GameplayExecutionQueue,
     params: &mut AbilitySystemParams,
 ) -> bool {
+    let task_context = AbilityTaskExecutionContext::new(
+        context.request.get_source(),
+        context.request.get_target(),
+        context.request.get_handle(),
+        context.level,
+    );
     let mut ends_ability = false;
     for task_def in startup_tasks {
         match task_def {
             AbilityTaskDef::Instant { on_finished } => {
                 let completion = dispatch_ability_task_completion(
                     context.active_handle,
-                    on_finished.instantiate(
-                        context.source,
-                        context.target,
-                        context.spec_handle,
-                        context.level,
-                    ),
-                    context.activation_context,
+                    task_context,
+                    on_finished.instantiate(),
+                    context.request.get_context(),
                     &mut params.commands,
                     execution_queue,
                 );
@@ -85,13 +85,9 @@ pub(super) fn start_startup_ability_tasks(
                 }
             }
             AbilityTaskDef::WaitTicks { .. } => {
-                let mut task_commands = params.commands.spawn(task_def.instantiate(
-                    context.active_handle,
-                    context.source,
-                    context.target,
-                    context.spec_handle,
-                    context.level,
-                ));
+                let mut task_commands = params
+                    .commands
+                    .spawn(task_def.instantiate(context.active_handle, task_context));
                 task_commands.set_parent_in_place(context.active_handle);
             }
         }

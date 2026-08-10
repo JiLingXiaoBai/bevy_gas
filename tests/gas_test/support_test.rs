@@ -5,7 +5,7 @@ use bevy_tools::attributes::{
 };
 use bevy_tools::gameplay_abilities::{AbilitySpecHandle, AbilityTask, ActiveGameplayAbility};
 use bevy_tools::gameplay_effects::{
-    EffectDurationTicks, EffectPayload, EffectTags, GameplayEffect, TagRequirements,
+    EffectDurationTicks, EffectPayload, EffectTags, GameplayEffect,
 };
 use bevy_tools::gameplay_tags::{
     GameplayTag, GameplayTagContainer, GameplayTagManager, GameplayTagRegister,
@@ -62,18 +62,7 @@ pub fn empty_effect_tags() -> EffectTags {
 }
 
 pub fn effect_tags(asset_tags: Vec<GameplayTag>, granted_tags: Vec<GameplayTag>) -> EffectTags {
-    EffectTags::new(
-        asset_tags,
-        granted_tags,
-        TagRequirements::default(),
-        TagRequirements::default(),
-        TagRequirements::default(),
-        TagRequirements::default(),
-        TagRequirements::default(),
-        TagRequirements::default(),
-        Vec::new(),
-        Vec::new(),
-    )
+    EffectTags::new(asset_tags, granted_tags)
 }
 
 pub fn add_modifier(attribute: AttributeId, value: f32) -> Modifier {

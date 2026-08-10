@@ -118,9 +118,13 @@ pub struct AbilityActivationContext {
 | `with_target_data(data)` | 附加确定有序的目标集合 |
 | `child_for_chained_ability(parent, handle)` | 继承上下文并推进技能链，原因改为 `Chained` |
 
-`instigator`、`causer` 和来源快照会传播到技能产生的 `EffectPayload`。消耗与冷却仍应用到技能
-`source`。Target Data 存在时，`activation_effects` 会按“效果定义顺序，再按 Target Data
-实体顺序”逐个应用；旧 `target: Entity` 继续表示首要目标。
+Cost、Cooldown、activation effects 和 Ability Task 完成动作都通过同一个 crate 内部转换
+函数构造 `EffectPayload`。`source` 和 `level` 由当前执行路径传入，`instigator`、`causer`
+与来源快照在存在 `AbilityActivationContext` 时从中继承；独立 `commit_ability()` 没有激活
+上下文，因此使用默认 instigator 且不带 causer/快照。该函数是内部一致性边界，不是
+公共 API。
+消耗与冷却仍应用到技能 `source`。Target Data 存在时，`activation_effects` 会按“效果定义
+顺序，再按 Target Data 实体顺序”逐个应用；旧 `target: Entity` 继续表示首要目标。
 
 `TargetingContinuation::ActivateAbility` 会把旧 `target` 设为 `primary_entity()`。直接调用
 `GameplayExecutionQueue::push_activation()` 不验证二者一致性，调用方需要自行保持一致。

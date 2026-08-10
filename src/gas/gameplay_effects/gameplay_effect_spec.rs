@@ -53,23 +53,21 @@ pub struct GameplayEffectSpec {
     modifier_specs: Vec<ModifierSpec>,
     duration_spec: EffectDurationTicksSpec,
     period_spec: Option<EffectPeriodTicksSpec>,
-    stacking_policy: StackingPolicy,
 }
 
 impl GameplayEffectSpec {
+    /// Creates an evaluated effect specification tied to its immutable definition.
     pub fn new(
         def: Arc<GameplayEffect>,
         modifier_specs: Vec<ModifierSpec>,
         duration_spec: EffectDurationTicksSpec,
         period_spec: Option<EffectPeriodTicksSpec>,
-        stacking_policy: StackingPolicy,
     ) -> Self {
         Self {
             def,
             modifier_specs,
             duration_spec,
             period_spec,
-            stacking_policy,
         }
     }
 
@@ -97,7 +95,8 @@ impl GameplayEffectSpec {
         &self.period_spec
     }
 
+    /// Returns the stacking policy owned by the immutable effect definition.
     pub fn get_stacking_policy(&self) -> StackingPolicy {
-        self.stacking_policy
+        self.def.get_stacking_policy()
     }
 }

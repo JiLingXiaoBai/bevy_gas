@@ -89,6 +89,7 @@ src/
     │   │   └── state.rs
     │   ├── ability_task.rs
     │   └── ability_task/
+    │       ├── context.rs
     │       ├── definition.rs
     │       ├── state.rs
     │       ├── completion.rs
@@ -174,12 +175,12 @@ src/
 | 文件 | 主要所有权 |
 | --- | --- |
 | `effect_system_params.rs` | Effect 准备、执行、移除和收敛需要的窄 ECS 访问集合 |
-| `gameplay_effect/definition.rs` | 不可变 Effect 定义和 builder/getter |
+| `gameplay_effect/definition.rs` | 不可变 Effect 定义、唯一 StackingPolicy 和 builder/getter |
 | `gameplay_effect/context.rs` | Effect payload 与 Modifier 求值上下文适配 |
 | `gameplay_effect/timing.rs` | Duration/Period 定义值 |
 | `gameplay_effect/stacking.rs` | StackingPolicy 及子策略 |
-| `gameplay_effect/effect_tags.rs` | Effect identity、授予、条件、移除和免疫标签配置 |
-| `gameplay_effect_spec.rs` | 捕获 level、duration/period 和 ModifierSpec 的准备结果 |
+| `gameplay_effect/effect_tags.rs` | Effect 标签、私有 source/target 条件对和公开链式 builder |
+| `gameplay_effect_spec.rs` | 保留 definition `Arc`，捕获 Modifier/Duration/Period 求值结果；不复制 StackingPolicy |
 | `active_gameplay_effect/state.rs` | Handle、稳定 slot、Active Effect 状态和目标 Component |
 | `active_gameplay_effect/planning.rs` | 应用错误、Plan、prepare 和错误映射 |
 | `active_gameplay_effect/application.rs` | 同步应用入口、条件、概率、免疫和堆叠选择 |
@@ -200,10 +201,11 @@ commit 和生命周期编排的流程：
 | --- | --- |
 | `gameplay_ability.rs` | AbilityTags、startup task、cost/cooldown/activation Effect 定义 |
 | `gameplay_ability_spec.rs` | 授予 Handle、level、input ID/pressed 和 active count |
-| `active_gameplay_ability/{chain,context,state}.rs` | 链保护、激活上下文和活跃实例状态 |
+| `active_gameplay_ability/{chain,context,state}.rs` | 链保护、激活上下文、统一 Ability → Effect payload 转换和活跃实例状态 |
+| `ability_task/context.rs` | 公开的 Task 共享 source/target/spec handle/level 执行上下文 |
 | `ability_task/definition.rs` | Instant/WaitTicks 定义和完成动作定义 |
-| `ability_task/state.rs` | 运行时 Task 数据 |
-| `ability_task/completion.rs` | 完成动作到 Event/Effect/Ability 请求的分派 |
+| `ability_task/state.rs` | 运行时 Task Component 与 action-only 完成枚举 |
+| `ability_task/completion.rs` | 使用共享 context 向 Event/Effect/Ability 请求分派完成动作 |
 | `ability_task/ticking.rs` | Task 稳定推进与清理 |
 | `ability_system/component.rs` | ASC 规格存储和显式 `GameplayAbilitySystemBundle` |
 | `ability_system/params.rs` | `AbilitySystemParams` 和同 batch pending overlay |

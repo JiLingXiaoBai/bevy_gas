@@ -172,18 +172,7 @@ fn execution_preflight_preserves_effects_when_target_state_changed() {
         None,
         1.0,
         StackingPolicy::non_stacking(),
-        EffectTags::new(
-            Vec::new(),
-            Vec::new(),
-            TagRequirements::default(),
-            TagRequirements::default(),
-            TagRequirements::default(),
-            TagRequirements::default(),
-            TagRequirements::default(),
-            TagRequirements::default(),
-            Vec::new(),
-            vec![removable],
-        ),
+        EffectTags::new(Vec::new(), Vec::new()).with_remove_effects_with_tags(vec![removable]),
     ));
     let payload = EffectPayload::new(target, None, 1);
     let plan = app

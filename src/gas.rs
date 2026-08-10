@@ -27,9 +27,9 @@ pub use attributes::{
 pub use gameplay_abilities::{
     AbilityActivationContext, AbilityActivationReason, AbilityActivationStatus,
     AbilityChainContext, AbilityChainError, AbilitySpecHandle, AbilityTags, AbilityTask,
-    AbilityTaskDef, AbilityTaskEvent, AbilityTaskKind, AbilityTaskOnFinished,
-    AbilityTaskOnFinishedDef, ActiveAbilityHandle, ActiveGameplayAbility, GameplayAbility,
-    GameplayAbilitySpec, tick_ability_tasks_system,
+    AbilityTaskDef, AbilityTaskEvent, AbilityTaskExecutionContext, AbilityTaskKind,
+    AbilityTaskOnFinished, AbilityTaskOnFinishedDef, ActiveAbilityHandle, ActiveGameplayAbility,
+    GameplayAbility, GameplayAbilitySpec, tick_ability_tasks_system,
 };
 pub use gameplay_effects::{
     ActiveEffectDurationTicks, ActiveEffectHandle, ActiveEffectPeriodTicks, ActiveGameplayEffect,

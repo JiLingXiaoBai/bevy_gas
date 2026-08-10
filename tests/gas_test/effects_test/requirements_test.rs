@@ -1,6 +1,45 @@
 use super::*;
 
 #[test]
+fn application_requirements_builder_checks_source_and_target_tags() {
+    let mut app = test_app();
+    let health = register_attribute(&mut app, "Health");
+    let source_required = register_tag(&mut app, "Source.Required");
+    let target_required = register_tag(&mut app, "Target.Required");
+    let source = app.world_mut().spawn(GameplayTagContainer::default()).id();
+    let attributes = attribute_set(&app, health, 100.0);
+    let target = app
+        .world_mut()
+        .spawn((
+            GameplayTagContainer::default(),
+            attributes,
+            ActiveGameplayEffects::default(),
+        ))
+        .id();
+    let effect = Arc::new(GameplayEffect::new(
+        vec![add_modifier(health, -25.0)],
+        EffectDurationTicks::Instant,
+        None,
+        1.0,
+        StackingPolicy::non_stacking(),
+        EffectTags::new(Vec::new(), Vec::new()).with_application_requirements(
+            TagRequirements::new(vec![source_required], Vec::new()).unwrap(),
+            TagRequirements::new(vec![target_required], Vec::new()).unwrap(),
+        ),
+    ));
+
+    assert!(matches!(
+        apply_effect_result(&mut app, target, source, effect.clone()),
+        Err(GameplayEffectApplicationError::ApplicationRequirementsNotMet)
+    ));
+
+    add_tag_to_entity(&mut app, source, source_required);
+    add_tag_to_entity(&mut app, target, target_required);
+    assert!(apply_effect(&mut app, target, source, effect));
+    assert_eq!(current_value(&mut app, target, health), 75.0);
+}
+
+#[test]
 fn active_immunity_blocks_matching_incoming_effect() {
     let mut app = test_app();
     let health = register_attribute(&mut app, "Health");
@@ -34,18 +73,7 @@ fn active_immunity_blocks_matching_incoming_effect() {
         None,
         1.0,
         StackingPolicy::non_stacking(),
-        EffectTags::new(
-            Vec::new(),
-            Vec::new(),
-            TagRequirements::default(),
-            TagRequirements::default(),
-            TagRequirements::default(),
-            TagRequirements::default(),
-            TagRequirements::default(),
-            TagRequirements::default(),
-            vec![immunity],
-            Vec::new(),
-        ),
+        EffectTags::new(Vec::new(), Vec::new()).with_granted_application_immunity(vec![immunity]),
     ));
     let incoming = Arc::new(GameplayEffect::new(
         vec![add_modifier(health, -25.0)],
@@ -89,18 +117,7 @@ fn queued_immunity_is_visible_to_the_next_request() {
         None,
         1.0,
         StackingPolicy::non_stacking(),
-        EffectTags::new(
-            Vec::new(),
-            Vec::new(),
-            TagRequirements::default(),
-            TagRequirements::default(),
-            TagRequirements::default(),
-            TagRequirements::default(),
-            TagRequirements::default(),
-            TagRequirements::default(),
-            vec![immunity],
-            Vec::new(),
-        ),
+        EffectTags::new(Vec::new(), Vec::new()).with_granted_application_immunity(vec![immunity]),
     ));
     let incoming = Arc::new(GameplayEffect::new(
         vec![add_modifier(health, -25.0)],
@@ -334,18 +351,12 @@ fn requirement_converges_between_two_gameplay_requests() {
         None,
         1.0,
         StackingPolicy::non_stacking(),
-        EffectTags::new(
-            Vec::new(),
-            Vec::new(),
-            TagRequirements::default(),
-            TagRequirements::default(),
-            TagRequirements::default(),
-            TagRequirements::new(Vec::new(), vec![disable_immunity]).unwrap(),
-            TagRequirements::default(),
-            TagRequirements::default(),
-            vec![immunity],
-            Vec::new(),
-        ),
+        EffectTags::new(Vec::new(), Vec::new())
+            .with_ongoing_requirements(
+                TagRequirements::default(),
+                TagRequirements::new(Vec::new(), vec![disable_immunity]).unwrap(),
+            )
+            .with_granted_application_immunity(vec![immunity]),
     ));
     let disable_effect = Arc::new(GameplayEffect::new(
         Vec::new(),
@@ -416,18 +427,7 @@ fn queued_tag_source_removal_restores_effect_in_same_tick() {
         None,
         1.0,
         StackingPolicy::non_stacking(),
-        EffectTags::new(
-            Vec::new(),
-            Vec::new(),
-            TagRequirements::default(),
-            TagRequirements::default(),
-            TagRequirements::default(),
-            TagRequirements::default(),
-            TagRequirements::default(),
-            TagRequirements::default(),
-            Vec::new(),
-            vec![blocker_asset],
-        ),
+        EffectTags::new(Vec::new(), Vec::new()).with_remove_effects_with_tags(vec![blocker_asset]),
     ));
 
     assert!(apply_effect(&mut app, target, target, blocker));
@@ -509,17 +509,9 @@ fn source_tag_changes_converge_effect_on_another_target() {
         None,
         1.0,
         StackingPolicy::non_stacking(),
-        EffectTags::new(
-            Vec::new(),
-            Vec::new(),
-            TagRequirements::default(),
-            TagRequirements::default(),
+        EffectTags::new(Vec::new(), Vec::new()).with_ongoing_requirements(
             TagRequirements::new(vec![enabled], Vec::new()).unwrap(),
             TagRequirements::default(),
-            TagRequirements::default(),
-            TagRequirements::default(),
-            Vec::new(),
-            Vec::new(),
         ),
     ));
 
@@ -557,17 +549,9 @@ fn queued_source_tag_restores_other_target_effect_in_same_tick() {
         None,
         1.0,
         StackingPolicy::non_stacking(),
-        EffectTags::new(
-            Vec::new(),
-            Vec::new(),
-            TagRequirements::default(),
-            TagRequirements::default(),
+        EffectTags::new(Vec::new(), Vec::new()).with_ongoing_requirements(
             TagRequirements::new(vec![enabled], Vec::new()).unwrap(),
             TagRequirements::default(),
-            TagRequirements::default(),
-            TagRequirements::default(),
-            Vec::new(),
-            Vec::new(),
         ),
     ));
     let source_enabler = Arc::new(GameplayEffect::new(
@@ -779,6 +763,43 @@ fn removal_tag_requirement_cleans_up_active_effect() {
 
     add_tag_to_entity(&mut app, target, cleanse);
     run_effect_tag_requirements_update(&mut app);
+    assert_eq!(current_value(&mut app, target, power), 10.0);
+    assert!(active_effect_handles(&app, target).is_empty());
+}
+
+#[test]
+fn source_removal_requirement_builder_cleans_up_effect_on_another_target() {
+    let mut app = test_app();
+    let power = register_attribute(&mut app, "Power");
+    let remove = register_tag(&mut app, "Source.RemoveEffect");
+    let source = app.world_mut().spawn(GameplayTagContainer::default()).id();
+    let attributes = attribute_set(&app, power, 10.0);
+    let target = app
+        .world_mut()
+        .spawn((
+            GameplayTagContainer::default(),
+            attributes,
+            ActiveGameplayEffects::default(),
+        ))
+        .id();
+    let effect = Arc::new(GameplayEffect::new(
+        vec![add_modifier(power, 5.0)],
+        EffectDurationTicks::Infinite,
+        None,
+        1.0,
+        StackingPolicy::non_stacking(),
+        EffectTags::new(Vec::new(), Vec::new()).with_removal_requirements(
+            TagRequirements::new(vec![remove], Vec::new()).unwrap(),
+            TagRequirements::default(),
+        ),
+    ));
+
+    assert!(apply_effect(&mut app, target, source, effect));
+    assert_eq!(current_value(&mut app, target, power), 15.0);
+
+    add_tag_to_entity(&mut app, source, remove);
+    run_effect_tag_requirements_update(&mut app);
+
     assert_eq!(current_value(&mut app, target, power), 10.0);
     assert!(active_effect_handles(&app, target).is_empty());
 }

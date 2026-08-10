@@ -108,12 +108,12 @@
 | 项                                                 | 类型         | 说明                                         |
 | -------------------------------------------------- | ------------ | -------------------------------------------- |
 | `GameplayEffect`                                   | `struct`     | 效果定义                                     |
-| `GameplayEffectSpec`                               | `struct`     | 已解析的效果规格                             |
+| `GameplayEffectSpec`                               | `struct`     | 已求值的 modifier/timing；堆叠策略从定义读取 |
 | `EffectDurationTicks`                              | `enum`       | Instant / DurationTicks / Infinite           |
 | `EffectDurationTicksSpec`                          | `enum`       | 已解析的持续时间                             |
 | `EffectPeriodTicks`                                | `struct`     | 周期性执行配置                               |
 | `EffectPeriodTicksSpec`                            | `struct`     | 已解析的周期配置                             |
-| `EffectTags`                                       | `struct`     | 完整标签配置                                 |
+| `EffectTags`                                       | `struct`     | 两参数基础构造 + 链式条件/免疫/移除配置       |
 | `GameplayEffectImmunityQuery`                      | `struct`     | 免疫匹配查询                                 |
 | `StackingPolicy`                                   | `struct`     | 堆叠配置                                     |
 | `StackingType`                                     | `enum`       | None / AggregateBySource / AggregateByTarget |
@@ -211,10 +211,11 @@ ASC、Active Ability 或 `Commands`。`AbilitySystemParams` 内嵌它并实现 `
 | --------------------------- | ----------- | ------------------------------- |
 | `AbilityTaskDef`            | `enum`      | 任务定义（Instant / WaitTicks） |
 | `AbilityTaskOnFinishedDef`  | `enum`      | 完成动作定义                    |
+| `AbilityTaskExecutionContext` | `struct`  | Task 共享的 source/target/spec handle/level |
 | `AbilityTask`               | `Component` | 运行时任务实体                  |
 | `AbilityTaskKind`           | `enum`      | Instant / WaitTicks             |
-| `AbilityTaskOnFinished`     | `enum`      | 运行时完成动作                  |
-| `AbilityTaskEvent`          | `Event`     | EmitEvent 完成时触发的 Observer Event |
+| `AbilityTaskOnFinished`     | `enum`      | 仅保存动作专属数据的运行时完成动作 |
+| `AbilityTaskEvent`          | `Event`     | EmitEvent Observer Event；共享值由 Task context 提供 |
 | `tick_ability_tasks_system` | `fn`        | 系统：推进所有任务              |
 
 ### 技能系统组件

@@ -43,7 +43,6 @@ impl GameplayEffect {
                 .collect(),
             self.duration.make_spec(context),
             self.period.as_ref().map(|p| p.make_spec(context)),
-            self.stacking_policy,
         )
     }
 
@@ -59,5 +58,10 @@ impl GameplayEffect {
 
     pub fn get_probability_to_apply(&self) -> f32 {
         self.probability_to_apply
+    }
+
+    /// Returns the stacking behavior configured for this effect definition.
+    pub fn get_stacking_policy(&self) -> StackingPolicy {
+        self.stacking_policy
     }
 }
