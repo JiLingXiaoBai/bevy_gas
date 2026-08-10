@@ -16,6 +16,7 @@ use crate::gameplay_execution::{
     AbilityActivationRequest, GameplayExecutionQueue, drain_gameplay_execution_queue,
 };
 use crate::gameplay_tags::tag_bits_from_tags_with_manager;
+use crate::gameplay_targeting::AbilityActivationTargets;
 use bevy::prelude::*;
 
 /// Activates an ability through an independent synchronous call path and drains all startup Instant
@@ -31,7 +32,7 @@ use bevy::prelude::*;
 /// Returns [`AbilityActivationError`] when validation, commit, cancellation, or startup fails.
 pub fn try_activate_ability_by_handle(
     source: Entity,
-    target: Entity,
+    targets: impl Into<AbilityActivationTargets>,
     handle: AbilitySpecHandle,
     activation_context: AbilityActivationContext,
     params: &mut AbilitySystemParams,
@@ -42,7 +43,7 @@ pub fn try_activate_ability_by_handle(
         .retain_unapplied(&params.active_ability_query);
     let mut execution_queue = GameplayExecutionQueue::default();
     let result = execute_ability_activation_in_batch(
-        AbilityActivationRequest::new(source, target, handle, activation_context),
+        AbilityActivationRequest::new(source, targets, handle, activation_context),
         &mut execution_queue,
         params,
     );
@@ -56,7 +57,6 @@ pub(crate) fn execute_ability_activation_in_batch(
     params: &mut AbilitySystemParams,
 ) -> Result<(), AbilityActivationError> {
     let source = request.get_source();
-    let target = request.get_target();
     let handle = request.get_handle();
     let activation_context = request.get_context();
 
@@ -188,12 +188,8 @@ pub(crate) fn execute_ability_activation_in_batch(
     }
     resolve_active_effect_tag_requirements_if_dirty(&mut params.effects);
 
-    let activation_targets = activation_context
-        .get_target_data()
-        .map(|target_data| target_data.entities().collect::<Vec<_>>())
-        .unwrap_or_else(|| vec![target]);
     for effect in ability.get_activation_effects() {
-        for &activation_target in &activation_targets {
+        for activation_target in request.get_targets().entities() {
             let payload =
                 effect_payload_from_ability_context(source, level, Some(activation_context));
             if let Err(error) = apply_gameplay_effect_in_batch(

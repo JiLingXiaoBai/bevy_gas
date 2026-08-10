@@ -141,11 +141,12 @@ app.add_systems(
 3. 在 `src/gas/ability_system/activation/startup.rs` 的 `start_startup_ability_tasks()` 明确它是
    startup 内立即完成，还是生成任务实体后由后续 tick 推进；
 4. 如需完成动作，在 `AbilityTaskOnFinishedDef` 与 `AbilityTaskOnFinished` 添加对应变体，
-   并更新实例化；运行时变体只保存动作专属数据，不要重复 source、target、
+   并更新实例化；运行时变体只保存动作专属数据，不要重复 source、targets、
    spec handle 或 level；
 5. 在 `src/gas/gameplay_abilities/ability_task/completion.rs` 的
-   `dispatch_ability_task_completion()` 实现完成分派，并从单独传入的 execution context 读取共享
-   执行值；
+   `dispatch_ability_task_completion()` 实现完成分派；从单独传入的 execution context 读取
+   source/spec/level，从父 Active Ability 的 `AbilityActivationData` 借用唯一
+   `AbilityActivationTargets`；
 6. 保持 `src/gas/gameplay_abilities/ability_task/ticking.rs` 的
    `tick_ability_tasks_system()` 只负责稳定顺序推进与调用 completion；
 7. 分别添加 startup 与 runtime tick 路径测试，验证执行 tick、FIFO 顺序和结束/取消语义；

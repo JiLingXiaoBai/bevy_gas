@@ -6,13 +6,14 @@ use super::support_test::{
 };
 use bevy::prelude::*;
 use bevy_tools::{
-    AbilityActivationContext, AbilityActivationReason, AbilityActivationRequest,
-    AbilityActivationStatus, AbilityChainContext, AbilitySpecHandle, AbilitySystemComponent,
-    AbilityTask, AbilityTaskDef, AbilityTaskEvent, AbilityTaskExecutionContext,
+    AbilityActivationContext, AbilityActivationData, AbilityActivationReason,
+    AbilityActivationRequest, AbilityActivationStatus, AbilityActivationTargets,
+    AbilityChainContext, AbilitySpecHandle, AbilitySystemComponent, AbilityTargetData,
+    AbilityTargetHit, AbilityTask, AbilityTaskDef, AbilityTaskEvent, AbilityTaskExecutionContext,
     AbilityTaskOnFinished, AbilityTaskOnFinishedDef, ActiveGameplayAbility, AttributeId,
     EffectDurationTicks, EffectPayload, GameplayAbility, GameplayEffect, GameplayExecutionQueue,
-    Modifier, ModifierEvaluationContext, ModifierMagnitude, ModifierMagnitudeCalculation,
-    ModifierOperation, StackingPolicy, UniqueName,
+    GameplayExecutionRequest, Modifier, ModifierEvaluationContext, ModifierMagnitude,
+    ModifierMagnitudeCalculation, ModifierOperation, StackingPolicy, UniqueName,
 };
 use std::sync::Arc;
 
@@ -43,6 +44,7 @@ impl ModifierMagnitudeCalculation for QueuedEffectContextMagnitude {
 struct CapturedAbilityTaskEvent {
     source: Option<Entity>,
     target: Option<Entity>,
+    targets: Option<AbilityActivationTargets>,
     active_ability: Option<Entity>,
     spec_handle: Option<AbilitySpecHandle>,
     event_id: Option<UniqueName>,
@@ -55,6 +57,7 @@ fn capture_ability_task_event(
 ) {
     captured.source = Some(event.get_source());
     captured.target = Some(event.get_target());
+    captured.targets = Some(event.get_targets().clone());
     captured.active_ability = Some(event.get_active_ability());
     captured.spec_handle = Some(event.get_spec_handle());
     captured.event_id = Some(event.get_event_id());
@@ -118,6 +121,40 @@ fn gameplay_queue_processes_entire_activation_batch() {
 }
 
 #[test]
+fn ability_activation_data_keeps_source_distinct_from_instigator() {
+    let mut world = World::new();
+    let source = world.spawn_empty().id();
+    let instigator = world.spawn_empty().id();
+    let target = world.spawn_empty().id();
+    let handle = AbilitySpecHandle::new(40);
+    let context = AbilityActivationContext::direct(source, AbilityChainContext::root(handle, 3))
+        .with_instigator(instigator);
+    let data = AbilityActivationData::new(source, target, context);
+
+    assert_eq!(data.get_source(), source);
+    assert_eq!(data.get_target(), target);
+    assert_eq!(
+        data.get_targets(),
+        &AbilityActivationTargets::single(target)
+    );
+    assert_eq!(data.get_context().get_instigator(), instigator);
+
+    let request = AbilityActivationRequest::from_data(handle, data.clone());
+    assert_eq!(request.get_handle(), handle);
+    assert_eq!(request.get_activation_data().get_source(), source);
+    assert_eq!(request.get_source(), source);
+    assert_eq!(request.get_target(), target);
+    assert_eq!(request.get_context().get_instigator(), instigator);
+
+    let active = ActiveGameplayAbility::from_data(handle, data, AbilityActivationStatus::Active);
+    assert_eq!(active.get_spec_handle(), handle);
+    assert_eq!(active.get_activation_data().get_source(), source);
+    assert_eq!(active.get_source(), source);
+    assert_eq!(active.get_target(), target);
+    assert_eq!(active.get_activation_context().get_instigator(), instigator);
+}
+
+#[test]
 fn ability_activation_request_is_preserved_through_startup() {
     let mut app = test_app();
     let source = app
@@ -125,6 +162,7 @@ fn ability_activation_request_is_preserved_through_startup() {
         .spawn(AbilitySystemComponent::default())
         .id();
     let target = app.world_mut().spawn_empty().id();
+    let secondary_target = app.world_mut().spawn_empty().id();
     let instigator = app.world_mut().spawn_empty().id();
     let causer = app.world_mut().spawn_empty().id();
     let ability = Arc::new(GameplayAbility::new(
@@ -142,18 +180,35 @@ fn ability_activation_request_is_preserved_through_startup() {
         .with_instigator(instigator)
         .with_causer(Some(causer));
 
+    let target_data = AbilityTargetData::new(
+        Vec3::ZERO,
+        vec![
+            AbilityTargetHit::new(target, Vec3::X, None),
+            AbilityTargetHit::new(secondary_target, Vec3::Y, None),
+        ],
+    );
+    let targets = AbilityActivationTargets::acquired(target_data.clone()).unwrap();
+    let activation_data = AbilityActivationData::new(source, targets.clone(), context);
     app.world_mut()
         .resource_mut::<GameplayExecutionQueue>()
-        .push(AbilityActivationRequest::new(
-            source, target, handle, context,
-        ));
+        .push(AbilityActivationRequest::from_data(handle, activation_data));
     run_gameplay_execution_queue(&mut app);
 
     let world = app.world_mut();
     let mut query = world.query::<&ActiveGameplayAbility>();
     let active_ability = query.single(world).unwrap();
+    let active_data = active_ability.get_activation_data();
+    assert_eq!(active_data.get_source(), source);
+    assert_eq!(active_data.get_targets(), &targets);
+    assert_eq!(active_data.get_target(), target);
+    assert_eq!(active_data.get_context().get_instigator(), instigator);
     assert_eq!(active_ability.get_source(), source);
     assert_eq!(active_ability.get_target(), target);
+    assert_eq!(active_ability.get_targets(), &targets);
+    assert_eq!(
+        active_ability.get_targets().get_target_data(),
+        Some(&target_data)
+    );
     assert_eq!(active_ability.get_spec_handle(), handle);
     assert_eq!(
         active_ability.get_activation_context().get_instigator(),
@@ -171,6 +226,48 @@ fn ability_activation_request_is_preserved_through_startup() {
 }
 
 #[test]
+fn chained_activation_preserves_the_parent_target_selection() {
+    let mut world = World::new();
+    let source = world.spawn_empty().id();
+    let first = world.spawn_empty().id();
+    let second = world.spawn_empty().id();
+    let parent_ability = world.spawn_empty().id();
+    let parent_handle = AbilitySpecHandle::new(11);
+    let child_handle = AbilitySpecHandle::new(12);
+    let target_data = AbilityTargetData::new(
+        Vec3::ZERO,
+        vec![
+            AbilityTargetHit::new(first, Vec3::X, None),
+            AbilityTargetHit::new(second, Vec3::Y, None),
+        ],
+    );
+    let targets = AbilityActivationTargets::acquired(target_data).unwrap();
+    let parent_context =
+        AbilityActivationContext::direct(source, AbilityChainContext::root(parent_handle, 7));
+    let mut queue = GameplayExecutionQueue::default();
+
+    queue
+        .push_chained_activation(
+            source,
+            targets.clone(),
+            child_handle,
+            parent_ability,
+            &parent_context,
+        )
+        .unwrap();
+
+    let Some(GameplayExecutionRequest::ActivateAbility(request)) = queue.pop() else {
+        panic!("expected a queued chained ability activation");
+    };
+    assert_eq!(request.get_targets(), &targets);
+    assert_eq!(request.get_target(), first);
+    assert_eq!(
+        request.get_context().get_reason(),
+        AbilityActivationReason::Chained { parent_ability }
+    );
+}
+
+#[test]
 fn startup_task_context_preserves_ability_handle_and_level() {
     let mut app = test_app();
     app.init_resource::<CapturedAbilityTaskEvent>();
@@ -181,6 +278,7 @@ fn startup_task_context_preserves_ability_handle_and_level() {
         .spawn(AbilitySystemComponent::default())
         .id();
     let target = app.world_mut().spawn_empty().id();
+    let secondary_target = app.world_mut().spawn_empty().id();
     let event_id = app
         .world_mut()
         .resource_mut::<bevy_tools::UniqueNamePool>()
@@ -207,13 +305,35 @@ fn startup_task_context_preserves_ability_handle_and_level() {
     {
         let mut queue = app.world_mut().resource_mut::<GameplayExecutionQueue>();
         let context = AbilityActivationContext::direct(source, queue.new_root_chain(handle));
-        queue.push_activation(source, target, handle, context);
+        let targets = AbilityActivationTargets::acquired(AbilityTargetData::new(
+            Vec3::ZERO,
+            vec![
+                AbilityTargetHit::new(target, Vec3::X, None),
+                AbilityTargetHit::new(secondary_target, Vec3::Y, None),
+            ],
+        ))
+        .unwrap();
+        queue.push_activation(source, targets, handle, context);
     }
     run_gameplay_execution_queue(&mut app);
 
     let captured = app.world().resource::<CapturedAbilityTaskEvent>();
     assert_eq!(captured.source, Some(source));
     assert_eq!(captured.target, Some(target));
+    assert_eq!(
+        captured
+            .targets
+            .as_ref()
+            .map(|targets| targets.entities().collect::<Vec<_>>()),
+        Some(vec![target, secondary_target])
+    );
+    assert_eq!(
+        captured
+            .targets
+            .as_ref()
+            .map(AbilityActivationTargets::get_primary_target),
+        Some(target)
+    );
     assert_eq!(captured.spec_handle, Some(handle));
     assert_eq!(captured.event_id, Some(event_id));
     assert_eq!(captured.level, Some(9));
@@ -363,12 +483,7 @@ fn task_without_active_ability_is_removed() {
     let mut app = test_app();
     let missing_active = app.world_mut().spawn_empty().id();
     app.world_mut().entity_mut(missing_active).despawn();
-    let context = AbilityTaskExecutionContext::new(
-        missing_active,
-        missing_active,
-        AbilitySpecHandle::new(0),
-        1,
-    );
+    let context = AbilityTaskExecutionContext::new(missing_active, AbilitySpecHandle::new(0), 1);
     spawn_ability_task(
         &mut app,
         AbilityTask::instant(missing_active, context, AbilityTaskOnFinished::None),
@@ -386,7 +501,7 @@ fn task_can_enqueue_gameplay_effect_application() {
     let source = app.world_mut().spawn_empty().id();
     let target = spawn_attribute_set(&mut app, health, 10.0);
     let active = spawn_active_ability(&mut app, source, target, AbilitySpecHandle::new(123));
-    let context = AbilityTaskExecutionContext::new(source, target, AbilitySpecHandle::new(123), 1);
+    let context = AbilityTaskExecutionContext::new(source, AbilitySpecHandle::new(123), 1);
     let effect = instant_add_effect(health, 5.0);
     spawn_ability_task(
         &mut app,
@@ -433,7 +548,7 @@ fn task_effect_application_inherits_activation_context_payload() {
             context,
         ))
         .id();
-    let task_context = AbilityTaskExecutionContext::new(source, target, handle, 1);
+    let task_context = AbilityTaskExecutionContext::new(source, handle, 1);
     let effect = Arc::new(GameplayEffect::new(
         vec![Modifier::new(
             damage,
@@ -484,7 +599,7 @@ fn task_can_enqueue_ability_activation() {
     ));
     let handle = give_ability(&mut app, source, ability);
     let active = spawn_active_ability(&mut app, source, target, AbilitySpecHandle::new(321));
-    let context = AbilityTaskExecutionContext::new(source, target, AbilitySpecHandle::new(321), 1);
+    let context = AbilityTaskExecutionContext::new(source, AbilitySpecHandle::new(321), 1);
     spawn_ability_task(
         &mut app,
         AbilityTask::instant(
@@ -516,7 +631,7 @@ fn task_emit_event_triggers_observer_with_full_payload() {
         .new_name("Ability.Event.ComboWindow")
         .unwrap();
     let active = spawn_active_ability(&mut app, source, target, handle);
-    let context = AbilityTaskExecutionContext::new(source, target, handle, 9);
+    let context = AbilityTaskExecutionContext::new(source, handle, 9);
     let task = AbilityTaskDef::instant(AbilityTaskOnFinishedDef::EmitEvent { event_id })
         .instantiate(active, context);
     spawn_ability_task(&mut app, task);

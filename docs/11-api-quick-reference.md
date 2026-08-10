@@ -32,11 +32,11 @@
 | Effects | `ActiveGameplayEffects`、`EffectDurationTicks`、`EffectPayload`、`EffectSystemParams`、`EffectTags`、`GameplayEffect`、`StackingPolicy` |
 | Execution | `GameplayExecutionQueue` |
 | Tags | `GameplayTag`、`GameplayTagContainer`、`GameplayTagRegister`、`TagRequirements` |
-| Targeting | `AbilityTargetData`、`TargetingDefinition`、`TargetingRequestQueue` |
+| Targeting | `AbilityActivationTargets`、`AbilityTargetData`、`TargetingDefinition`、`TargetingRequestQueue` |
 | Modifiers | `Modifier`、`ModifierEvaluationContext`、`ModifierMagnitude`、`ModifierMagnitudeCalculation`、`ModifierOperation` |
 
 错误类型、低层 handle/spec、管理器、独立基础插件、系统函数与支撑类型不在 prelude；请从拥有它
-的领域门面或 crate root 显式导入。
+的领域门面或 crate root 显式导入。组合型 `AbilityActivationData` 同样不进入 prelude。
 
 ### 插件
 
@@ -157,7 +157,7 @@ ASC、Active Ability 或 `Commands`。`AbilitySystemParams` 内嵌它并实现 `
 | ------------------------------------------- | ---------- | ------------------------------------- |
 | `GameplayExecutionQueue`                    | `Resource` | 技能与效果共享的跨类型 FIFO           |
 | `GameplayExecutionRequest`                  | `enum`     | ActivateAbility / ApplyGameplayEffect |
-| `AbilityActivationRequest`                  | `struct`   | 激活全过程共享的标准输入              |
+| `AbilityActivationRequest`                  | `struct`   | handle 与共享 `AbilityActivationData` 组成的标准激活输入 |
 | `GameplayEffectApplicationRequest`          | `struct`   | 捕获后的效果应用请求                  |
 | `process_gameplay_execution_queue_system`   | `fn`       | 系统：完整 drain 并按需收敛 Tag 条件  |
 | `gameplay_execution_queue_has_work`         | `fn`       | 统一 FIFO 的运行条件                   |
@@ -172,6 +172,8 @@ ASC、Active Ability 或 `Commands`。`AbilitySystemParams` 内嵌它并实现 `
 | `Targetable`                            | `Component` | 标记可被非自身 Selection 选中的实体       |
 | `AbilityTargetHit`                      | `struct`    | 实体、世界位置和可选表面法线              |
 | `AbilityTargetData`                     | `struct`    | 带原点的确定性有序命中集合                |
+| `AbilityActivationTargets`              | `struct`    | 单 Entity 或非空 Target Data 的已验证唯一激活目标值 |
+| `AbilityActivationTargetsError`         | `enum`      | `acquired()` 拒绝空 Target Data 的构造错误 |
 | `TargetingDefinition`                   | `struct`    | 已验证的有序目标操作管线                  |
 | `TargetingOperation`                    | `enum`      | Selection / Filter / Sort / Limit 操作    |
 | `TargetingSortOrder`                    | `enum`      | Ascending / Descending                    |
@@ -198,7 +200,8 @@ ASC、Active Ability 或 `Commands`。`AbilitySystemParams` 内嵌它并实现 `
 | `ActiveGameplayAbility`    | `Component`  | 运行时活跃技能                                        |
 | `ActiveAbilityHandle`      | `type alias` | 活跃技能的 `Entity` 句柄                              |
 | `AbilityActivationStatus`  | `enum`       | Active / Ending / Cancelled                           |
-| `AbilityActivationContext` | `struct`     | 激活元数据及可选 `AbilityTargetData`                  |
+| `AbilityActivationData`    | `struct`     | 唯一组合 source、targets 与传播 context 的不可变激活值 |
+| `AbilityActivationContext` | `struct`     | 技能链、Instigator、Causer、来源快照和激活原因        |
 | `AbilityActivationReason`  | `enum`       | Direct / Input / Chained / TaskEvent / GameplayEffect |
 | `AbilityChainContext`      | `struct`     | 链追踪（深度 + 循环检测）                             |
 | `AbilityChainError`        | `enum`       | 链验证错误                                            |
@@ -211,11 +214,11 @@ ASC、Active Ability 或 `Commands`。`AbilitySystemParams` 内嵌它并实现 `
 | --------------------------- | ----------- | ------------------------------- |
 | `AbilityTaskDef`            | `enum`      | 任务定义（Instant / WaitTicks） |
 | `AbilityTaskOnFinishedDef`  | `enum`      | 完成动作定义                    |
-| `AbilityTaskExecutionContext` | `struct`  | Task 共享的 source/target/spec handle/level |
+| `AbilityTaskExecutionContext` | `struct`  | Task 共享的 source/spec handle/level 轻量值 |
 | `AbilityTask`               | `Component` | 运行时任务实体                  |
 | `AbilityTaskKind`           | `enum`      | Instant / WaitTicks             |
 | `AbilityTaskOnFinished`     | `enum`      | 仅保存动作专属数据的运行时完成动作 |
-| `AbilityTaskEvent`          | `Event`     | EmitEvent Observer Event；共享值由 Task context 提供 |
+| `AbilityTaskEvent`          | `Event`     | EmitEvent Observer Event；Context 与完整 targets 分开持有 |
 | `tick_ability_tasks_system` | `fn`        | 系统：推进所有任务              |
 
 ### 技能系统组件

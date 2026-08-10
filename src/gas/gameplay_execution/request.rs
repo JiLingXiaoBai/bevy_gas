@@ -1,44 +1,67 @@
-use crate::gameplay_abilities::{AbilityActivationContext, AbilitySpecHandle};
+use crate::gameplay_abilities::{
+    AbilityActivationContext, AbilityActivationData, AbilitySpecHandle,
+};
 use crate::gameplay_effects::{EffectPayload, GameplayEffect};
+use crate::gameplay_targeting::AbilityActivationTargets;
 use bevy::prelude::*;
 use std::sync::Arc;
 
 /// Canonical captured input for one ability activation.
 ///
 /// Queued and synchronous activation paths pass this request unchanged through validation and
-/// ability startup so the two paths share the same source, target, handle, and context semantics.
+/// ability startup so the two paths share the same source, targets, handle, and context semantics.
 #[derive(Clone)]
 pub struct AbilityActivationRequest {
-    source: Entity,
-    target: Entity,
     handle: AbilitySpecHandle,
-    context: AbilityActivationContext,
+    activation_data: AbilityActivationData,
 }
 
 impl AbilityActivationRequest {
     /// Creates an activation request.
     pub fn new(
         source: Entity,
-        target: Entity,
+        targets: impl Into<AbilityActivationTargets>,
         handle: AbilitySpecHandle,
         context: AbilityActivationContext,
     ) -> Self {
+        Self::from_data(handle, AbilityActivationData::new(source, targets, context))
+    }
+
+    /// Creates an activation request from previously captured activation data.
+    ///
+    /// # Parameters
+    ///
+    /// - `handle`: Handle of the granted ability to activate.
+    /// - `activation_data`: Shared source, targets, and context for the activation.
+    ///
+    /// # Returns
+    ///
+    /// A request that owns the supplied activation data.
+    pub fn from_data(handle: AbilitySpecHandle, activation_data: AbilityActivationData) -> Self {
         Self {
-            source,
-            target,
             handle,
-            context,
+            activation_data,
         }
+    }
+
+    /// Returns the shared data captured for this activation.
+    pub fn get_activation_data(&self) -> &AbilityActivationData {
+        &self.activation_data
     }
 
     /// Returns the ability owner.
     pub fn get_source(&self) -> Entity {
-        self.source
+        self.activation_data.get_source()
+    }
+
+    /// Returns the complete captured target selection.
+    pub fn get_targets(&self) -> &AbilityActivationTargets {
+        self.activation_data.get_targets()
     }
 
     /// Returns the captured primary target.
     pub fn get_target(&self) -> Entity {
-        self.target
+        self.activation_data.get_target()
     }
 
     /// Returns the granted ability handle.
@@ -48,7 +71,7 @@ impl AbilityActivationRequest {
 
     /// Returns the captured activation context.
     pub fn get_context(&self) -> &AbilityActivationContext {
-        &self.context
+        self.activation_data.get_context()
     }
 }
 

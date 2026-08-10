@@ -1,4 +1,4 @@
-use super::AbilitySpecHandle;
+use super::{AbilityActivationData, AbilitySpecHandle};
 
 mod chain;
 mod context;

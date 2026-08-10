@@ -3,7 +3,7 @@
 ## 职责
 
 Gameplay Ability 描述角色能够执行的动作，例如攻击、法术和冲刺。该领域只拥有技能定义、
-已授予规格、激活上下文、技能链、活跃实例和任务数据；激活、Commit 与清理由
+已授予规格、完整激活数据、激活上下文、技能链、活跃实例和任务数据；激活、Commit 与清理由
 `ability_system` 编排，跨类型请求顺序由 `gameplay_execution` 维护。
 
 ## 源码布局
@@ -14,6 +14,7 @@ src/gas/
 └── gameplay_abilities/
     ├── gameplay_ability.rs
     ├── gameplay_ability_spec.rs
+    ├── activation_data.rs
     ├── active_gameplay_ability.rs
     ├── active_gameplay_ability/
     │   ├── chain.rs
@@ -21,6 +22,7 @@ src/gas/
     │   └── state.rs
     ├── ability_task.rs
     └── ability_task/
+        ├── context.rs
         ├── definition.rs
         ├── state.rs
         ├── completion.rs
@@ -31,13 +33,14 @@ src/gas/
 | ---- | ---- |
 | `gameplay_ability.rs` | 不可变技能定义与 `AbilityTags` |
 | `gameplay_ability_spec.rs` | 某个 ASC 已授予技能的等级、输入状态和活跃计数 |
+| `activation_data.rs` | 一次激活共享的 source、targets 与传播 context 不可变值 |
 | `active_gameplay_ability/chain.rs` | 链 ID、深度限制和重复 Handle 检查 |
-| `active_gameplay_ability/context.rs` | Instigator、Causer、来源快照、Target Data 和激活原因 |
+| `active_gameplay_ability/context.rs` | Instigator、Causer、来源快照、激活原因和 Ability → Effect payload 转换 |
 | `active_gameplay_ability/state.rs` | 活跃实例 Component、Handle 别名和状态 |
 | `ability_task/` | startup 定义与跨 tick 运行时任务，详见 [08 — 技能任务](./08-ability-tasks.md) |
 
-模块文件使用显式重导出；调用方应从 `gameplay_abilities`、`gas::prelude` 或 crate 根导入公共
-类型，不依赖私有子模块路径。
+模块文件使用显式重导出；调用方应从 `gameplay_abilities`、GAS 聚合门面或 crate 根导入公共
+类型，不依赖私有子模块路径。`AbilityActivationData` 是组合型 API，不进入精简 prelude。
 
 ## 技能定义与已授予规格
 
@@ -92,7 +95,29 @@ pub struct GameplayAbilitySpec {
 `input_pressed` 默认为 `false`，只记录外部输入系统写入的瞬时状态，不会自动激活技能。
 `active_count` 用于多实例检查；仍有活跃实例时，ASC 不允许清除对应规格。
 
-## 激活上下文与技能链
+## 激活数据、上下文与技能链
+
+### `AbilityActivationData`
+
+```rust
+pub struct AbilityActivationData {
+    source: Entity,
+    targets: AbilityActivationTargets,
+    context: AbilityActivationContext,
+}
+```
+
+该不可变值是一次激活中 `source + targets + context` 的唯一组合边界：Request 和 Active Ability
+不再各自重复声明这三个字段。`AbilityActivationData::new(source, targets, context)` 接收
+`impl Into<AbilityActivationTargets>`；`get_source()`、`get_targets()`、兼容的 `get_target()` 与
+`get_context()` 提供只读访问。
+
+`AbilityActivationRequest` 在排队期间拥有该值；创建长期运行的 `ActiveGameplayAbility` 时克隆
+整份数据。两种容器的旧 `new(...)` 与字段级 getter 保留并委托给该值，新代码在已有完整数据时
+可使用 `from_data(...)` 和 `get_activation_data()`，避免拆开再组装。
+
+该类型由 `gameplay_abilities` 领域门面、GAS 聚合门面和 crate root 显式重导出，但不会加入
+精简 prelude。
 
 ### `AbilityActivationContext`
 
@@ -102,7 +127,6 @@ pub struct AbilityActivationContext {
     instigator: Entity,
     causer: Option<Entity>,
     source_snapshot: Option<AttributeSetSnapshot>,
-    target_data: Option<AbilityTargetData>,
     reason: AbilityActivationReason,
 }
 ```
@@ -115,7 +139,6 @@ pub struct AbilityActivationContext {
 | `with_instigator(entity)` | 指定实际发起者 |
 | `with_causer(Option<Entity>)` | 指定直接造成行为的物理实体 |
 | `with_source_snapshot(snapshot)` | 固定来源属性快照 |
-| `with_target_data(data)` | 附加确定有序的目标集合 |
 | `child_for_chained_ability(parent, handle)` | 继承上下文并推进技能链，原因改为 `Chained` |
 
 Cost、Cooldown、activation effects 和 Ability Task 完成动作都通过同一个 crate 内部转换
@@ -123,11 +146,17 @@ Cost、Cooldown、activation effects 和 Ability Task 完成动作都通过同�
 与来源快照在存在 `AbilityActivationContext` 时从中继承；独立 `commit_ability()` 没有激活
 上下文，因此使用默认 instigator 且不带 causer/快照。该函数是内部一致性边界，不是
 公共 API。
-消耗与冷却仍应用到技能 `source`。Target Data 存在时，`activation_effects` 会按“效果定义
-顺序，再按 Target Data 实体顺序”逐个应用；旧 `target: Entity` 继续表示首要目标。
+`source` 和目标不属于传播用的 `AbilityActivationContext`，而由
+`AbilityActivationData` 与 Context 组合。一次激活只携带一个
+`AbilityActivationTargets`：`single(entity)` 表示单目标，`acquired(target_data)` 表示抓取得到的
+有序多目标；后者在 Target Data 为空时返回 `AbilityActivationTargetsError::EmptyTargetData`。
+Request 与 Active Ability 都通过 `AbilityActivationData` 持有该值，startup/task 完成动作借用
+它，链式激活则用父数据中的 source、targets 与派生 Context 组装新的激活数据；不再同时维护
+独立 `target: Entity` 与 Context 内 Target Data 两份可能冲突的状态。
 
-`TargetingContinuation::ActivateAbility` 会把旧 `target` 设为 `primary_entity()`。直接调用
-`GameplayExecutionQueue::push_activation()` 不验证二者一致性，调用方需要自行保持一致。
+消耗与冷却仍应用到技能 `source`。`activation_effects` 统一按
+`AbilityActivationTargets::entities()` 的确定顺序逐个应用：single 产生一个实体，acquired 按
+Target Data 的 Hit 顺序产生实体。
 
 当前公共构造路径产生 `Direct`，链式 API 产生 `Chained`；`Input`、`TaskEvent` 和
 `GameplayEffect` 原因目前没有公共 Setter 或专用构造器。
@@ -159,7 +188,8 @@ chain ID。`next()` 拒绝重复 Handle，并限制深度不超过
 ```rust
 let chain = execution_queue.new_root_chain(handle);
 let context = AbilityActivationContext::direct(source, chain);
-execution_queue.push_activation(source, target, handle, context);
+let targets = AbilityActivationTargets::single(target);
+execution_queue.push_activation(source, targets, handle, context);
 ```
 
 请求会在当前 `FixedUpdate` 的 `GameplayResolve` 阶段与效果应用请求按跨类型 FIFO 结算。详细
@@ -170,7 +200,7 @@ execution_queue.push_activation(source, target, handle, context);
 ```rust
 pub fn try_activate_ability_by_handle(
     source: Entity,
-    target: Entity,
+    targets: impl Into<AbilityActivationTargets>,
     handle: AbilitySpecHandle,
     activation_context: AbilityActivationContext,
     params: &mut AbilitySystemParams,
@@ -217,13 +247,17 @@ pub type ActiveAbilityHandle = Entity;
 
 #[derive(Component, Clone)]
 pub struct ActiveGameplayAbility {
-    source: Entity,
     spec_handle: AbilitySpecHandle,
-    target: Entity,
+    activation_data: AbilityActivationData,
     status: AbilityActivationStatus,
-    activation_context: AbilityActivationContext,
 }
 ```
+
+`ActiveGameplayAbility::from_data(spec_handle, activation_data, status)` 接收已经捕获的数据；旧
+`new(source, spec_handle, targets, status, activation_context)` 保留为兼容便捷入口。
+`get_activation_data()` 返回完整值，`get_source()`、`get_targets()`、`get_target()` 和
+`get_activation_context()` 均委托给它。需要应用范围效果时使用 targets 的 `entities()`，避免
+在不同执行路径重新解释目标。
 
 ```text
 Active ──► Ending ──► Cleanup/despawn

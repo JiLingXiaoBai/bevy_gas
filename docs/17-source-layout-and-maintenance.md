@@ -82,6 +82,7 @@ src/
     ├── gameplay_abilities/
     │   ├── gameplay_ability.rs
     │   ├── gameplay_ability_spec.rs
+    │   ├── activation_data.rs
     │   ├── active_gameplay_ability.rs
     │   ├── active_gameplay_ability/
     │   │   ├── chain.rs
@@ -109,6 +110,7 @@ src/
     ├── gameplay_targeting.rs
     ├── gameplay_targeting/
     │   ├── ability_target_data.rs
+    │   ├── activation_targets.rs
     │   ├── targeting_definition.rs
     │   ├── acquisition.rs
     │   ├── targeting_queue.rs
@@ -201,11 +203,12 @@ commit 和生命周期编排的流程：
 | --- | --- |
 | `gameplay_ability.rs` | AbilityTags、startup task、cost/cooldown/activation Effect 定义 |
 | `gameplay_ability_spec.rs` | 授予 Handle、level、input ID/pressed 和 active count |
-| `active_gameplay_ability/{chain,context,state}.rs` | 链保护、激活上下文、统一 Ability → Effect payload 转换和活跃实例状态 |
-| `ability_task/context.rs` | 公开的 Task 共享 source/target/spec handle/level 执行上下文 |
+| `activation_data.rs` | 唯一组合 source、targets 与传播 context 的不可变激活值 |
+| `active_gameplay_ability/{chain,context,state}.rs` | 链保护、不含 source/目标数据的传播上下文、统一 Ability → Effect payload 转换，以及只持有 spec handle、共享激活数据和状态的活跃实例 |
+| `ability_task/context.rs` | 公开的 Task 共享 source/spec handle/level 轻量执行上下文；目标由父活跃实例持有 |
 | `ability_task/definition.rs` | Instant/WaitTicks 定义和完成动作定义 |
 | `ability_task/state.rs` | 运行时 Task Component 与 action-only 完成枚举 |
-| `ability_task/completion.rs` | 使用共享 context 向 Event/Effect/Ability 请求分派完成动作 |
+| `ability_task/completion.rs` | 使用轻量 context 与父 Active targets 向 Event/Effect/Ability 请求分派完成动作 |
 | `ability_task/ticking.rs` | Task 稳定推进与清理 |
 | `ability_system/component.rs` | ASC 规格存储和显式 `GameplayAbilitySystemBundle` |
 | `ability_system/params.rs` | `AbilitySystemParams` 和同 batch pending overlay |
@@ -221,17 +224,23 @@ commit 和生命周期编排的流程：
 | 文件 | 主要所有权 |
 | --- | --- |
 | `ability_target_data.rs` | 稳定排序的 Hit 与多目标结果 |
+| `activation_targets.rs` | single/acquired 唯一激活目标值、空数据错误和统一目标遍历 |
 | `targeting_definition.rs` | Targetable、合法操作管线和定义错误 |
 | `acquisition.rs` | 同步候选查询、选择、过滤、排序和限制 |
 | `targeting_queue/request.rs` | 请求输入、continuation、ID 和结果 Event |
 | `targeting_queue/queue.rs` | FIFO Resource 与入队 API |
-| `targeting_queue/processing.rs` | 整批抓取、continuation 和结果通知 |
-| `gameplay_execution/request.rs` | Ability/Effect 具体请求与统一枚举 |
-| `gameplay_execution/queue.rs` | 跨类型 FIFO 和 Ability chain ID 分配 |
+| `targeting_queue/processing.rs` | 整批抓取、抓取目标转换、continuation 便捷入队和结果通知 |
+| `gameplay_execution/request.rs` | 只以 handle + activation data 保存 Ability 请求的具体请求类型、Effect 请求与统一枚举 |
+| `gameplay_execution/queue.rs` | 跨类型 FIFO、便捷参数到 `AbilityActivationData` 的组装和 Ability chain ID 分配 |
 | `gameplay_execution/resolver.rs` | 完整 drain、逐请求 Requirement 收敛和 System 包装 |
 
 具体请求由 `gameplay_execution` 拥有。Ability System 和 Gameplay Effects 门面仅为兼容调用方
 重导出各自请求类型，不再保存重复请求文件。
+
+`AbilityActivationData` 由 `gameplay_abilities` 拥有，并由该领域门面、GAS 聚合门面和 crate root
+显式重导出；它是组合型生命周期数据，不进入精简 prelude。Targeting 的激活 continuation 在
+抓取前除 handle 外仍只保存 Context，获得非空 targets 后才把请求 source、targets 与 Context
+组装成完整数据。
 
 ## ECS 组合与依赖规则
 

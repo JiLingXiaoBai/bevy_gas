@@ -12,11 +12,12 @@ use bevy_tools::gameplay_tags::{
 };
 use bevy_tools::modifiers::{Modifier, ModifierMagnitude, ModifierOperation};
 use bevy_tools::{
-    AbilityActivationContext, AbilityChainContext, AbilitySystemComponent, AbilitySystemParams,
-    ActiveEffectHandle, ActiveGameplayEffects, GameplayAbilitySystemPlugin, apply_gameplay_effect,
-    cleanup_finished_abilities_system, process_gameplay_execution_queue_system,
-    tick_ability_tasks_system, tick_effect_duration_system, tick_effect_period_system,
-    try_activate_ability_by_handle, update_active_effect_tag_requirements_system,
+    AbilityActivationContext, AbilityActivationTargets, AbilityChainContext,
+    AbilitySystemComponent, AbilitySystemParams, ActiveEffectHandle, ActiveGameplayEffects,
+    GameplayAbilitySystemPlugin, apply_gameplay_effect, cleanup_finished_abilities_system,
+    process_gameplay_execution_queue_system, tick_ability_tasks_system,
+    tick_effect_duration_system, tick_effect_period_system, try_activate_ability_by_handle,
+    update_active_effect_tag_requirements_system,
 };
 use std::sync::Arc;
 
@@ -205,13 +206,19 @@ pub fn activate_ability_result(
 pub fn activate_ability_with_context(
     app: &mut App,
     source: Entity,
-    target: Entity,
+    targets: AbilityActivationTargets,
     handle: AbilitySpecHandle,
     context: AbilityActivationContext,
 ) -> Result<(), bevy_tools::AbilityActivationError> {
     app.world_mut()
         .run_system_once(move |mut params: AbilitySystemParams| {
-            try_activate_ability_by_handle(source, target, handle, context.clone(), &mut params)
+            try_activate_ability_by_handle(
+                source,
+                targets.clone(),
+                handle,
+                context.clone(),
+                &mut params,
+            )
         })
         .unwrap()
 }

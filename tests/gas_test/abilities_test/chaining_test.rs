@@ -199,7 +199,7 @@ fn chained_activation_inherits_context_and_activation_effects_use_payload() {
             .with_instigator(instigator)
             .with_causer(Some(causer))
             .with_source_snapshot(source_snapshot);
-    activate_ability_with_context(&mut app, source, target, first_handle, context).unwrap();
+    activate_ability_with_context(&mut app, source, target.into(), first_handle, context).unwrap();
     let first_active = active_ability_entity_for_spec(&mut app, first_handle).unwrap();
 
     run_ability_tasks(&mut app);

@@ -21,14 +21,12 @@ pub enum AbilityTaskOnFinished {
         /// Identifies the ability to activate.
         handle: AbilitySpecHandle,
     },
-    /// Applies an effect to the task context's fallback target.
+    /// Applies an effect to the activation's primary target.
     ApplyGameplayEffect {
         /// Defines the effect to apply.
         effect: Arc<GameplayEffect>,
     },
     /// Applies an effect to every captured activation target.
-    ///
-    /// The task context's target is used when the activation has no target data.
     ApplyGameplayEffectToTargets {
         /// Defines the effect to apply.
         effect: Arc<GameplayEffect>,

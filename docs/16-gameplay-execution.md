@@ -35,27 +35,51 @@ src/gas/
 
 ## 请求类型
 
+### 共享的 `AbilityActivationData`
+
+Ability 领域先用一个不可变值组合一次激活的完整公共数据：
+
+```rust
+pub struct AbilityActivationData {
+    source: Entity,
+    targets: AbilityActivationTargets,
+    context: AbilityActivationContext,
+}
+```
+
+`source` 是技能所有者；`targets` 是本次激活唯一的目标值；Context 只负责技能链、Instigator、
+Causer、来源快照和激活原因。该边界让请求态与活跃态共享同一种语义，而不各自重复三组字段。
+`AbilityActivationData::new(source, targets, context)` 接收
+`impl Into<AbilityActivationTargets>`，并通过 `get_source()`、`get_targets()`、`get_target()` 和
+`get_context()` 只读访问。它由 Ability 领域、GAS 聚合门面与 crate root 公开，不进入精简
+prelude。
+
 ### `AbilityActivationRequest`
 
 捕获一次技能激活所需的稳定输入：
 
 ```rust
 pub struct AbilityActivationRequest {
-    source: Entity,
-    target: Entity,
     handle: AbilitySpecHandle,
-    context: AbilityActivationContext,
+    activation_data: AbilityActivationData,
 }
 ```
 
-`source` 是技能所有者，`target` 是兼容单目标 API 的旧字段；完整多目标结果位于
-`AbilityActivationContext::get_target_data()`。Targeting continuation 会把它设为
-`primary_entity()`；直接入队时不做一致性验证，调用方必须自行保持两者一致。
+其中的 targets 可由 `single(entity)` 创建，也可由 `acquired(target_data)` 创建。后者以
+`Result` 返回并用
+`AbilityActivationTargetsError::EmptyTargetData` 拒绝空 Target Data，因此运行时不会同时保存一个
+独立 Entity 和一份可能不一致的 Target Data。
+
+`AbilityActivationRequest::from_data(handle, activation_data)` 在已有完整值时直接转移所有权；
+`get_activation_data()` 返回该值。兼容的 `AbilityActivationRequest::new()` 与入队/同步激活入口接收
+`impl Into<AbilityActivationTargets>`，所以单实体调用方可以继续直接传 `Entity`；Target Data 因为
+转换可能失败，必须先调用 `acquired()` 或 `TryFrom`。`get_targets()` 返回完整选择，兼容
+`get_source()`、`get_target()` 和 `get_context()` 都委托给 activation data，不会重新保存字段。
 
 这是整个激活流程的唯一完整输入类型：队列 resolver 直接把请求移动到 Ability System，
 独立同步入口也会先把参数归一为同一请求。校验、commit 和 ASC startup 共享其中的数据，
-不会再复制成字段相同的内部 Start Context；只有创建 `ActiveGameplayAbility` 时才克隆需要长期
-保存的 `AbilityActivationContext`。
+不会再复制成字段相同的内部 Start Context；创建 `ActiveGameplayAbility` 时才克隆需要长期
+保存的整份 `AbilityActivationData`。
 
 ### `GameplayEffectApplicationRequest`
 
@@ -99,13 +123,17 @@ pub struct GameplayExecutionQueue {
 | 方法 | 作用 |
 | ---- | ---- |
 | `push(request)` | 追加任意统一请求 |
-| `push_activation(source, target, handle, context)` | 追加技能激活 |
-| `push_chained_activation(...) -> Result` | 从父上下文派生并追加链式激活 |
+| `push_activation(source, targets: impl Into<AbilityActivationTargets>, handle, context)` | 追加携带唯一目标值的技能激活 |
+| `push_chained_activation(source, targets: impl Into<...>, ...) -> Result` | 推进父链并携带同一目标值追加链式激活 |
 | `new_root_chain(handle)` | 分配队列局部 chain ID 并创建根链上下文 |
 | `push_application(target, effect, payload)` | 追加效果应用 |
 | `pop()` | 取出最早请求 |
 | `len()` / `is_empty()` | 查询待处理数量或空状态 |
 | `clear()` | 丢弃所有待处理请求 |
+
+已有 `AbilityActivationData` 时，使用
+`push(AbilityActivationRequest::from_data(handle, activation_data))` 转移所有权；
+`push_activation(...)` 是保留旧参数形态的便捷入口，会在内部构造同样的数据值。
 
 Gameplay 系统通常只应生产请求。`pop()` 和 `clear()` 主要用于受控工具、测试或自定义调度；
 运行时存在多个消费者会破坏统一顺序。
@@ -170,7 +198,8 @@ fn queue_attack(
 ) {
     let chain = queue.new_root_chain(source.ability);
     let context = AbilityActivationContext::direct(source.entity, chain);
-    queue.push_activation(source.entity, source.target, source.ability, context);
+    let targets = AbilityActivationTargets::single(source.target);
+    queue.push_activation(source.entity, targets, source.ability, context);
 }
 
 app.add_systems(

@@ -1,7 +1,6 @@
 use super::{AbilityChainContext, AbilityChainError, AbilitySpecHandle, ActiveAbilityHandle};
 use crate::attributes::AttributeSetSnapshot;
 use crate::gameplay_effects::EffectPayload;
-use crate::gameplay_targeting::AbilityTargetData;
 use crate::unique_names::UniqueName;
 use bevy::prelude::Entity;
 
@@ -20,7 +19,6 @@ pub struct AbilityActivationContext {
     instigator: Entity,
     causer: Option<Entity>,
     source_snapshot: Option<AttributeSetSnapshot>,
-    target_data: Option<AbilityTargetData>,
     reason: AbilityActivationReason,
 }
 
@@ -32,7 +30,6 @@ impl AbilityActivationContext {
             instigator: source,
             causer: None,
             source_snapshot: None,
-            target_data: None,
             reason: AbilityActivationReason::Direct,
         }
     }
@@ -54,12 +51,6 @@ impl AbilityActivationContext {
         self
     }
 
-    /// Attaches the target data acquired for this activation.
-    pub fn with_target_data(mut self, target_data: AbilityTargetData) -> Self {
-        self.target_data = Some(target_data);
-        self
-    }
-
     pub fn child_for_chained_ability(
         &self,
         parent_ability: ActiveAbilityHandle,
@@ -74,7 +65,6 @@ impl AbilityActivationContext {
             instigator: self.instigator,
             causer: self.causer,
             source_snapshot: self.source_snapshot.clone(),
-            target_data: self.target_data.clone(),
             reason: AbilityActivationReason::Chained { parent_ability },
         })
     }
@@ -94,11 +84,6 @@ impl AbilityActivationContext {
 
     pub fn get_source_snapshot(&self) -> Option<&AttributeSetSnapshot> {
         self.source_snapshot.as_ref()
-    }
-
-    /// Returns target data acquired before or during this activation.
-    pub fn get_target_data(&self) -> Option<&AbilityTargetData> {
-        self.target_data.as_ref()
     }
 
     pub fn get_reason(&self) -> AbilityActivationReason {

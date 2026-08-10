@@ -32,12 +32,10 @@ impl AbilitySystemComponent {
             spec.increment_active_count();
         }
 
-        let active_ability = ActiveGameplayAbility::new(
-            request.get_source(),
+        let active_ability = ActiveGameplayAbility::from_data(
             request.get_handle(),
-            request.get_target(),
+            request.get_activation_data().clone(),
             AbilityActivationStatus::Active,
-            request.get_context().clone(),
         );
         let mut entity_commands = commands.spawn(active_ability.clone());
         let active_handle = entity_commands.id();
@@ -63,7 +61,6 @@ pub(super) fn start_startup_ability_tasks(
 ) -> bool {
     let task_context = AbilityTaskExecutionContext::new(
         context.request.get_source(),
-        context.request.get_target(),
         context.request.get_handle(),
         context.level,
     );
@@ -75,6 +72,7 @@ pub(super) fn start_startup_ability_tasks(
                     context.active_handle,
                     task_context,
                     on_finished.instantiate(),
+                    context.request.get_targets(),
                     context.request.get_context(),
                     &mut params.commands,
                     execution_queue,

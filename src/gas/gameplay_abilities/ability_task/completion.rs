@@ -3,6 +3,7 @@ use super::{
     AbilityTaskOnFinished, ActiveAbilityHandle, effect_payload_from_ability_context,
 };
 use crate::gameplay_execution::GameplayExecutionQueue;
+use crate::gameplay_targeting::AbilityActivationTargets;
 use crate::unique_names::UniqueName;
 use bevy::prelude::*;
 
@@ -10,6 +11,7 @@ use bevy::prelude::*;
 #[derive(Event, Clone)]
 pub struct AbilityTaskEvent {
     context: AbilityTaskExecutionContext,
+    targets: AbilityActivationTargets,
     active_ability: ActiveAbilityHandle,
     event_id: UniqueName,
 }
@@ -18,11 +20,13 @@ impl AbilityTaskEvent {
     /// Creates an ability task event from the task's shared execution context.
     pub fn new(
         context: AbilityTaskExecutionContext,
+        targets: AbilityActivationTargets,
         active_ability: ActiveAbilityHandle,
         event_id: UniqueName,
     ) -> Self {
         Self {
             context,
+            targets,
             active_ability,
             event_id,
         }
@@ -38,9 +42,14 @@ impl AbilityTaskEvent {
         self.context.get_source()
     }
 
-    /// Returns the task's captured fallback target.
+    /// Returns the complete target selection inherited from the ability activation.
+    pub fn get_targets(&self) -> &AbilityActivationTargets {
+        &self.targets
+    }
+
+    /// Returns the primary target inherited from the ability activation.
     pub fn get_target(&self) -> Entity {
-        self.context.get_target()
+        self.targets.get_primary_target()
     }
 
     /// Returns the active ability instance that owned the task.
@@ -73,6 +82,7 @@ pub(crate) fn dispatch_ability_task_completion(
     active_ability: ActiveAbilityHandle,
     context: AbilityTaskExecutionContext,
     on_finished: AbilityTaskOnFinished,
+    targets: &AbilityActivationTargets,
     active_context: &AbilityActivationContext,
     commands: &mut Commands,
     execution_queue: &mut GameplayExecutionQueue,
@@ -81,12 +91,17 @@ pub(crate) fn dispatch_ability_task_completion(
         AbilityTaskOnFinished::None => {}
         AbilityTaskOnFinished::EndAbility => return AbilityTaskCompletion::EndAbility,
         AbilityTaskOnFinished::EmitEvent { event_id } => {
-            commands.trigger(AbilityTaskEvent::new(context, active_ability, event_id));
+            commands.trigger(AbilityTaskEvent::new(
+                context,
+                targets.clone(),
+                active_ability,
+                event_id,
+            ));
         }
         AbilityTaskOnFinished::ActivateAbility { handle } => {
             if let Err(error) = execution_queue.push_chained_activation(
                 context.get_source(),
-                context.get_target(),
+                targets.clone(),
                 handle,
                 active_ability,
                 active_context,
@@ -100,7 +115,7 @@ pub(crate) fn dispatch_ability_task_completion(
                 context.get_level(),
                 Some(active_context),
             );
-            execution_queue.push_application(context.get_target(), effect, payload);
+            execution_queue.push_application(targets.get_primary_target(), effect, payload);
         }
         AbilityTaskOnFinished::ApplyGameplayEffectToTargets { effect } => {
             let payload = effect_payload_from_ability_context(
@@ -108,12 +123,8 @@ pub(crate) fn dispatch_ability_task_completion(
                 context.get_level(),
                 Some(active_context),
             );
-            if let Some(target_data) = active_context.get_target_data() {
-                for target in target_data.entities() {
-                    execution_queue.push_application(target, effect.clone(), payload.clone());
-                }
-            } else {
-                execution_queue.push_application(context.get_target(), effect, payload);
+            for target in targets.entities() {
+                execution_queue.push_application(target, effect.clone(), payload.clone());
             }
         }
     }

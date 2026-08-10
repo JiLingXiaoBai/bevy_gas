@@ -63,14 +63,16 @@ pub enum AbilityTaskOnFinishedDef {
 | `None` | 不产生副作用 |
 | `EndAbility` | 请求把父技能状态设为 `Ending` |
 | `EmitEvent` | 通过 `Commands::trigger()` 触发 `AbilityTaskEvent` Observer Event |
-| `ApplyGameplayEffectToTarget` | 向统一 Gameplay FIFO 追加一个效果应用请求 |
-| `ApplyGameplayEffectToTargets` | 有 Target Data 时按其顺序追加多个请求，否则回退到旧单目标 |
+| `ApplyGameplayEffectToTarget` | 对共享目标值的主目标追加一个效果应用请求 |
+| `ApplyGameplayEffectToTargets` | 按共享目标值的确定顺序追加一个或多个效果应用请求 |
 | `ActivateAbility` | 从父上下文派生技能链并向统一 FIFO 追加激活请求 |
 
-任务定义实例化时，source、target、spec handle 和 level 只存入一个
-`AbilityTaskExecutionContext`。`AbilityTaskOnFinished` 仅保存动作专属数据，例如 event ID、
-Ability handle 或 Effect `Arc`。效果请求还会从父技能激活上下文继承 Instigator、
-Causer 与来源属性快照。
+任务定义实例化时，source、spec handle 和 level 只存入一个 `AbilityTaskExecutionContext`。
+`AbilityTaskOnFinished` 仅保存动作专属数据，例如 event ID、Ability handle 或 Effect `Arc`。
+Task 实例不持有完整 `AbilityActivationTargets`：startup Instant 完成动作从 Request 的
+`AbilityActivationData` 借用，跨 tick task 完成动作从父 `ActiveGameplayAbility` 的同类数据
+借用，避免每个 task 再保存一份可能包含 `Vec` 的抓取数据。效果请求还会从其中的激活上下文
+继承 Instigator、Causer 与来源属性快照。
 
 ## 运行时状态
 
@@ -78,7 +80,6 @@ Causer 与来源属性快照。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AbilityTaskExecutionContext {
     source: Entity,
-    target: Entity,
     spec_handle: AbilitySpecHandle,
     level: u32,
 }
@@ -97,8 +98,10 @@ pub enum AbilityTaskKind {
 }
 ```
 
-`AbilityTaskExecutionContext::new(source, target, spec_handle, level)` 建立一份可复用的执行值；
-`get_source()`、`get_target()`、`get_spec_handle()` 和 `get_level()` 提供只读访问。
+`AbilityTaskExecutionContext::new(source, spec_handle, level)` 建立一份轻量、可复制的执行值；
+`get_source()`、`get_spec_handle()` 和 `get_level()` 提供只读访问。目标不属于该 Context；startup
+直接借用 Request activation data 的 targets，跨 tick task 则在完成时从父 Active Ability 的
+activation data 读取同一 targets。
 
 ```rust
 pub enum AbilityTaskOnFinished {
@@ -111,7 +114,7 @@ pub enum AbilityTaskOnFinished {
 }
 ```
 
-运行时枚举是 action-only；不得重复携带 source、target、spec handle 或 level。
+运行时枚举是 action-only；不得重复携带 source、targets、spec handle 或 level。
 
 公共构造与查询 API：
 
@@ -164,13 +167,16 @@ startup definitions 按定义顺序处理。遇到 `Instant EndAbility` 后停�
 #[derive(Event, Clone)]
 pub struct AbilityTaskEvent {
     context: AbilityTaskExecutionContext,
+    targets: AbilityActivationTargets,
     active_ability: ActiveAbilityHandle,
     event_id: UniqueName,
 }
 ```
 
-`get_context()` 返回共享执行上下文；兼容的 source、target、spec handle 和 level getter 仍保留，
-但都委托给 context，不再复制数据。
+`get_context()` 返回轻量执行上下文；`get_targets()` 返回事件在触发时从父 Active Ability 的
+`AbilityActivationData` 克隆出的完整目标值，`get_target()` 委托给其主目标。source、spec handle
+和 level getter 委托给 task context。Event 必须拥有 targets，因为 Observer 运行时原任务或
+父技能可能已进入 deferred 清理；它不会为了复用而持有整份激活数据。
 
 `EmitEvent` 使用 `Commands::trigger()`，应通过 `On<AbilityTaskEvent>` Observer 消费，而不是
 `EventReader`。Observer 的回写时机取决于事件产生阶段：
@@ -214,7 +220,7 @@ let ability = Arc::new(GameplayAbility::new(
 游戏层手动创建运行时任务时，应先组合共享上下文：
 
 ```rust
-let context = AbilityTaskExecutionContext::new(source, target, spec_handle, level);
+let context = AbilityTaskExecutionContext::new(source, spec_handle, level);
 
 let mut task_commands = commands.spawn(AbilityTask::wait_ticks(
     active_ability,

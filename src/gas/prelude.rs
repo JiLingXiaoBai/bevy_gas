@@ -19,7 +19,7 @@ pub use super::gameplay_tags::{
     GameplayTag, GameplayTagContainer, GameplayTagRegister, TagRequirements,
 };
 pub use super::gameplay_targeting::{
-    AbilityTargetData, TargetingDefinition, TargetingRequestQueue,
+    AbilityActivationTargets, AbilityTargetData, TargetingDefinition, TargetingRequestQueue,
 };
 pub use super::modifiers::{
     Modifier, ModifierEvaluationContext, ModifierMagnitude, ModifierMagnitudeCalculation,

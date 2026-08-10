@@ -5,17 +5,52 @@ use crate::support_test::{
 use bevy::ecs::system::RunSystemOnce;
 use bevy::prelude::*;
 use bevy_tools::{
-    AbilityActivationContext, AbilitySystemComponent, AbilityTags, AbilityTargetData,
-    AbilityTargetHit, AbilityTaskDef, AbilityTaskOnFinishedDef, EffectDurationTicks,
-    GameplayAbility, GameplayEffect, GameplayTagContainer, StackingPolicy, TagRequirements,
-    Targetable, TargetingCandidateQuery, TargetingContinuation, TargetingDefinition,
-    TargetingDefinitionError, TargetingError, TargetingInput, TargetingOperation,
-    TargetingRequestQueue, TargetingSortOrder, acquire_targets,
+    AbilityActivationContext, AbilityActivationTargets, AbilityActivationTargetsError,
+    AbilitySystemComponent, AbilityTags, AbilityTargetData, AbilityTargetHit, AbilityTaskDef,
+    AbilityTaskOnFinishedDef, EffectDurationTicks, GameplayAbility, GameplayEffect,
+    GameplayTagContainer, StackingPolicy, TagRequirements, Targetable, TargetingCandidateQuery,
+    TargetingContinuation, TargetingDefinition, TargetingDefinitionError, TargetingError,
+    TargetingInput, TargetingOperation, TargetingRequestQueue, TargetingSortOrder, acquire_targets,
 };
 use std::sync::Arc;
 
 fn targeting_definition(operations: Vec<TargetingOperation>) -> Arc<TargetingDefinition> {
     Arc::new(TargetingDefinition::new(operations).unwrap())
+}
+
+#[test]
+fn activation_targets_reject_empty_acquired_target_data() {
+    let empty = AbilityTargetData::new(Vec3::ZERO, Vec::new());
+
+    assert_eq!(
+        AbilityActivationTargets::acquired(empty),
+        Err(AbilityActivationTargetsError::EmptyTargetData)
+    );
+}
+
+#[test]
+fn activation_targets_expose_one_canonical_primary_and_ordered_entities() {
+    let mut world = World::new();
+    let first = world.spawn_empty().id();
+    let second = world.spawn_empty().id();
+    let single = AbilityActivationTargets::single(first);
+
+    assert_eq!(single.get_primary_target(), first);
+    assert_eq!(single.entities().collect::<Vec<_>>(), vec![first]);
+    assert!(single.get_target_data().is_none());
+
+    let target_data = AbilityTargetData::new(
+        Vec3::ZERO,
+        vec![
+            AbilityTargetHit::new(first, Vec3::X, None),
+            AbilityTargetHit::new(second, Vec3::Y, Some(Vec3::Z)),
+        ],
+    );
+    let acquired = AbilityActivationTargets::acquired(target_data.clone()).unwrap();
+
+    assert_eq!(acquired.get_primary_target(), first);
+    assert_eq!(acquired.entities().collect::<Vec<_>>(), vec![first, second]);
+    assert_eq!(acquired.get_target_data(), Some(&target_data));
 }
 
 fn assert_approx_eq(actual: f32, expected: f32) {
@@ -235,18 +270,21 @@ fn targeting_queue_activates_ability_with_complete_target_data() {
 
     run_fixed_update(&mut app);
 
-    let target_data = app
+    let targets = app
         .world_mut()
         .run_system_once(move |query: Query<&bevy_tools::ActiveGameplayAbility>| {
             query
                 .iter()
                 .find(|active| active.get_spec_handle() == handle)
-                .and_then(|active| active.get_activation_context().get_target_data())
-                .cloned()
+                .map(|active| active.get_targets().clone())
         })
         .unwrap()
         .unwrap();
-    assert_eq!(target_data.primary_entity(), Some(target));
+    assert_eq!(targets.get_primary_target(), target);
+    assert_eq!(
+        targets.get_target_data().map(AbilityTargetData::get_hits),
+        Some(&[AbilityTargetHit::new(target, Vec3::X, None)][..])
+    );
 }
 
 #[test]
@@ -383,10 +421,10 @@ fn activation_effects_apply_to_every_entity_in_target_data() {
         ],
     );
     let context =
-        AbilityActivationContext::direct(source, bevy_tools::AbilityChainContext::root(handle, 1))
-            .with_target_data(target_data);
+        AbilityActivationContext::direct(source, bevy_tools::AbilityChainContext::root(handle, 1));
+    let targets = AbilityActivationTargets::acquired(target_data).unwrap();
 
-    activate_ability_with_context(&mut app, source, first, handle, context).unwrap();
+    activate_ability_with_context(&mut app, source, targets, handle, context).unwrap();
 
     assert_approx_eq(current_value(&mut app, first, health), 90.0);
     assert_approx_eq(current_value(&mut app, second, health), 90.0);

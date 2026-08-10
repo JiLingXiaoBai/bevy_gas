@@ -11,10 +11,12 @@
 use bevy::prelude::*;
 use bevy_tools::prelude::*;
 use bevy_tools::gas::gameplay_abilities::{
+    AbilityActivationData,
     AbilityTaskDef,
     AbilityTaskEvent,
     AbilityTaskOnFinishedDef,
 };
+use bevy_tools::gas::gameplay_execution::AbilityActivationRequest;
 use bevy_tools::gas::gameplay_effects::{
     EffectPeriodTicks,
     GameplayEffectImmunityQuery,
@@ -78,8 +80,10 @@ fn enqueue_direct_activation(
     let chain = queue.new_root_chain(handle);
     let context = AbilityActivationContext::direct(source, chain)
         .with_source_snapshot(snapshot);
+    let targets = AbilityActivationTargets::single(target);
 
-    queue.push_activation(source, target, handle, context);
+    let activation_data = AbilityActivationData::new(source, targets, context);
+    queue.push(AbilityActivationRequest::from_data(handle, activation_data));
 }
 ```
 
@@ -386,5 +390,8 @@ fn removal_effect_tags(
 - 先注册 tag/attribute，再构造长期复用的 `Arc<GameplayEffect>` 与
   `Arc<GameplayAbility>`，避免把注册和热路径执行混在一起。
 - 同一效果定义是否可堆叠通过 `Arc::ptr_eq` 判断；需要共享堆叠身份时必须复用同一个 `Arc`。
-- 直接效果应用使用 `GameplayExecutionQueue::push_application()` 和 `EffectPayload`；能力激活使用
-  `new_root_chain()`、`AbilityActivationContext` 与 `push_activation()`。
+- 直接效果应用使用 `GameplayExecutionQueue::push_application()` 和 `EffectPayload`；能力激活以
+  `AbilityActivationData` 唯一组合 source、`AbilityActivationTargets` 与
+  `AbilityActivationContext`，再通过 `AbilityActivationRequest::from_data()` 入队。兼容的
+  `push_activation()` 会完成相同组装。单目标使用 `single(entity)`；抓取结果必须通过会拒绝空
+  数据的 `acquired(target_data)` 转换。

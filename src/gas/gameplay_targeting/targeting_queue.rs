@@ -1,6 +1,6 @@
 use super::{
-    AbilityTargetData, TargetingCandidateQuery, TargetingDefinition, TargetingError,
-    acquire_targets,
+    AbilityActivationTargets, AbilityTargetData, TargetingCandidateQuery, TargetingDefinition,
+    TargetingError, acquire_targets,
 };
 use crate::gameplay_abilities::{AbilityActivationContext, AbilitySpecHandle};
 use crate::gameplay_execution::GameplayExecutionQueue;

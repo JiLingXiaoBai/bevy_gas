@@ -25,11 +25,11 @@ pub use attributes::{
     HOT_ATTRIBUTE_SET_SIZE, default_executor, recalculate_attribute_sets_system,
 };
 pub use gameplay_abilities::{
-    AbilityActivationContext, AbilityActivationReason, AbilityActivationStatus,
-    AbilityChainContext, AbilityChainError, AbilitySpecHandle, AbilityTags, AbilityTask,
-    AbilityTaskDef, AbilityTaskEvent, AbilityTaskExecutionContext, AbilityTaskKind,
-    AbilityTaskOnFinished, AbilityTaskOnFinishedDef, ActiveAbilityHandle, ActiveGameplayAbility,
-    GameplayAbility, GameplayAbilitySpec, tick_ability_tasks_system,
+    AbilityActivationContext, AbilityActivationData, AbilityActivationReason,
+    AbilityActivationStatus, AbilityChainContext, AbilityChainError, AbilitySpecHandle,
+    AbilityTags, AbilityTask, AbilityTaskDef, AbilityTaskEvent, AbilityTaskExecutionContext,
+    AbilityTaskKind, AbilityTaskOnFinished, AbilityTaskOnFinishedDef, ActiveAbilityHandle,
+    ActiveGameplayAbility, GameplayAbility, GameplayAbilitySpec, tick_ability_tasks_system,
 };
 pub use gameplay_effects::{
     ActiveEffectDurationTicks, ActiveEffectHandle, ActiveEffectPeriodTicks, ActiveGameplayEffect,
@@ -55,11 +55,11 @@ pub use gameplay_tags::{
     TagRequirements, add_bit_with_tag, tag_bits_from_tags, tag_bits_from_tags_with_manager,
 };
 pub use gameplay_targeting::{
-    AbilityTargetData, AbilityTargetHit, Targetable, TargetingCandidateQuery,
-    TargetingContinuation, TargetingDefinition, TargetingDefinitionError, TargetingError,
-    TargetingInput, TargetingOperation, TargetingRequestId, TargetingRequestQueue,
-    TargetingResultEvent, TargetingSortOrder, acquire_targets,
-    process_targeting_request_queue_system, targeting_request_queue_has_work,
+    AbilityActivationTargets, AbilityActivationTargetsError, AbilityTargetData, AbilityTargetHit,
+    Targetable, TargetingCandidateQuery, TargetingContinuation, TargetingDefinition,
+    TargetingDefinitionError, TargetingError, TargetingInput, TargetingOperation,
+    TargetingRequestId, TargetingRequestQueue, TargetingResultEvent, TargetingSortOrder,
+    acquire_targets, process_targeting_request_queue_system, targeting_request_queue_has_work,
 };
 pub use modifiers::{
     AppliedModifier, Modifier, ModifierEvaluationContext, ModifierMagnitude,

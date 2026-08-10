@@ -4,6 +4,7 @@
 //! activation and commit orchestration is owned by the ability-system module.
 
 mod ability_task;
+mod activation_data;
 mod active_gameplay_ability;
 mod gameplay_ability;
 mod gameplay_ability_spec;
@@ -13,6 +14,7 @@ pub use ability_task::{
     AbilityTaskOnFinished, AbilityTaskOnFinishedDef, tick_ability_tasks_system,
 };
 pub(crate) use ability_task::{AbilityTaskCompletion, dispatch_ability_task_completion};
+pub use activation_data::AbilityActivationData;
 pub(crate) use active_gameplay_ability::effect_payload_from_ability_context;
 pub use active_gameplay_ability::{
     AbilityActivationContext, AbilityActivationReason, AbilityActivationStatus,

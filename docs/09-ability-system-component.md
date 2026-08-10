@@ -147,7 +147,7 @@ pub struct AbilitySystemParams<'w, 's> {
 ```rust
 pub fn try_activate_ability_by_handle(
     source: Entity,
-    target: Entity,
+    targets: impl Into<AbilityActivationTargets>,
     handle: AbilitySpecHandle,
     activation_context: AbilityActivationContext,
     params: &mut AbilitySystemParams,
@@ -173,7 +173,8 @@ pub fn can_activate_ability(
 该函数只检查标签/Cooldown 与数值 Cost，不检查技能是否已授予、Handle、技能链、多实例、取消
 和 startup tasks，因此不是最终授权。Cost 计算上下文使用传入 `target`，但实际 Commit 把 Cost
 应用到 `source`。来源缺少 `GameplayTagContainer` 时，required、blocked 和 cooldown tag
-检查会跳过。
+检查会跳过。这里的 `target` 只是独立 Cost 预检的 Modifier 计算输入，不会创建激活请求，也不
+构成第二份 `AbilityActivationTargets`。
 
 ### 独立 Commit
 
@@ -218,11 +219,15 @@ pub fn cancel_ability(
 
 启动技能时，ASC 直接借用经过校验的 `AbilityActivationRequest`，写入阻止标签、递增规格
 `active_count`，并通过 `Commands` 生成 `ActiveGameplayAbility`。队列与同步入口使用同一个
-请求类型，不再维护字段重复的内部 Start Context。结束路径需要对称移除阻止标签和递减计数。
+请求类型；Request 只保存 handle 和 `AbilityActivationData`，Active Ability 只保存 spec handle、
+同类数据和状态，不再重复铺开 source、targets 与 context 字段。创建 Active runtime 时克隆
+整份激活数据，结束路径需要对称移除阻止标签和递减计数。
 
 私有 `StartupAbilityTaskContext` 仅保存 active handle、`&AbilityActivationRequest` 和 level。
-source、target、spec handle 与 activation context 直接从请求读取；启动函数只创建一次
-`AbilityTaskExecutionContext`，并在同一激活的所有 sibling startup task 间复用。
+source、targets 与 activation context 通过请求中的 `AbilityActivationData` 读取，spec handle
+直接从请求读取；启动函数只创建一次不含目标的轻量 `AbilityTaskExecutionContext`，并在同一
+激活的所有 sibling startup task 间复用。Instant 完成分派直接借用激活数据中的 targets；跨
+tick task 完成时从父 `ActiveGameplayAbility` 的激活数据读取同一值。
 
 `cleanup_finished_abilities_system` 位于 `GameplayAbilitySystemSet::Cleanup`：
 
@@ -271,7 +276,8 @@ fn queue_cast(
 ) {
     let chain = queue.new_root_chain(cast.handle);
     let context = AbilityActivationContext::direct(cast.source, chain);
-    queue.push_activation(cast.source, cast.target, cast.handle, context);
+    let targets = AbilityActivationTargets::single(cast.target);
+    queue.push_activation(cast.source, targets, cast.handle, context);
 }
 
 app.add_systems(

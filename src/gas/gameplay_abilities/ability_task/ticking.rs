@@ -18,7 +18,7 @@ pub fn tick_ability_tasks_system(
     task_entities.sort_by_key(|entity| entity.to_bits());
 
     for task_entity in task_entities {
-        let (active_handle, task_context, active_context, on_finished) = {
+        let (active_handle, completion) = {
             let Ok((_, mut task)) = task_query.get_mut(task_entity) else {
                 continue;
             };
@@ -28,7 +28,6 @@ pub fn tick_ability_tasks_system(
             };
 
             let active_status = active_ability.get_status();
-            let active_context = active_ability.get_activation_context().clone();
 
             if !matches!(active_status, AbilityActivationStatus::Active) {
                 commands.entity(task_entity).despawn();
@@ -39,25 +38,21 @@ pub fn tick_ability_tasks_system(
                 continue;
             }
 
-            (
-                task.get_active_ability(),
-                *task.get_context(),
-                active_context,
-                task.get_on_finished().clone(),
-            )
-        };
-
-        if matches!(
-            dispatch_ability_task_completion(
+            let active_handle = task.get_active_ability();
+            let completion = dispatch_ability_task_completion(
                 active_handle,
-                task_context,
-                on_finished,
-                &active_context,
+                *task.get_context(),
+                task.get_on_finished().clone(),
+                active_ability.get_targets(),
+                active_ability.get_activation_context(),
                 &mut commands,
                 &mut execution_queue,
-            ),
-            AbilityTaskCompletion::EndAbility
-        ) && let Ok(mut active_ability) = active_ability_query.get_mut(active_handle)
+            );
+            (active_handle, completion)
+        };
+
+        if matches!(completion, AbilityTaskCompletion::EndAbility)
+            && let Ok(mut active_ability) = active_ability_query.get_mut(active_handle)
         {
             active_ability.set_status(AbilityActivationStatus::Ending);
         }

@@ -1,6 +1,6 @@
 use super::{
-    GameplayExecutionQueue, TargetingCandidateQuery, TargetingContinuation, TargetingRequestQueue,
-    TargetingResultEvent, acquire_targets,
+    AbilityActivationTargets, GameplayExecutionQueue, TargetingCandidateQuery,
+    TargetingContinuation, TargetingRequestQueue, TargetingResultEvent, acquire_targets,
 };
 use bevy::prelude::*;
 
@@ -17,13 +17,14 @@ pub fn process_targeting_request_queue_system(
         if let Ok(target_data) = &result
             && let TargetingContinuation::ActivateAbility { handle, context } = request.continuation
         {
-            let target = target_data.primary_entity().unwrap_or(request.source);
-            execution_queue.push_activation(
-                request.source,
-                target,
-                handle,
-                context.with_target_data(target_data.clone()),
-            );
+            match AbilityActivationTargets::acquired(target_data.clone()) {
+                Ok(targets) => {
+                    execution_queue.push_activation(request.source, targets, handle, *context);
+                }
+                Err(error) => {
+                    error!("targeting produced invalid ability activation targets: {error}");
+                }
+            }
         }
 
         commands.trigger(TargetingResultEvent::new(

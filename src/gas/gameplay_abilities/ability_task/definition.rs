@@ -18,14 +18,12 @@ pub enum AbilityTaskOnFinishedDef {
         /// Identifies the emitted event.
         event_id: UniqueName,
     },
-    /// Applies an effect to the task context's fallback target.
+    /// Applies an effect to the activation's primary target.
     ApplyGameplayEffectToTarget {
         /// Defines the effect to apply.
         effect: Arc<GameplayEffect>,
     },
-    /// Applies an effect to every entity in the activation target data.
-    ///
-    /// Falls back to the ability's legacy single target when no target data is attached.
+    /// Applies an effect to every captured activation target.
     ApplyGameplayEffectToTargets {
         /// Defines the effect to apply.
         effect: Arc<GameplayEffect>,

@@ -4,6 +4,7 @@ use crate::gameplay_abilities::{
     ActiveAbilityHandle,
 };
 use crate::gameplay_effects::{EffectPayload, GameplayEffect};
+use crate::gameplay_targeting::AbilityActivationTargets;
 use bevy::prelude::*;
 use std::collections::VecDeque;
 use std::sync::Arc;
@@ -34,17 +35,17 @@ impl GameplayExecutionQueue {
         self.requests.push_back(request.into());
     }
 
-    /// Appends an ability activation for `handle` from `source` against `target`, preserving
+    /// Appends an ability activation for `handle` from `source` against `targets`, preserving
     /// the supplied activation `context`.
     pub fn push_activation(
         &mut self,
         source: Entity,
-        target: Entity,
+        targets: impl Into<AbilityActivationTargets>,
         handle: AbilitySpecHandle,
         context: AbilityActivationContext,
     ) {
         self.push(AbilityActivationRequest::new(
-            source, target, handle, context,
+            source, targets, handle, context,
         ));
     }
 
@@ -57,14 +58,14 @@ impl GameplayExecutionQueue {
     pub fn push_chained_activation(
         &mut self,
         source: Entity,
-        target: Entity,
+        targets: impl Into<AbilityActivationTargets>,
         handle: AbilitySpecHandle,
         parent_ability: ActiveAbilityHandle,
         parent_context: &AbilityActivationContext,
     ) -> Result<(), AbilityChainError> {
         let context = parent_context.child_for_chained_ability(parent_ability, handle)?;
         self.push(AbilityActivationRequest::new(
-            source, target, handle, context,
+            source, targets, handle, context,
         ));
         Ok(())
     }

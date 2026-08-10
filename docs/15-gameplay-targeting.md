@@ -3,13 +3,15 @@
 ## 职责与源码布局
 
 `gameplay_targeting` 负责从 ECS 状态生成确定有序的 `AbilityTargetData`。它不直接执行技能或
-效果；`ActivateAbility` continuation 只把激活请求写入统一 Gameplay FIFO。
+效果；它还拥有激活全过程使用的唯一目标值 `AbilityActivationTargets`。
+`ActivateAbility` continuation 只把激活请求写入统一 Gameplay FIFO。
 
 ```text
 src/gas/
 ├── gameplay_targeting.rs
 └── gameplay_targeting/
     ├── ability_target_data.rs
+    ├── activation_targets.rs
     ├── targeting_definition.rs
     ├── acquisition.rs
     ├── targeting_queue.rs
@@ -22,6 +24,7 @@ src/gas/
 | 文件 | 职责 |
 | ---- | ---- |
 | `ability_target_data.rs` | 有序命中与目标数据 |
+| `activation_targets.rs` | 单目标/抓取目标的统一激活值及非空约束 |
 | `targeting_definition.rs` | 操作定义、验证错误和 `Targetable` |
 | `acquisition.rs` | 同步选择/过滤算法、候选 Query 和运行时错误 |
 | `targeting_queue/request.rs` | 输入快照、稳定 ID、continuation 与结果 Event |
@@ -52,12 +55,42 @@ pub struct AbilityTargetData {
 | --- | ---- |
 | `get_origin()` | 返回请求捕获的世界坐标原点 |
 | `get_hits()` | 返回确定有序的全部 Hit |
-| `primary_entity()` | 返回第一个目标，兼容旧单目标技能 API |
+| `primary_entity()` | 返回第一个命中实体 |
 | `entities()` | 按 Hit 顺序遍历实体 |
 | `len()` / `is_empty()` | 查询目标数量 |
 
 同步 acquisition 成功时保证数据非空；游戏层通过 `AbilityTargetData::new()` 手工创建的数据可以
-为空。
+为空，但空值不能转换为 Acquired 激活目标。
+
+### `AbilityActivationTargets`
+
+```rust
+pub struct AbilityActivationTargets {
+    primary_target: Entity,
+    target_data: Option<AbilityTargetData>,
+}
+```
+
+`AbilityActivationTargets` 由 `AbilityActivationData` 持有，是 Request、Active Ability、Ability
+Task 完成动作和链式激活共同使用的唯一目标语义值。字段保持私有，调用方不能绕过构造器制造
+“缓存主目标与首个 Hit 不一致”的状态：
+
+| API | 作用 |
+| --- | ---- |
+| `single(entity)` | 创建一个单实体目标 |
+| `acquired(target_data) -> Result<Self, AbilityActivationTargetsError>` | 创建抓取目标；空数据返回 `EmptyTargetData` |
+| `get_primary_target()` | 返回缓存且已验证的主目标 |
+| `get_target_data()` | 单目标时返回 `None`，抓取目标时返回完整 Target Data |
+| `entities()` | 按确定顺序遍历一个单目标实体或全部抓取实体 |
+
+`From<Entity>` 委托给 `single()`；`TryFrom<AbilityTargetData>` 委托给 `acquired()`。因此接收
+`impl Into<AbilityActivationTargets>` 的激活 API 仍可直接传入 Entity，而手工 Target Data 必须
+先完成可失败转换。
+
+正常 acquisition 已保证非空，因此 Targeting continuation 可以安全转换为抓取目标；游戏层手工
+组装数据时必须处理 `acquired()` 的错误。该类型由 `gameplay_targeting` 门面、GAS 聚合门面、
+crate root 和精简 prelude 显式重导出。`AbilityActivationTargetsError` 由领域门面、GAS 聚合门面
+和 crate root 公开，但作为低频错误类型不进入 prelude。
 
 ## 定义与实体要求
 
@@ -127,12 +160,15 @@ pub enum TargetingContinuation {
 ```
 
 推荐使用 `TargetingContinuation::activate_ability(handle, context)` 创建激活 continuation。
+continuation 刻意只保存 handle 与 Context：请求创建时尚未完成 target acquisition，因此不能
+提前构造要求 targets 已存在的 `AbilityActivationData`。
 
 processor 完整 drain 当前 Targeting FIFO。每个请求严格执行：
 
 1. 调用同步 `acquire_targets()`。
-2. 成功且 continuation 为 `ActivateAbility` 时，把完整 Target Data 附加到 Context，以
-   `primary_entity()` 作为旧单目标字段，并写入 `GameplayExecutionQueue`。
+2. 成功且 continuation 为 `ActivateAbility` 时，通过 `AbilityActivationTargets::acquired()`
+   把完整 Target Data 转换为唯一目标值，再把 Targeting Request 的 source、该 targets 与
+   continuation Context 组装为 `AbilityActivationData`，据此写入 `GameplayExecutionQueue`。
 3. 通过 `Commands::trigger()` 排队触发包含同一 `TargetingRequestId` 的
    `TargetingResultEvent`，无论成功或失败都会触发。
 4. 处理下一个 Targeting 请求。
@@ -179,10 +215,13 @@ RecalculateAttributes
 
 ## 多目标效果
 
-- 技能 `activation_effects` 在激活请求内部按效果定义顺序、再按 Target Data 顺序直接应用。
-- `ApplyGameplayEffectToTargets` task 按 Target Data 顺序向统一 Gameplay FIFO 追加独立请求。
-- Task 只有在 Context 没有 Target Data 时才回退到旧单目标；手工提供空 Target Data 会产生零个
-  多目标请求。
+- 技能 `activation_effects` 在激活请求内部按效果定义顺序、再按
+  `AbilityActivationTargets::entities()` 顺序直接应用。
+- `ApplyGameplayEffectToTargets` task 按同一个目标值的顺序向统一 Gameplay FIFO 追加独立请求；
+  single 产生一个请求，acquired 按 Target Data 顺序产生多个请求。
+- `ApplyGameplayEffectToTarget` 使用同一目标值的 `get_primary_target()`，主目标没有第二个存储源。
+- 空 Target Data 不能创建 acquired 激活目标，因此运行时不存在 Context 与 Request 各自携带
+  不同目标的分裂状态。
 - 每个目标独立进行要求、免疫、概率和堆叠检查；一个目标拒绝不会中断后续 FIFO 请求。
 
 ## 确定性与当前边界

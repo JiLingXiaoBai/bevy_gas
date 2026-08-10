@@ -8,17 +8,15 @@ use bevy::prelude::Entity;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AbilityTaskExecutionContext {
     source: Entity,
-    target: Entity,
     spec_handle: AbilitySpecHandle,
     level: u32,
 }
 
 impl AbilityTaskExecutionContext {
     /// Creates a task execution context.
-    pub fn new(source: Entity, target: Entity, spec_handle: AbilitySpecHandle, level: u32) -> Self {
+    pub fn new(source: Entity, spec_handle: AbilitySpecHandle, level: u32) -> Self {
         Self {
             source,
-            target,
             spec_handle,
             level,
         }
@@ -27,11 +25,6 @@ impl AbilityTaskExecutionContext {
     /// Returns the ability owner that started the task.
     pub fn get_source(&self) -> Entity {
         self.source
-    }
-
-    /// Returns the task's captured fallback target.
-    pub fn get_target(&self) -> Entity {
-        self.target
     }
 
     /// Returns the granted ability handle that owns the task.
