@@ -6,7 +6,7 @@ Targeting，以及确定性的 fixed-tick Gameplay 执行队列。
 
 项目使用 Rust edition 2024，运行时依赖只有：
 
-- `bevy = 0.19.0`
+- `bevy = 0.19.1`
 - `rand = 0.10.2`
 
 ## 快速开始
