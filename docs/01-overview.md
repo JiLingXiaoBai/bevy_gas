@@ -55,35 +55,90 @@ ARPG 等 Gameplay 规则所需的基础能力，但不替游戏决定输入映�
 
 ## 定义与运行时数据流
 
+### 定义持有关系
+
 ```mermaid
-flowchart LR
-    Game["游戏系统 / AI / 输入适配"] --> TargetQueue["TargetingRequestQueue"]
-    TargetQueue --> TargetData["AbilityTargetData / TargetingResultEvent"]
-    TargetData -- "ActivateAbility continuation" --> ExecQueue["GameplayExecutionQueue"]
-    Game --> ExecQueue
+flowchart TB
+    AbilitySpec["ASC 中的 GameplayAbilitySpec"]
+    AbilityDef["GameplayAbility（Arc 共享）"]
+    TaskDef["startup tasks：AbilityTaskDef"]
+    EffectDef["GameplayEffect（Arc 共享）"]
+    ModifierDef["Modifier"]
+    TargetRequest["TargetingRequestQueue 中的请求"]
+    TargetDef["TargetingDefinition（Arc 共享）"]
 
-    AbilityDef["Arc<GameplayAbility>"] --> AbilityRuntime["Ability System 激活与 commit"]
-    AbilityDef --> TaskDef["AbilityTaskDef"]
-    AbilityDef --> EffectDef["cost / cooldown / activation GameplayEffect"]
-
-    ExecQueue --> AbilityRuntime
-    ExecQueue --> EffectRuntime["Gameplay Effect prepare / execute"]
-    TaskDef --> TaskRuntime["Instant 完成动作 / WaitTicks 实体"]
-    TaskRuntime --> ExecQueue
-    AbilityRuntime --> TaskRuntime
-    AbilityRuntime --> EffectRuntime
-    EffectDef --> EffectRuntime
-
-    EffectRuntime --> ActiveEffects["ActiveGameplayEffects"]
-    EffectRuntime --> Tags["GameplayTagContainer"]
-    EffectRuntime --> Attributes["AttributeSet + Aggregator"]
-    Modifiers["Modifier / ModifierSpec"] --> EffectRuntime
-    Modifiers --> Attributes
+    AbilitySpec -- "共享" --> AbilityDef
+    AbilityDef -- "包含" --> TaskDef
+    AbilityDef -- "引用" --> EffectDef
+    EffectDef -- "包含" --> ModifierDef
+    TargetRequest -- "共享" --> TargetDef
 ```
 
-图中的箭头表示主要运行时数据流，不等同于 Rust 模块的每一条编译依赖。同步
-`try_activate_ability_by_handle()` / `apply_gameplay_effect()` API 可以绕过全局 FIFO；常规运行时
-生产者应优先写入 `GameplayExecutionQueue`，以保留跨类型顺序。
+第一张图只表示值的持有与引用关系。`GameplayAbility` 对 `GameplayEffect` 的引用包括 cost、
+cooldown 和 activation effects。`GameplayEffect` 在 prepare 时把 `Modifier` 求值为
+`ModifierSpec`；定义对象不会主动触发运行时执行。
+
+### 运行时主路径
+
+```mermaid
+flowchart TB
+    Producers["Resolver 前的请求生产者"]
+    TargetQueue["TargetingRequestQueue"]
+    Targeting["Targeting 阶段完整消费"]
+    TargetData["成功的 AbilityTargetData"]
+    Continuation["ActivateAbility continuation"]
+    TargetEvent["TargetingResultEvent"]
+    Observer["Observer 追加 Gameplay 请求"]
+    Execution["GameplayExecutionQueue"]
+
+    Producers -- "目标请求" --> TargetQueue
+    TargetQueue --> Targeting
+    Targeting -- "成功" --> TargetData
+    TargetData --> Continuation
+    Continuation -- "追加" --> Execution
+    Targeting -- "通知" --> TargetEvent
+    TargetEvent -.-> Observer
+    Observer -.-> Execution
+    Producers -- "直接追加" --> Execution
+```
+
+请求生产者包括 `AbilityTasks`、`RequestProducers`、游戏系统、AI 和输入适配。进入统一队列后，
+请求按跨类型 FIFO 顺序执行：
+
+```mermaid
+flowchart TB
+    Execution["GameplayExecutionQueue"]
+    AbilityRuntime["Ability 激活：校验、commit、startup"]
+    EffectRuntime["Effect 应用：prepare、execute"]
+    AbilityState["ASC 和 ActiveGameplayAbility"]
+    WaitTask["WaitTicks 创建 AbilityTask 实体"]
+    AbilityEffects["cost、cooldown、activation effects"]
+    EffectLifetime["持续效果和授予标签"]
+    AttributeState["属性 base、Aggregator 和 dirty bits"]
+
+    Execution --> AbilityRuntime
+    Execution --> EffectRuntime
+    AbilityRuntime --> AbilityState
+    AbilityRuntime --> WaitTask
+    AbilityRuntime -- "直接应用" --> AbilityEffects
+    AbilityEffects --> EffectRuntime
+    EffectRuntime --> EffectLifetime
+    EffectRuntime --> AttributeState
+```
+
+后两张图表示默认 Plugin 管线中的主运行时数据流，需注意：
+
+- Targeting 成功时，内建 `ActivateAbility` continuation 直接把目标数据加入统一 FIFO；无论成功
+  或失败，随后触发的 `TargetingResultEvent` 都是独立 Observer 通知，不是 continuation 的中间节点；
+- startup `Instant` 在技能激活内直接分派，不创建任务实体；只有 `WaitTicks` 创建
+  `AbilityTask`。完成动作中只有 `ActivateAbility` 与 `ApplyGameplayEffect*` 会追加 Gameplay 请求，
+  `EmitEvent` 和 `EndAbility` 不会；
+- Instant/periodic Effect 通过 `ModifierSpec` 修改 Attribute base；非周期 Duration/Infinite Effect
+  把 modifier 写入 Aggregator 并标记 dirty。只有 Duration/Infinite Effect 存入
+  `ActiveGameplayEffects`，其 granted tags 随 Active Effect 生命周期维护；dirty Attribute 在读取时
+  按需重算，未被读取的值由 `RecalculateAttributes` 统一重算；
+- 同步 `try_activate_ability_by_handle()` / `apply_gameplay_effect()` API 可以绕过全局 FIFO；常规
+  运行时生产者应优先写入 `GameplayExecutionQueue`，以保留跨类型顺序。
 
 ## FixedUpdate 管线
 
