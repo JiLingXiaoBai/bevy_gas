@@ -1,15 +1,15 @@
 # bevy_tools
 
-`bevy_tools` 是面向 Bevy 0.19 的 ECS-first Gameplay Ability System（GAS）库，提供
+`bevy_tools` 是面向 Bevy 0.19 的 ECS 优先 Gameplay Ability System（GAS）库，提供
 Gameplay Tags、Attributes、Modifiers、Gameplay Effects、Gameplay Abilities、Ability Tasks、
-Targeting，以及确定性的 fixed-tick Gameplay 执行队列。
+Targeting、技能输入绑定，以及基于 `FixedUpdate` tick 的统一 Gameplay 执行队列。
 
-项目使用 Rust edition 2024，运行时依赖只有：
-
-- `bevy = 0.19.1`
-- `rand = 0.10.2`
+项目使用 Rust edition 2024，具体依赖版本见 [Cargo.toml](./Cargo.toml)。
+当前尚未提供 serde/ron 配置序列化。
 
 ## 快速开始
+
+在 Bevy 应用中添加 GAS 插件，并创建 Gameplay Actor：
 
 ```rust
 use bevy::prelude::*;
@@ -28,64 +28,27 @@ fn spawn_gameplay_actor(mut commands: Commands) {
 }
 ```
 
-`GameplayAbilitySystemBundle` 显式组合完整 Gameplay Actor 所需的
-`AbilitySystemComponent`、`GameplayTagContainer`、`AttributeSet` 和
-`ActiveGameplayEffects`。只需要标签或属性的实体可以单独挂载对应 Component。
+`GameplayAbilitySystemBundle` 组合技能、标签、属性和活跃效果组件；具体属性值和技能需要另行
+初始化与授予。只需要标签或属性的实体也可以单独挂载对应 Component。
 
-标签注册的可运行示例见
-[`examples/tag_registration.rs`](./examples/tag_registration.rs)：
+## 可运行示例
 
-```bash
-cargo run --example tag_registration
-```
+建议先运行完整火球示例，了解一次技能从授予、激活到伤害、结束与冷却到期的过程。
+以下命令均在仓库根目录执行：
 
-想理解一次技能如何结算，先运行 [完整火球示例](./examples/ability_effect_flow.rs)：
+| 示例 | 内容 | 运行命令 |
+| --- | --- | --- |
+| [完整火球流程](./examples/ability_effect_flow.rs) | 无窗口演示属性消耗、延迟伤害与独立冷却 | `cargo run --example ability_effect_flow` |
+| [标签注册](./examples/tag_registration.rs) | 注册层级标签并读取标签信息 | `cargo run --example tag_registration` |
+| [技能输入绑定](./examples/ability_input_bindings.rs) | 无窗口演示技能栏重绑与固定 tick 输入缓冲 | `cargo run --example ability_input_bindings` |
 
-```bash
-cargo run --example ability_effect_flow
-```
+详细流程与日志输出说明见 [示例运行说明](./docs/12-usage-patterns.md#完整可运行示例)。
 
-这个无窗口示例串起属性/标签注册、角色创建、技能定义与授予、请求入队、前摇伤害和独立冷却。
-它直接推进真实 `FixedUpdate` 管线，在第 0、5、6、20 tick 输出法力、目标生命、技能活跃计数和
-冷却标签状态，运行完毕自动退出。技能使用 `GameplayAbility::default().with_*()` 具名配置；
-原有 `new(...)` 构造入口继续可用。若环境的 `RUST_LOG` 隐藏了状态日志，启用方法见
-[示例运行说明](./docs/12-usage-patterns.md#完整可运行示例)。
+## 文档
 
-## 架构入口
+- [知识库导航](./docs/README.md)：推荐阅读路径、架构、领域 API 与行为约束。
+- [使用指南](./docs/12-usage-patterns.md)：接入前提，以及伤害、DoT、Buff 和连招等用法。
+- [测试与开发检查](./docs/13-testing-guide.md)：测试组织、验证方法与提交前检查。
+- [源码布局与维护边界](./docs/17-source-layout-and-maintenance.md)：目录职责、修改路由与文档维护约定。
 
-- [知识库导航](./docs/README.md)：按使用、运行时、领域和维护场景组织的文档入口
-- [项目与架构总览](./docs/01-overview.md)：领域边界、数据所有权和 fixed-tick 数据流
-- [使用模式](./docs/12-usage-patterns.md)：伤害、DoT、Buff、连招和事件驱动示例
-- [技能输入绑定](./docs/18-ability-input-bindings.md)：独立动作映射、技能栏重绑和固定 tick 输入接入
-- [源码布局与维护边界](./docs/17-source-layout-and-maintenance.md)：真实目录结构和修改路由
-
-公共导入建议：常用类型使用 `bevy_tools::prelude::*`，完整 API 从
-`bevy_tools::gas::<domain>` 导入；crate root 的显式重导出继续作为兼容入口。
-
-## 项目原则
-
-设计优先级依次为正确性、可读性和性能，并遵循以下约束：
-
-- Gameplay 状态由 Component、Resource、System、Event/Message 表达；
-- 持续时间、周期和任务等待均使用 `FixedUpdate` tick；
-- 技能激活与效果应用共享确定性的跨类型 FIFO；
-- 定义通过 `Arc<GameplayEffect>` / `Arc<GameplayAbility>` 共享；
-- Tags 和 Attributes 可独立使用，完整 GAS 组合由 Bundle 明确表达；
-- 不依赖容器遍历顺序表达 Gameplay 语义。
-
-## 当前边界
-
-- 输入通过独立的 `AbilityInputBindings<Action>` 映射到技能 Handle；物理设备采集、按下/释放状态和固定 tick 缓冲由游戏输入层负责；
-- 尚未提供 serde/ron 配置序列化；
-- Ability cost 必须是仅含 `ModifierOperation::Add` 的 Instant Effect。
-
-## 开发检查
-
-```bash
-cargo fmt
-cargo clippy --all-targets --all-features -- -D warnings
-cargo test
-cargo build
-```
-
-许可证：MIT。
+许可证：[MIT](./LICENSE)。
