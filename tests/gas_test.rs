@@ -21,3 +21,6 @@ mod queues_test;
 
 #[path = "gas_test/runtime_paths_test.rs"]
 mod runtime_paths_test;
+
+#[path = "gas_test/ability_input_test.rs"]
+mod ability_input_test;

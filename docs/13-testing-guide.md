@@ -4,9 +4,9 @@
 
 ```text
 tests/
-├── ability_input_test.rs               # Logical input bindings and fixed-tick buffering
 ├── gas_test.rs                         # GAS 集成测试 crate 门面
 ├── gas_test/
+│   ├── ability_input_test.rs            # Logical input bindings and fixed-tick buffering
 │   ├── support_test.rs                       # App、builder、tick 和查询 helper
 │   ├── effects_test.rs                       # Effect 行为测试门面
 │   ├── effects_test/
@@ -36,9 +36,16 @@ examples/
 └── tag_registration.rs                 # 完整 App 中的标签注册
 ```
 
-Effect 与 Ability 测试按外部行为拆分，不镜像私有实现文件。移动私有函数不应迫使测试目录
-改名；新增行为时应放入最接近其 Gameplay 语义的模块。跨领域执行顺序、Bundle 组合和公共
-导入路径优先放在 `runtime_paths_test.rs` 或 `queues_test.rs`。
+集成测试按 crate 顶层功能领域归属组织。`src/gas/` 内功能的集成测试统一放在
+`tests/gas_test/`，由 `tests/gas_test.rs` 声明和加载；即使功能可选或只有一个测试文件，
+也不单独创建顶层测试目标。例如，输入绑定属于 GAS，其测试位于
+`tests/gas_test/ability_input_test.rs`。`randoms_test.rs` 和 `unique_names_test.rs` 则分别
+对应 crate 顶层的 `randoms` 和 `unique_names` 领域，保留独立测试目标。
+
+领域内部的测试按外部行为拆分，不镜像私有实现文件，也不要求叶子测试文件递归套用门面结构。
+移动私有函数不应迫使测试目录改名；新增行为时应放入最接近其 Gameplay 语义的模块。
+跨领域执行顺序、Bundle 组合和公共导入路径优先放在 `runtime_paths_test.rs` 或
+`queues_test.rs`。
 
 ### 测试路径命名约定
 
@@ -57,7 +64,7 @@ cargo test
 cargo test --test gas_test
 
 # Input binding and buffering integration tests
-cargo test --test ability_input_test
+cargo test --test gas_test ability_input_test
 
 # One nested behavior module
 cargo test --test gas_test effects_test::requirements_test

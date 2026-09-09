@@ -303,9 +303,9 @@ commit 和生命周期编排的流程：
 
 ```text
 tests/
-├── ability_input_test.rs
 ├── gas_test.rs
 ├── gas_test/
+│   ├── ability_input_test.rs
 │   ├── support_test.rs
 │   ├── attributes_test.rs
 │   ├── gameplay_tags_test.rs
@@ -330,12 +330,22 @@ tests/
 └── unique_names_test.rs
 ```
 
+集成测试的顶层归属与 crate 顶层功能领域一致：`src/gas/` 内功能的集成测试统一放在
+`tests/gas_test/`，由 `tests/gas_test.rs` 声明和加载；新增 GAS 子模块不新建顶层测试目标。
+因此输入绑定测试使用 `tests/gas_test/ability_input_test.rs`。`randoms_test.rs` 和
+`unique_names_test.rs` 对应 crate 顶层的独立领域，可以保留独立测试目标。
+
+领域内部按外部行为拆分测试，不要求镜像私有源码文件，也不要求叶子测试文件递归套用门面结构。
+具体命名和运行命令见 [13 — 测试指南](./13-testing-guide.md)。
+
 `support_test.rs` 只保存 App/注册/builder/tick/query 等共享 fixture，不隐藏业务断言。需要 World、
 调度顺序、公开 API 或跨模块可见性的场景使用集成测试；纯算法和私有不变量可以就近写单元测试。
 `tests/` 下所有文件的文件名主干和所有子目录名统一以 `_test` 结尾；重命名时必须同步更新模块
 声明、`#[path]`、导入路径、文档导航和 Cargo 集成测试目标名。
 
 ## 修改路由
+
+下表的源码路径相对于 `src/gas/`，测试路径相对于 `tests/gas_test/`；crate 根门面另行标明。
 
 | 修改目标 | 首选源码位置 | 首选测试 | 同步文档 |
 | --- | --- | --- | --- |
@@ -348,7 +358,7 @@ tests/
 | 输入动作绑定、重绑和清理 | `ability_input/bindings.rs` | `ability_input_test.rs` | 18 |
 | 目标管线与队列 | `gameplay_targeting/` | `gameplay_targeting_test.rs` | 15 |
 | 统一 FIFO 与阶段可见性 | `gameplay_execution/`、`runtime_plugin.rs` | `queues_test.rs`、`runtime_paths_test.rs` | 02、16 |
-| 公共导出/prelude | 各门面、`gas.rs`、`lib.rs`、`prelude.rs` | 全目标编译/rustdoc | 11、17 |
+| 公共导出/prelude | 各门面、`src/gas.rs`、`src/lib.rs`、`prelude.rs` | 全目标编译/rustdoc | 11、17 |
 
 ## 何时继续拆文件
 
