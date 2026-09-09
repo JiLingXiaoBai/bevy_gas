@@ -27,6 +27,38 @@ use bevy_tools::UniqueName;
 use std::sync::Arc;
 ```
 
+## 完整可运行示例
+
+[`examples/ability_effect_flow.rs`](../examples/ability_effect_flow.rs) 是从头到尾的阅读入口：
+
+```bash
+cargo run --example ability_effect_flow
+```
+
+示例使用 `info!` 日志。如果环境已有 `RUST_LOG=warn` 等过滤设置，可能看不到状态输出；
+PowerShell 中可为当前会话启用示例日志后运行：
+
+```powershell
+$env:RUST_LOG = "warn,ability_effect_flow=info"
+cargo run --example ability_effect_flow
+```
+
+按 `main` → 注册属性/标签 → `spawn_actors` → `make_fireball` → `queue_fireball` →
+`report_state` 阅读。示例使用 MinimalPlugins 和日志插件，不创建窗口，也不等待真实时间；
+`main` 显式运行 21 次完整的 GAS `FixedUpdate` 管线。实际游戏仍由 Bevy 推进固定时间，生产请求的
+系统同样放在 `RequestProducers` 阶段。
+
+| 相对激活 tick | 法力 | 目标生命 | 技能活跃计数 | 冷却标签 |
+| --- | --- | --- | --- | --- |
+| 0 | 30 | 100 | 1 | 存在 |
+| 5 | 30 | 70 | 1 | 存在 |
+| 6 | 30 | 70 | 0 | 存在 |
+| 20 | 30 | 70 | 0 | 移除 |
+
+初始法力为 50、目标生命为 100。两个 `WaitTicks` 都从激活时开始等待：第 5 tick 应用伤害，
+第 6 tick 结束技能；冷却 Effect 自己继续存活到第 20 tick。示例展示具名配置入口，原有
+`GameplayAbility::new(...)`、`AbilityTags::new(...)` 仍兼容。
+
 ## 源码入口
 
 | 用途 | 源码 |

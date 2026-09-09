@@ -39,6 +39,18 @@ fn spawn_gameplay_actor(mut commands: Commands) {
 cargo run --example tag_registration
 ```
 
+想理解一次技能如何结算，先运行 [完整火球示例](./examples/ability_effect_flow.rs)：
+
+```bash
+cargo run --example ability_effect_flow
+```
+
+这个无窗口示例串起属性/标签注册、角色创建、技能定义与授予、请求入队、前摇伤害和独立冷却。
+它直接推进真实 `FixedUpdate` 管线，在第 0、5、6、20 tick 输出法力、目标生命、技能活跃计数和
+冷却标签状态，运行完毕自动退出。技能使用 `GameplayAbility::default().with_*()` 具名配置；
+原有 `new(...)` 构造入口继续可用。若环境的 `RUST_LOG` 隐藏了状态日志，启用方法见
+[示例运行说明](./docs/12-usage-patterns.md#完整可运行示例)。
+
 ## 架构入口
 
 - [知识库导航](./docs/README.md)：按使用、运行时、领域和维护场景组织的文档入口

@@ -30,6 +30,7 @@ tests/
 └── unique_names_test.rs                # 驻留复用与名称区分
 
 examples/
+├── ability_effect_flow.rs              # 无窗口的完整技能、伤害与冷却时间线
 └── tag_registration.rs                 # 完整 App 中的标签注册
 ```
 
@@ -67,6 +68,7 @@ cargo test test_name -- --nocapture
 cargo test --test gas_test -- --list
 
 # Compile or run the checked example
+cargo run --example ability_effect_flow
 cargo check --example tag_registration
 cargo run --example tag_registration
 ```

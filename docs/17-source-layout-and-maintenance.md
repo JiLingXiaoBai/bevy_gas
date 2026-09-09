@@ -125,7 +125,8 @@ src/
         └── resolver.rs
 ```
 
-可运行示例位于 `examples/tag_registration.rs`。集成测试布局见本文后半部分。
+完整技能与效果时间线示例位于 `examples/ability_effect_flow.rs`；标签注册示例位于
+`examples/tag_registration.rs`。集成测试布局见本文后半部分。
 
 ## 顶层门面和公开路径
 

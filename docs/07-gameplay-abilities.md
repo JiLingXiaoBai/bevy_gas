@@ -2,8 +2,8 @@
 
 ## 职责
 
-Gameplay Ability 描述角色能够执行的动作，例如攻击、法术和冲刺。该领域只拥有技能定义、
-已授予规格、完整激活数据、激活上下文、技能链、活跃实例和任务数据；激活、Commit 与清理由
+Gameplay Ability 描述角色能够执行的动作，例如攻击、法术和冲刺。该领域拥有技能定义、
+已授予规格、完整激活数据、激活上下文、技能链、活跃实例与任务的推进和完成动作；激活、Commit 与清理由
 `ability_system` 编排，跨类型请求顺序由 `gameplay_execution` 维护。
 
 ## 源码布局
@@ -58,10 +58,38 @@ pub struct GameplayAbility {
 }
 ```
 
-通过 `GameplayAbility::new(...)` 创建定义，并通过 Getter 只读访问。定义通常放入 `Arc`，同一
-份定义可被多个 `GameplayAbilitySpec` 共享。
+通过 `GameplayAbility::default().with_*()` 具名配置，或通过保留的 `GameplayAbility::new(...)`
+创建定义，再通过 Getter 只读访问。定义通常放入 `Arc`，同一份定义可被多个
+`GameplayAbilitySpec` 共享。
+
+默认定义没有标签、任务、消耗、冷却或激活效果；`end_on_activation` 和 `allow_multiple_instances`
+均为 `false`。因此默认激活会保持 Active，必须使用 `EndAbility` 任务、生命周期 API，或显式设置
+`with_end_on_activation(true)` 来结束。链式方法消费并返回定义；列表配置替换原列表，不追加。
+
+```rust
+let ability = GameplayAbility::default()
+    .with_tags(AbilityTags::default().with_activation_blocked_tags(vec![stun_tag]))
+    .with_cost(cost_effect)
+    .with_cooldown(cooldown_effect)
+    .with_startup_tasks(vec![
+        AbilityTaskDef::wait_ticks(
+            5,
+            AbilityTaskOnFinishedDef::ApplyGameplayEffectToTarget { effect: damage_effect },
+        ),
+        AbilityTaskDef::wait_ticks(6, AbilityTaskOnFinishedDef::EndAbility),
+    ]);
+```
+
+这里的效果和标签是调用方先前创建的值，完整注册与调用见
+[`ability_effect_flow`](../examples/ability_effect_flow.rs)。激活自动支付 cost/cooldown；
+`with_activation_effects(...)` 配置的效果在 startup tasks 之前立即作用于捕获目标，不会等待前摇。
+多个等待任务从同一激活时刻开始计时，结束 Ability 不自动移除已应用的 Effect。
 
 ### `AbilityTags`
+
+可使用 `AbilityTags::default()` 配合 `with_ability_asset_tags`、`with_cancel_abilities_with_tags`、
+`with_block_abilities_with_tags`、`with_activation_required_tags` 和 `with_activation_blocked_tags`
+按需配置，避免在 `new(...)` 的五个同类型位置参数间辨认含义；原构造入口继续可用。
 
 | 字段 | 语义 |
 | ---- | ---- |
