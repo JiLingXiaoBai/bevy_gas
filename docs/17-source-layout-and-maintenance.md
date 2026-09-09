@@ -150,6 +150,26 @@ src/
 `examples/tag_registration.rs`；独立输入绑定示例位于 `examples/ability_input_bindings.rs`。
 集成测试布局见本文后半部分。
 
+## 配置工程与工具目录
+
+`config/` 拥有配置输入和项目导表入口，`tools/luban/` 拥有生成器版本、准备和启动逻辑。
+详细路径、日常命令及示例来源见 [19 — Luban 配置工程与工具链](./19-luban-toolchain.md)。
+
+| 路径 | 维护边界 |
+| --- | --- |
+| `config/tables/`、`config/defines/` | 人工维护的 Excel 数据及结构定义，纳入 Git |
+| `config/luban.conf`、`config/export.ps1` | 项目输入和输出约定、严格导表入口，纳入 Git |
+| `config/generated/` | 自动生成的 `cfg`、`macros` Rust 源码和 Cargo 清单，纳入 Git，不手动修改 |
+| `config/bin/` | 自动生成的二进制，Git 忽略，不放手写文件 |
+| `tools/luban/` | 固定工具链和本机 .NET 环境检查脚本 |
+| `tools/luban/.cache/` | 可重新下载的 Luban 归档、已安装工具及临时验证产物，Git 忽略 |
+
+配置源文件或结构定义变更后，应重新导表并将相关生成代码放在同一次提交中。
+仓库使用 `target/` 忽略所有层级的构建目录，包含生成子 crate 的编译产物。
+
+生成的 crate 尚未加入根项目依赖，GAS 运行时继续由 `src/` 拥有。
+手写读取库、GAS 适配或自定义模板必须放在生成目录之外；游戏资源部署由使用本库的游戏负责。
+
 ## 顶层门面和公开路径
 
 | 文件 | 职责 |

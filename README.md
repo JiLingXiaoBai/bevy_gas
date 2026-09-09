@@ -5,7 +5,6 @@ Gameplay Tags、Attributes、Modifiers、Gameplay Effects、Gameplay Abilities�
 Targeting、技能输入绑定，以及基于 `FixedUpdate` tick 的统一 Gameplay 执行队列。
 
 项目使用 Rust edition 2024，具体依赖版本见 [Cargo.toml](./Cargo.toml)。
-当前尚未提供 serde/ron 配置序列化。
 
 ## 快速开始
 
@@ -43,6 +42,23 @@ fn spawn_gameplay_actor(mut commands: Commands) {
 | [技能输入绑定](./examples/ability_input_bindings.rs) | 无窗口演示技能栏重绑与固定 tick 输入缓冲 | `cargo run --example ability_input_bindings` |
 
 详细流程与日志输出说明见 [示例运行说明](./docs/12-usage-patterns.md#完整可运行示例)。
+
+## 配置工具
+
+`config/` 维护 Excel 数据表和结构定义，通过固定版本的 `tools/luban/` 工具链导出
+Rust 配置代码到 `config/generated/`、二进制到 `config/bin/`。当前使用官方 MiniTemplate
+示例验证流程，Rust 配置读取与 GAS 接入仍待实现。
+
+工具支持 Windows x64，需要 PowerShell 7.2+、PATH 中的 .NET Runtime 8+ 和 7-Zip。
+在仓库根目录执行：
+
+```powershell
+pwsh -NoProfile -File tools/luban/setup.ps1
+pwsh -NoProfile -File config/export.ps1
+```
+
+首次准备后，日常只需执行 `config/export.ps1`。配置路径、脚本职责与升级约定见
+[Luban 配置工程与工具链](./docs/19-luban-toolchain.md)。
 
 ## 文档
 

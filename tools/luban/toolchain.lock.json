@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "platform": "win-x64",
+  "luban": {
+    "name": "Luban",
+    "version": "5.0.0",
+    "tag": "v5.0.0",
+    "sourceCommit": "52d329fb93be79810ed090f489ba4bf3821c4e4c",
+    "releaseUrl": "https://github.com/focus-creative-games/luban/releases/tag/v5.0.0",
+    "url": "https://github.com/focus-creative-games/luban/releases/download/v5.0.0/Luban.7z",
+    "archiveName": "Luban-5.0.0.7z",
+    "format": "7z",
+    "installDirectory": "luban-5.0.0",
+    "entryPoint": "Luban/Luban.dll",
+    "checksum": {
+      "algorithm": "SHA256",
+      "value": "919ae55a3ca421eac40d8f35c2ee4c38450497821daaad9c00c3711213e2a04e",
+      "source": "GitHub release asset digest"
+    }
+  },
+  "dotnet": {
+    "name": ".NET Runtime",
+    "source": "system",
+    "minimumVersion": "8.0.0",
+    "rollForward": "LatestMajor",
+    "framework": "Microsoft.NETCore.App",
+    "rid": "win-x64"
+  }
+}
