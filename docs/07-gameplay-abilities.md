@@ -15,10 +15,10 @@ src/gas/
     ├── gameplay_ability.rs
     ├── gameplay_ability_spec.rs
     ├── activation_data.rs
+    ├── activation_context.rs
+    ├── ability_chain.rs
     ├── active_gameplay_ability.rs
     ├── active_gameplay_ability/
-    │   ├── chain.rs
-    │   ├── context.rs
     │   └── state.rs
     ├── ability_task.rs
     └── ability_task/
@@ -34,8 +34,8 @@ src/gas/
 | `gameplay_ability.rs` | 不可变技能定义与 `AbilityTags` |
 | `gameplay_ability_spec.rs` | 某个 ASC 已授予技能的等级、输入状态和活跃计数 |
 | `activation_data.rs` | 一次激活共享的 source、targets 与传播 context 不可变值 |
-| `active_gameplay_ability/chain.rs` | 链 ID、深度限制和重复 Handle 检查 |
-| `active_gameplay_ability/context.rs` | Instigator、Causer、来源快照、激活原因和 Ability → Effect payload 转换 |
+| `ability_chain.rs` | 链 ID、深度限制和重复 Handle 检查 |
+| `activation_context.rs` | Instigator、Causer、来源快照、激活原因和 Ability → Effect payload 转换 |
 | `active_gameplay_ability/state.rs` | 活跃实例 Component、Handle 别名和状态 |
 | `ability_task/` | startup 定义与跨 tick 运行时任务，详见 [08 — 技能任务](./08-ability-tasks.md) |
 

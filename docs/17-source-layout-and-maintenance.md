@@ -84,10 +84,10 @@ src/
     │   ├── gameplay_ability.rs
     │   ├── gameplay_ability_spec.rs
     │   ├── activation_data.rs
+    │   ├── activation_context.rs
+    │   ├── ability_chain.rs
     │   ├── active_gameplay_ability.rs
     │   ├── active_gameplay_ability/
-    │   │   ├── chain.rs
-    │   │   ├── context.rs
     │   │   └── state.rs
     │   ├── ability_task.rs
     │   └── ability_task/
@@ -207,7 +207,8 @@ commit 和生命周期编排的流程：
 | `gameplay_ability.rs` | AbilityTags、startup task、cost/cooldown/activation Effect 定义 |
 | `gameplay_ability_spec.rs` | 授予 Handle、level、input ID/pressed 和 active count |
 | `activation_data.rs` | 唯一组合 source、targets 与传播 context 的不可变激活值 |
-| `active_gameplay_ability/{chain,context,state}.rs` | 链保护、不含 source/目标数据的传播上下文、统一 Ability → Effect payload 转换，以及只持有 spec handle、共享激活数据和状态的活跃实例 |
+| `ability_chain.rs`、`activation_context.rs` | 请求与运行实例共用的链保护、传播上下文，以及 Ability → Effect payload 转换 |
+| `active_gameplay_ability/state.rs` | 只持有 spec handle、共享激活数据和状态的活跃实例 |
 | `ability_task/context.rs` | 公开的 Task 共享 source/spec handle/level 轻量执行上下文；目标由父活跃实例持有 |
 | `ability_task/definition.rs` | Instant/WaitTicks 定义和完成动作定义 |
 | `ability_task/state.rs` | 运行时 Task Component 与 action-only 完成枚举 |
