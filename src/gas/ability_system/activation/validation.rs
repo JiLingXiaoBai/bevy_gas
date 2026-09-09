@@ -4,7 +4,24 @@ use crate::gameplay_abilities::GameplayAbility;
 use bevy::prelude::Entity;
 use std::sync::Arc;
 
-/// Returns whether an ability currently satisfies activation and cost requirements.
+/// Performs a preliminary check of activation tags and additive cost affordability.
+///
+/// This does not validate a granted ability handle, active-instance limits, an instant cost
+/// duration, or effect application requirements. It does not prepare or commit effects.
+/// Successful prechecking therefore does not guarantee successful activation.
+///
+/// # Parameters
+///
+/// - `source`: Ability owner whose activation tags and current attributes are checked.
+/// - `target`: Target used to evaluate cost magnitudes for this precheck. Actual commit evaluates
+///   its cost against `source` and may also include captured activation context.
+/// - `ability`: Shared ability definition to check.
+/// - `level`: Ability level used when evaluating cost magnitudes.
+/// - `params`: ECS access used to inspect tags and resolve current attribute values.
+///
+/// # Returns
+///
+/// `true` when the currently available activation tags and evaluated cost values pass the precheck.
 pub fn can_activate_ability(
     source: Entity,
     target: Entity,

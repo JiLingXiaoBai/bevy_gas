@@ -6,6 +6,7 @@ use crate::gameplay_effects::{
     EffectContext, GameplayEffectApplicationError, GameplayEffectApplicationPlan,
     execute_gameplay_effect_plan_in_batch, prepare_gameplay_effect, validate_gameplay_effect_plan,
 };
+use crate::modifiers::ModifierSpec;
 use bevy::prelude::*;
 use std::error::Error;
 use std::fmt;
@@ -104,7 +105,7 @@ pub(super) fn prepare_ability_commit_plans(
         if !plan.is_instant() {
             return Err(AbilityCommitError::CostMustBeInstant);
         }
-        if !can_pay_prepared_cost(source, &plan, params) {
+        if !can_pay_cost_modifiers(source, plan.get_modifier_specs(), params) {
             return Err(AbilityCommitError::InsufficientCost);
         }
         Some(plan)
@@ -153,16 +154,16 @@ pub(super) fn execute_ability_commit_plans(
     Ok(())
 }
 
-fn can_pay_prepared_cost(
+fn can_pay_cost_modifiers(
     source: Entity,
-    cost_plan: &GameplayEffectApplicationPlan,
+    cost_modifiers: &[ModifierSpec],
     params: &mut AbilitySystemParams,
 ) -> bool {
     let Ok(mut attr_set) = params.effects.attr_set_query.get_mut(source) else {
         return false;
     };
 
-    for cost in cost_plan.get_modifier_specs() {
+    for cost in cost_modifiers {
         let Ok(Some(current_val)) =
             attr_set.get_current_value(&params.effects.attribute_id_manager, cost.get_id())
         else {
@@ -203,20 +204,5 @@ pub(super) fn can_pay_ability_cost(
         cost_def.make_spec(&context)
     };
 
-    let Ok(mut attr_set) = params.effects.attr_set_query.get_mut(source) else {
-        return false;
-    };
-
-    for cost in cost_spec.get_modifier_specs() {
-        let Ok(Some(current_val)) =
-            attr_set.get_current_value(&params.effects.attribute_id_manager, cost.get_id())
-        else {
-            return false;
-        };
-        if current_val + cost.get_value() < 0.0 {
-            return false;
-        }
-    }
-
-    true
+    can_pay_cost_modifiers(source, cost_spec.get_modifier_specs(), params)
 }

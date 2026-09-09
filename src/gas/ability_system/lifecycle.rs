@@ -90,6 +90,7 @@ pub fn cancel_ability(
     )
 }
 
+/// Updates visible and deferred instances without changing ASC bookkeeping or cleanup timing.
 pub(super) fn finish_ability_with_status(
     source: Entity,
     active_handle: ActiveAbilityHandle,
@@ -209,19 +210,12 @@ pub(super) fn cancel_active_abilities_with_tags(
     };
 
     for (active_handle, active_ability) in active_instances {
-        if let Ok((_, mut active)) = params.active_ability_query.get_mut(active_handle) {
-            active.set_status(AbilityActivationStatus::Cancelled);
-        }
-        let pending_update = params
-            .pending_active_abilities
-            .get_mut(active_handle)
-            .map(|active| {
-                active.set_status(AbilityActivationStatus::Cancelled);
-                active.clone()
-            });
-        if let Some(active) = pending_update {
-            params.commands.entity(active_handle).insert(active);
-        }
+        finish_ability_with_status(
+            source,
+            active_handle,
+            AbilityActivationStatus::Cancelled,
+            params,
+        );
         if let Ok(mut asc) = params.asc_query.get_mut(source) {
             asc.finish_active_ability(
                 active_handle,

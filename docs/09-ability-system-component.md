@@ -238,7 +238,12 @@ tick task 完成时从父 `ActiveGameplayAbility` 的激活数据读取同一值
 5. 来源 ASC 已不存在时仍销毁孤立活跃实例，但无法再修改原 ASC bookkeeping。
 
 标签驱动的“激活新技能并取消旧技能”使用 batch 内部快速路径，会立即更新旧技能 bookkeeping
-并排队销毁；普通 `cancel_ability()` 则等待 Cleanup。
+并排队销毁；普通 `cancel_ability()` 则等待 Cleanup。两条路径共用内部状态更新入口，同时同步
+Query 已可见实例与尚未提交的 pending 实例；共用操作不改变各自的清理时机。
+
+消耗预检查与真实 commit 共用对已求值 `ModifierSpec` 的支付检查，但仍分别构造 Spec 与 Effect
+Plan。`can_activate_ability()` 仅预检查标签与消耗，不验证授予 Handle、实例数限制或完整 Effect
+应用计划，也不携带本次激活上下文，因此返回 `true` 不保证后续激活成功。
 
 ## 默认 FixedUpdate 阶段
 
