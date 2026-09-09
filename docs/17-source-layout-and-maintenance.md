@@ -152,7 +152,7 @@ src/
 
 ## 配置工程与工具目录
 
-`config/` 拥有配置输入和项目导表入口，`tools/luban/` 拥有生成器版本、准备和启动逻辑。
+`config/` 拥有配置输入和项目导表入口，`tools/luban/` 拥有 Luban、Luban.Agent 与 Luban.Mcp 的版本、准备和启动逻辑。
 详细路径、日常命令及示例来源见 [19 — Luban 配置工程与工具链](./19-luban-toolchain.md)。
 
 | 路径 | 维护边界 |
@@ -161,8 +161,11 @@ src/
 | `config/luban.conf`、`config/export.ps1` | 项目输入和输出约定、严格导表入口，纳入 Git |
 | `config/generated/` | 自动生成的 `cfg`、`macros` Rust 源码和 Cargo 清单，纳入 Git，不手动修改 |
 | `config/bin/` | 自动生成的二进制，Git 忽略，不放手写文件 |
-| `tools/luban/` | 固定工具链和本机 .NET 环境检查脚本 |
-| `tools/luban/.cache/` | 可重新下载的 Luban 归档、已安装工具及临时验证产物，Git 忽略 |
+| `tools/luban/` | 工具链锁文件、Luban 生成器入口、MCP 服务入口和本机 .NET 环境检查脚本 |
+| `tools/luban/.cache/` | 可重新下载的三种 Luban 工具归档、已安装工具及临时验证产物，Git 忽略 |
+
+`.codex/config.toml` 保存项目级 Luban MCP 注册与启用工具列表，纳入 Git；
+`tools/luban/mcp.ps1` 由 Codex 启动 stdio 服务，Agent 包作为该服务的查询和校验后端。
 
 配置源文件或结构定义变更后，应重新导表并将相关生成代码放在同一次提交中。
 仓库使用 `target/` 忽略所有层级的构建目录，包含生成子 crate 的编译产物。

@@ -1,0 +1,8 @@
+[mcp_servers.luban]
+command = "pwsh"
+# Resolve the repository root even when the client starts from a subdirectory.
+args = ["-NoProfile", "-Command", "& (Join-Path (git rev-parse --show-toplevel) 'tools/luban/mcp.ps1')"]
+startup_timeout_sec = 30
+tool_timeout_sec = 120
+# SearchDocs requires a separate local upstream documentation checkout.
+enabled_tools = ["list_tables", "get_schema", "describe", "validate", "generate"]

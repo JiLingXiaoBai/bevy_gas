@@ -57,8 +57,9 @@ pwsh -NoProfile -File tools/luban/setup.ps1
 pwsh -NoProfile -File config/export.ps1
 ```
 
-首次准备后，日常只需执行 `config/export.ps1`。配置路径、脚本职责与升级约定见
-[Luban 配置工程与工具链](./docs/19-luban-toolchain.md)。
+首次准备后，日常导表只需执行 `config/export.ps1`。工具链同时固定 Luban.Agent 与
+Luban.Mcp 5.0.0；Codex 可通过项目 MCP 配置查询表结构、校验和生成配置。
+配置路径、MCP 启用方式与升级约定见 [Luban 配置工程与工具链](./docs/19-luban-toolchain.md)。
 
 ## 文档
 

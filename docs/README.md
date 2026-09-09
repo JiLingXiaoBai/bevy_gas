@@ -64,7 +64,7 @@
 | [13 — 测试指南](./13-testing-guide.md) | 当前测试树、fixture、时间推进和提交前检查 |
 | [14 — 扩展系统](./14-extending-the-system.md) | 新增规则、任务、目标操作和请求生产系统的方法 |
 | [17 — 源码布局与维护边界](./17-source-layout-and-maintenance.md) | 真实文件布局、所有权、可见性、修改路由和文档约束 |
-| [19 — Luban 配置工程与工具链](./19-luban-toolchain.md) | 配置路径、导表入口、生成目录、固定版本和升级约定 |
+| [19 — Luban 配置工程与工具链](./19-luban-toolchain.md) | 配置路径、导表入口、MCP 接入、AI skills、固定版本和升级约定 |
 
 ## 最小初始化
 

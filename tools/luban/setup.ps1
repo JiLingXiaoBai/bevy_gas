@@ -102,6 +102,8 @@ function Install-PinnedArtifact {
 }
 
 Install-PinnedArtifact -Artifact $lock.luban
+Install-PinnedArtifact -Artifact $lock.agent
+Install-PinnedArtifact -Artifact $lock.mcp
 
 $lubanPath = Get-CachePath "$($lock.luban.installDirectory)/$($lock.luban.entryPoint)"
 # Luban 5.0.0 writes version/help to stderr and returns 1 for these informational requests.
@@ -113,5 +115,34 @@ $actualVersion = ($versionOutput -join [Environment]::NewLine).Trim()
 if ($versionExitCode -notin @(0, 1) -or $actualVersion -ne $expectedVersion) {
     throw "Luban version verification failed (exit $versionExitCode): $actualVersion"
 }
-Write-Host "Luban $($lock.luban.version) is ready with local .NET >= $($lock.dotnet.minimumVersion)."
+$agentPath = Get-CachePath "$($lock.agent.installDirectory)/$($lock.agent.entryPoint)"
+$expectedAgentVersion = "$($lock.agent.version)+$($lock.agent.sourceCommit)"
+$actualAgentVersion = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($agentPath).ProductVersion
+if ($actualAgentVersion -ne $expectedAgentVersion) {
+    throw "Luban.Agent version verification failed: expected $expectedAgentVersion, got $actualAgentVersion."
+}
+$capabilitiesOutput = & $dotnetPath exec --roll-forward $lock.dotnet.rollForward $agentPath capabilities
+$capabilitiesExitCode = $LASTEXITCODE
+if ($capabilitiesExitCode -ne 0) {
+    throw "Luban.Agent capabilities check failed with exit code $capabilitiesExitCode."
+}
+$capabilities = ($capabilitiesOutput -join [Environment]::NewLine) | ConvertFrom-Json
+if ($capabilities.ok -ne $true -or $capabilities.exitCode -ne 0 -or
+    $capabilities.command -ne 'capabilities' -or $capabilities.result.tool -ne 'Luban.Agent') {
+    throw 'Luban.Agent returned an unexpected capabilities response.'
+}
+foreach ($mode in @('capabilities', 'list-tables', 'describe', 'schema', 'validate')) {
+    if ($mode -notin $capabilities.result.modes) {
+        throw "Luban.Agent is missing the expected mode: $mode"
+    }
+}
+$mcpPath = Get-CachePath "$($lock.mcp.installDirectory)/$($lock.mcp.entryPoint)"
+# Upstream v5.0.0 leaves the MCP assembly version at 1.0.0; its release is pinned by archive hash.
+$expectedMcpVersion = "$($lock.mcp.assemblyVersion)+$($lock.mcp.sourceCommit)"
+$actualMcpVersion = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($mcpPath).ProductVersion
+if ($actualMcpVersion -ne $expectedMcpVersion) {
+    throw "Luban.Mcp version verification failed: expected $expectedMcpVersion, got $actualMcpVersion."
+}
+Write-Host "Luban $($lock.luban.version), Luban.Agent $($lock.agent.version) and Luban.Mcp $($lock.mcp.version) are ready with local .NET >= $($lock.dotnet.minimumVersion)."
 Write-Host "Run: pwsh -File tools/luban/run.ps1 --help"
+Write-Host "MCP: project configuration is in .codex/config.toml; restart the MCP connection after setup."

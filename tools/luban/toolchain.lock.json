@@ -18,6 +18,41 @@
       "source": "GitHub release asset digest"
     }
   },
+  "agent": {
+    "name": "Luban.Agent",
+    "version": "5.0.0",
+    "tag": "v5.0.0",
+    "sourceCommit": "52d329fb93be79810ed090f489ba4bf3821c4e4c",
+    "releaseUrl": "https://github.com/focus-creative-games/luban/releases/tag/v5.0.0",
+    "url": "https://github.com/focus-creative-games/luban/releases/download/v5.0.0/Luban.Agent.7z",
+    "archiveName": "Luban.Agent-5.0.0.7z",
+    "format": "7z",
+    "installDirectory": "luban-agent-5.0.0",
+    "entryPoint": "Luban.Agent/Luban.Agent.dll",
+    "checksum": {
+      "algorithm": "SHA256",
+      "value": "57976fb620faf422e064bf89e4f71bc0212fb37e75546691ff3c81d942344579",
+      "source": "GitHub release asset digest"
+    }
+  },
+  "mcp": {
+    "name": "Luban.Mcp",
+    "assemblyVersion": "1.0.0",
+    "version": "5.0.0",
+    "tag": "v5.0.0",
+    "sourceCommit": "52d329fb93be79810ed090f489ba4bf3821c4e4c",
+    "releaseUrl": "https://github.com/focus-creative-games/luban/releases/tag/v5.0.0",
+    "url": "https://github.com/focus-creative-games/luban/releases/download/v5.0.0/Luban.Mcp.7z",
+    "archiveName": "Luban.Mcp-5.0.0.7z",
+    "format": "7z",
+    "installDirectory": "luban-mcp-5.0.0",
+    "entryPoint": "Luban.Mcp/Luban.Mcp.dll",
+    "checksum": {
+      "algorithm": "SHA256",
+      "value": "35d36f86c194b5d95a8953c5c6e1bdce998fc8fd51d1e2e2f8177bc42d770f92",
+      "source": "GitHub release asset digest"
+    }
+  },
   "dotnet": {
     "name": ".NET Runtime",
     "source": "system",
