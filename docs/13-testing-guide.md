@@ -113,7 +113,7 @@ cargo build
 
 ```rust
 use bevy::prelude::*;
-use bevy_tools::prelude::*;
+use bevy_gas::prelude::*;
 
 fn test_app() -> App {
     let mut app = App::new();
@@ -141,7 +141,7 @@ Effect-only 测试的新 system 应优先声明 `EffectSystemParams`：
 
 ```rust
 fn converge_test_effects(mut params: EffectSystemParams) {
-    bevy_tools::gas::gameplay_effects::resolve_active_effect_tag_requirements(&mut params);
+    bevy_gas::gas::gameplay_effects::resolve_active_effect_tag_requirements(&mut params);
 }
 ```
 
@@ -170,13 +170,13 @@ for _ in 0..tick_count {
 
 ## 公共 API 路径测试
 
-prelude 是精简入口，不是完整 API 镜像。测试常见用法可导入 `bevy_tools::prelude::*`；错误、
-handle/spec、管理器和系统函数应从 `bevy_tools::gas::<domain>` 或 crate root 显式导入。
+prelude 是精简入口，不是完整 API 镜像。测试常见用法可导入 `bevy_gas::prelude::*`；错误、
+handle/spec、管理器和系统函数应从 `bevy_gas::gas::<domain>` 或 crate root 显式导入。
 
 公开 API 调整时至少验证：
 
 - owning domain facade 的路径可用；
-- `bevy_tools::gas` 聚合路径与 crate-root 兼容路径符合设计；
+- `bevy_gas::gas` 聚合路径与 crate-root 兼容路径符合设计；
 - 只有高频、低歧义项进入 prelude；
 - 新增内部 `pub` 项不会因通配重导出意外泄漏；
 - `Random` 与 `UniqueName*` 仍由 crate root 公开，而不是误放入 GAS prelude。

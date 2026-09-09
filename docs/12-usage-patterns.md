@@ -9,21 +9,21 @@
 
 ```rust
 use bevy::prelude::*;
-use bevy_tools::prelude::*;
-use bevy_tools::gas::gameplay_abilities::{
+use bevy_gas::prelude::*;
+use bevy_gas::gas::gameplay_abilities::{
     AbilityActivationData,
     AbilityTaskDef,
     AbilityTaskEvent,
     AbilityTaskOnFinishedDef,
 };
-use bevy_tools::gas::gameplay_execution::AbilityActivationRequest;
-use bevy_tools::gas::gameplay_effects::{
+use bevy_gas::gas::gameplay_execution::AbilityActivationRequest;
+use bevy_gas::gas::gameplay_effects::{
     EffectPeriodTicks,
     GameplayEffectImmunityQuery,
     StackingType,
 };
-use bevy_tools::gas::gameplay_tags::GameplayTagError;
-use bevy_tools::UniqueName;
+use bevy_gas::gas::gameplay_tags::GameplayTagError;
+use bevy_gas::UniqueName;
 use std::sync::Arc;
 ```
 

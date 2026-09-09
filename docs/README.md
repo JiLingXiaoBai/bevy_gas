@@ -1,4 +1,4 @@
-# bevy_tools — 知识库
+# bevy_gas — 知识库
 
 本知识库描述当前源码中的 Gameplay Ability System。阅读时采用以下事实优先级：
 
@@ -7,7 +7,7 @@
 3. `examples/` 与 `tests/`：由编译器验证的完整用法和边界场景。
 
 文档不会把所有私有字段复制成长期契约。需要精确 API 时，从
-`bevy_tools::gas::<domain>` 的 rustdoc 开始；常用入口可使用 `bevy_tools::prelude::*`。
+`bevy_gas::gas::<domain>` 的 rustdoc 开始；常用入口可使用 `bevy_gas::prelude::*`。
 
 ## 推荐阅读路径
 
@@ -70,7 +70,7 @@
 
 ```rust
 use bevy::prelude::*;
-use bevy_tools::prelude::*;
+use bevy_gas::prelude::*;
 
 fn main() {
     App::new()
@@ -113,10 +113,10 @@ fn spawn_gameplay_actor(mut commands: Commands) {
 
 ## 公共入口约定
 
-- `bevy_tools::prelude`：Plugin、核心 Component、常用定义和 SystemParam；
-- `bevy_tools::gas::<domain>`：领域完整公共 API，例如
-  `bevy_tools::gas::gameplay_effects::GameplayEffectApplicationError`；
-- `bevy_tools::GameplayEffect` 这类路径：为现有调用方保留的显式 crate-root 兼容重导出；
+- `bevy_gas::prelude`：Plugin、核心 Component、常用定义和 SystemParam；
+- `bevy_gas::gas::<domain>`：领域完整公共 API，例如
+  `bevy_gas::gas::gameplay_effects::GameplayEffectApplicationError`；
+- `bevy_gas::GameplayEffect` 这类路径：为现有调用方保留的显式 crate-root 兼容重导出；
 - 私有子模块文件不是用户导入路径，文档提到它们只用于解释源码所有权。
 
 许可证：MIT。

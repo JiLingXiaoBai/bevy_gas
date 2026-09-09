@@ -7,9 +7,9 @@
 use bevy::ecs::system::RunSystemOnce;
 use bevy::log::LogPlugin;
 use bevy::prelude::*;
-use bevy_tools::gas::attributes::AttributeIdManager;
-use bevy_tools::gas::gameplay_abilities::{AbilityTaskDef, AbilityTaskOnFinishedDef};
-use bevy_tools::prelude::*;
+use bevy_gas::gas::attributes::AttributeIdManager;
+use bevy_gas::gas::gameplay_abilities::{AbilityTaskDef, AbilityTaskOnFinishedDef};
+use bevy_gas::prelude::*;
 use std::error::Error;
 use std::sync::Arc;
 

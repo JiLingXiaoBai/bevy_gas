@@ -3,8 +3,8 @@
 ## 插件一览
 
 插件组合与 `FixedUpdate` 调度实现在 `src/gas/runtime_plugin.rs`。该实现模块是 crate 内部模块；
-公开类型由 `bevy_tools::gas` 和 crate root 显式重导出，其中常用的 Plugin Group、Runtime
-Plugin 与 SystemSet 也位于 `bevy_tools::prelude`。
+公开类型由 `bevy_gas::gas` 和 crate root 显式重导出，其中常用的 Plugin Group、Runtime
+Plugin 与 SystemSet 也位于 `bevy_gas::prelude`。
 
 | 插件 | 类型 | 安装内容 |
 | --- | --- | --- |
@@ -18,7 +18,7 @@ Plugin 与 SystemSet 也位于 `bevy_tools::prelude`。
 
 ```rust
 use bevy::prelude::*;
-use bevy_tools::prelude::*;
+use bevy_gas::prelude::*;
 
 fn main() {
     App::new()

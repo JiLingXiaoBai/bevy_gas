@@ -22,7 +22,7 @@ fn wait_ticks_task_marks_active_ability_ending_after_delay() {
     assert_eq!(
         app.world()
             .entity(active_ability)
-            .get::<bevy_tools::ActiveGameplayAbility>()
+            .get::<bevy_gas::ActiveGameplayAbility>()
             .unwrap()
             .get_status(),
         AbilityActivationStatus::Active
@@ -32,7 +32,7 @@ fn wait_ticks_task_marks_active_ability_ending_after_delay() {
     assert_eq!(
         app.world()
             .entity(active_ability)
-            .get::<bevy_tools::ActiveGameplayAbility>()
+            .get::<bevy_gas::ActiveGameplayAbility>()
             .unwrap()
             .get_status(),
         AbilityActivationStatus::Ending
@@ -67,7 +67,7 @@ fn startup_end_ability_stops_later_sibling_tasks() {
     assert_eq!(
         app.world()
             .entity(active_ability)
-            .get::<bevy_tools::ActiveGameplayAbility>()
+            .get::<bevy_gas::ActiveGameplayAbility>()
             .unwrap()
             .get_status(),
         AbilityActivationStatus::Ending

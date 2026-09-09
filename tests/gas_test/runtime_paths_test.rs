@@ -6,7 +6,7 @@ use super::support_test::{
 };
 use bevy::ecs::system::RunSystemOnce;
 use bevy::prelude::*;
-use bevy_tools::{
+use bevy_gas::{
     AbilityActivationContext, AbilitySystemComponent, AbilityTaskDef, AbilityTaskOnFinishedDef,
     ActiveGameplayEffects, AttributeId, AttributeSet, EffectDurationTicks, EffectPayload,
     GameplayAbility, GameplayAbilitySystemBundle, GameplayAbilitySystemSet, GameplayEffect,
@@ -142,7 +142,7 @@ fn fixed_update_activation_tasks_and_cleanup_run_in_plugin_order() {
         .spawn(AbilitySystemComponent::default())
         .id();
     let ability = Arc::new(GameplayAbility::new(
-        bevy_tools::AbilityTags::default(),
+        bevy_gas::AbilityTags::default(),
         vec![AbilityTaskDef::wait_ticks(
             1,
             AbilityTaskOnFinishedDef::EndAbility,
@@ -198,7 +198,7 @@ fn startup_instant_task_executes_during_activation_tick() {
         empty_effect_tags(),
     ));
     let ability = Arc::new(GameplayAbility::new(
-        bevy_tools::AbilityTags::default(),
+        bevy_gas::AbilityTags::default(),
         vec![AbilityTaskDef::instant(
             AbilityTaskOnFinishedDef::ApplyGameplayEffectToTarget { effect },
         )],
@@ -395,8 +395,8 @@ fn stale_active_effect_handle_cannot_remove_reused_slot() {
     let stale_handle = active_effect_handles(&app, target)[0];
     let removed = app
         .world_mut()
-        .run_system_once(move |mut params: bevy_tools::AbilitySystemParams| {
-            bevy_tools::remove_active_effect(stale_handle, &mut params)
+        .run_system_once(move |mut params: bevy_gas::AbilitySystemParams| {
+            bevy_gas::remove_active_effect(stale_handle, &mut params)
         })
         .unwrap()
         .unwrap();
@@ -412,8 +412,8 @@ fn stale_active_effect_handle_cannot_remove_reused_slot() {
 
     let removed = app
         .world_mut()
-        .run_system_once(move |mut params: bevy_tools::AbilitySystemParams| {
-            bevy_tools::remove_active_effect(stale_handle, &mut params)
+        .run_system_once(move |mut params: bevy_gas::AbilitySystemParams| {
+            bevy_gas::remove_active_effect(stale_handle, &mut params)
         })
         .unwrap()
         .unwrap();

@@ -67,7 +67,7 @@ fn failed_effect_application_does_not_leave_duration_modifier() {
     let health = register_attribute(&mut app, "Health");
     let manager = app
         .world()
-        .resource::<bevy_tools::AttributeIdManager>()
+        .resource::<bevy_gas::AttributeIdManager>()
         .clone();
     let mut attributes = AttributeSet::default();
     attributes

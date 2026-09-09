@@ -1,8 +1,8 @@
-# AGENTS.md — bevy_tools
+# AGENTS.md — bevy_gas
 
 ## 项目概述
 
-`bevy_tools` 是一个为 [Bevy](https://bevyengine.org/) 游戏引擎打造的
+`bevy_gas` 是一个为 [Bevy](https://bevyengine.org/) 游戏引擎打造的
 **Gameplay Ability System (GAS)** 库，设计灵感来源于虚幻引擎的 GAS 框架。
 它提供了模块化的 ECS 友好架构，用于构建复杂的 RPG/MOBA/ARPG 游戏机制。
 

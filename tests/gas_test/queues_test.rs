@@ -5,7 +5,7 @@ use super::support_test::{
     test_app,
 };
 use bevy::prelude::*;
-use bevy_tools::{
+use bevy_gas::{
     AbilityActivationContext, AbilityActivationData, AbilityActivationReason,
     AbilityActivationRequest, AbilityActivationStatus, AbilityActivationTargets,
     AbilityChainContext, AbilitySpecHandle, AbilitySystemComponent, AbilityTargetData,
@@ -94,7 +94,7 @@ fn gameplay_queue_processes_entire_activation_batch() {
 
     let mut app = test_app();
     let ability = Arc::new(GameplayAbility::new(
-        bevy_tools::AbilityTags::default(),
+        bevy_gas::AbilityTags::default(),
         Vec::new(),
         None,
         None,
@@ -166,7 +166,7 @@ fn ability_activation_request_is_preserved_through_startup() {
     let instigator = app.world_mut().spawn_empty().id();
     let causer = app.world_mut().spawn_empty().id();
     let ability = Arc::new(GameplayAbility::new(
-        bevy_tools::AbilityTags::default(),
+        bevy_gas::AbilityTags::default(),
         Vec::new(),
         None,
         None,
@@ -281,11 +281,11 @@ fn startup_task_context_preserves_ability_handle_and_level() {
     let secondary_target = app.world_mut().spawn_empty().id();
     let event_id = app
         .world_mut()
-        .resource_mut::<bevy_tools::UniqueNamePool>()
+        .resource_mut::<bevy_gas::UniqueNamePool>()
         .new_name("Ability.Event.StartupContext")
         .unwrap();
     let ability = Arc::new(GameplayAbility::new(
-        bevy_tools::AbilityTags::default(),
+        bevy_gas::AbilityTags::default(),
         vec![AbilityTaskDef::instant(
             AbilityTaskOnFinishedDef::EmitEvent { event_id },
         )],
@@ -397,7 +397,7 @@ fn gameplay_queue_processes_activation_requests_fifo() {
         empty_effect_tags(),
     ));
     let first = Arc::new(GameplayAbility::new(
-        bevy_tools::AbilityTags::default(),
+        bevy_gas::AbilityTags::default(),
         Vec::new(),
         None,
         None,
@@ -406,7 +406,7 @@ fn gameplay_queue_processes_activation_requests_fifo() {
         false,
     ));
     let second = Arc::new(GameplayAbility::new(
-        bevy_tools::AbilityTags::default(),
+        bevy_gas::AbilityTags::default(),
         Vec::new(),
         None,
         None,
@@ -457,7 +457,7 @@ fn gameplay_execution_queue_preserves_cross_type_fifo() {
         empty_effect_tags(),
     ));
     let ability = Arc::new(GameplayAbility::new(
-        bevy_tools::AbilityTags::default(),
+        bevy_gas::AbilityTags::default(),
         Vec::new(),
         None,
         None,
@@ -531,7 +531,7 @@ fn task_effect_application_inherits_activation_context_payload() {
     let snapshot = app
         .world_mut()
         .entity_mut(source)
-        .get_mut::<bevy_tools::AttributeSet>()
+        .get_mut::<bevy_gas::AttributeSet>()
         .unwrap()
         .make_snapshot(source);
     let handle = AbilitySpecHandle::new(456);
@@ -589,7 +589,7 @@ fn task_can_enqueue_ability_activation() {
         .id();
     let target = source;
     let ability = Arc::new(GameplayAbility::new(
-        bevy_tools::AbilityTags::default(),
+        bevy_gas::AbilityTags::default(),
         Vec::new(),
         None,
         None,
@@ -627,7 +627,7 @@ fn task_emit_event_triggers_observer_with_full_payload() {
     let handle = AbilitySpecHandle::new(77);
     let event_id = app
         .world_mut()
-        .resource_mut::<bevy_tools::UniqueNamePool>()
+        .resource_mut::<bevy_gas::UniqueNamePool>()
         .new_name("Ability.Event.ComboWindow")
         .unwrap();
     let active = spawn_active_ability(&mut app, source, target, handle);

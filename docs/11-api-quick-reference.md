@@ -9,14 +9,14 @@
 
 | 层级 | 示例 | 约定 |
 | --- | --- | --- |
-| 精简 prelude | `bevy_tools::prelude::*`、`bevy_tools::gas::prelude::*` | 只包含常用 Plugin、Component、定义、队列和 SystemParam |
-| 领域门面 | `bevy_tools::gas::gameplay_effects::GameplayEffect` | 专项 API 的规范所有者 |
-| GAS 聚合门面 | `bevy_tools::gas::GameplayEffect` | 对 GAS 领域公开项做显式聚合 |
-| crate root | `bevy_tools::GameplayEffect` | 显式兼容重导出；另拥有 `Random` 与 `UniqueName*` 支撑类型 |
+| 精简 prelude | `bevy_gas::prelude::*`、`bevy_gas::gas::prelude::*` | 只包含常用 Plugin、Component、定义、队列和 SystemParam |
+| 领域门面 | `bevy_gas::gas::gameplay_effects::GameplayEffect` | 专项 API 的规范所有者 |
+| GAS 聚合门面 | `bevy_gas::gas::GameplayEffect` | 对 GAS 领域公开项做显式聚合 |
+| crate root | `bevy_gas::GameplayEffect` | 显式兼容重导出；另拥有 `Random` 与 `UniqueName*` 支撑类型 |
 
 `lib.rs` 还显式重导出 `ability_input`、`ability_system`、`attributes`、`gameplay_abilities`、
 `gameplay_effects`、`gameplay_execution`、`gameplay_tags`、`gameplay_targeting`、
-`modifiers` 与 `settings` 模块，因此旧的 `bevy_tools::gameplay_effects::...` 路径仍可用。
+`modifiers` 与 `settings` 模块，因此旧的 `bevy_gas::gameplay_effects::...` 路径仍可用。
 所有门面都禁止 `pub use *`；新增内部 `pub` 项不会自动成为公开 API。
 
 ### Prelude 的精确范围
@@ -43,12 +43,12 @@
 
 | 项 | 类型 | Prelude | 公开路径 |
 | --- | --- | --- | --- |
-| `GameplayAbilitySystemPlugin` | `PluginGroup` | 是 | `bevy_tools::gas` / crate root |
-| `GameplayAbilitySystemRuntimePlugin` | `Plugin` | 是 | `bevy_tools::gas` / crate root |
-| `GameplayAbilitySystemSet` | `SystemSet` | 是 | `bevy_tools::gas` / crate root |
-| `GameplayTagPlugin` | `Plugin` | 否 | `bevy_tools::gas` / crate root |
-| `UniqueNamePlugin` | `Plugin` | 否 | `bevy_tools::gas` / crate root |
-| `RandomPlugin` | `Plugin` | 否 | `bevy_tools::gas` / crate root |
+| `GameplayAbilitySystemPlugin` | `PluginGroup` | 是 | `bevy_gas::gas` / crate root |
+| `GameplayAbilitySystemRuntimePlugin` | `Plugin` | 是 | `bevy_gas::gas` / crate root |
+| `GameplayAbilitySystemSet` | `SystemSet` | 是 | `bevy_gas::gas` / crate root |
+| `GameplayTagPlugin` | `Plugin` | 否 | `bevy_gas::gas` / crate root |
+| `UniqueNamePlugin` | `Plugin` | 否 | `bevy_gas::gas` / crate root |
+| `RandomPlugin` | `Plugin` | 否 | `bevy_gas::gas` / crate root |
 
 ### Gameplay 标签
 
@@ -211,7 +211,7 @@ ASC、Active Ability 或 `Commands`。`AbilitySystemParams` 内嵌它并实现 `
 
 ### 技能输入绑定
 
-公开路径为 `bevy_tools::gas::ability_input`，行为契约见
+公开路径为 `bevy_gas::gas::ability_input`，行为契约见
 [18 — 技能输入绑定](./18-ability-input-bindings.md)。
 
 | 项 | 类型 | 说明 |
@@ -264,7 +264,7 @@ ASC、Active Ability 或 `Commands`。`AbilitySystemParams` 内嵌它并实现 `
 | `GameplayAbilitySystemSettings` | `struct`   | 全局编译期常量                        |
 
 `UniqueName`、`UniqueNameError`、`UniqueNamePool` 与 `Random` 只从 crate root 公开，不在
-`bevy_tools::gas` 或 prelude 中。`GameplayAbilitySystemSettings` 由 `gas::settings` 拥有，并由
+`bevy_gas::gas` 或 prelude 中。`GameplayAbilitySystemSettings` 由 `gas::settings` 拥有，并由
 `gas` 与 crate root 显式重导出；其常量为 `ATTRIBUTE_SET_SIZE`、
 `HOT_ATTRIBUTE_SET_SIZE`、`COLD_ATTRIBUTE_SET_SIZE`、`GAMEPLAY_TAG_SIZE` 与
 `ABILITY_CHAIN_MAX_DEPTH`。

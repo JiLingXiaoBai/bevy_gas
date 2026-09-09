@@ -7,7 +7,7 @@ use bevy::ecs::system::RunSystemOnce;
 use bevy::input::InputSystems;
 use bevy::log::LogPlugin;
 use bevy::prelude::*;
-use bevy_tools::prelude::*;
+use bevy_gas::prelude::*;
 use std::collections::VecDeque;
 use std::error::Error;
 use std::sync::Arc;

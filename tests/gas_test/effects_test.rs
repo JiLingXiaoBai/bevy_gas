@@ -5,7 +5,7 @@ use crate::support_test::{
     run_effect_tag_requirements_update, run_fixed_update, spawn_attribute_set, test_app,
 };
 use bevy::ecs::system::RunSystemOnce;
-use bevy_tools::{
+use bevy_gas::{
     AbilitySystemParams, ActiveGameplayEffects, AttributeSet, EffectDurationTicks, EffectPayload,
     EffectPeriodTicks, EffectTags, GameplayEffect, GameplayEffectApplicationError,
     GameplayEffectImmunityQuery, GameplayExecutionQueue, GameplayTag, GameplayTagContainer,

@@ -42,7 +42,7 @@ fn chained_ability_activation_blocks_cycles() {
     assert!(activate_ability(&mut app, source, source, first_handle));
     assert!(
         app.world()
-            .resource::<bevy_tools::GameplayExecutionQueue>()
+            .resource::<bevy_gas::GameplayExecutionQueue>()
             .is_empty()
     );
     assert_eq!(active_ability_count(&mut app), 2);
@@ -142,12 +142,12 @@ fn chained_activation_inherits_context_and_activation_effects_use_payload() {
     let target = spawn_attribute_set(&mut app, damage, 0.0);
     let manager = app
         .world()
-        .resource::<bevy_tools::AttributeIdManager>()
+        .resource::<bevy_gas::AttributeIdManager>()
         .clone();
     let source_snapshot = app
         .world_mut()
         .entity_mut(source)
-        .get_mut::<bevy_tools::AttributeSet>()
+        .get_mut::<bevy_gas::AttributeSet>()
         .unwrap()
         .make_snapshot(source);
     let first_handle = AbilitySpecHandle::new(0);

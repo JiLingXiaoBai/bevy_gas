@@ -37,7 +37,7 @@ GameplayResolve：验证并执行技能
 
 ```rust
 use bevy::prelude::*;
-use bevy_tools::prelude::*;
+use bevy_gas::prelude::*;
 use std::sync::Arc;
 
 #[derive(PartialEq, Eq)]
@@ -104,8 +104,8 @@ fn spawn_player(mut commands: Commands) {
 
 ```rust
 use bevy::prelude::Entity;
-use bevy_tools::gas::ability_input::AbilityInputBindingError;
-use bevy_tools::prelude::*;
+use bevy_gas::gas::ability_input::AbilityInputBindingError;
+use bevy_gas::prelude::*;
 
 fn enqueue_input<Action: Eq + Send + Sync + 'static>(
     action: &Action,
@@ -198,7 +198,7 @@ cargo run --example ability_input_bindings
 会使用新技能。`src/gas/ability_input.rs` 是门面，实现位于
 `src/gas/ability_input/bindings.rs`，遵循即使只有一个实现文件也使用门面加同名目录的
 [模块布局约定](./17-source-layout-and-maintenance.md)。公开路径仍为
-`bevy_tools::gas::ability_input`：组件由 prelude 提供，错误类型从领域门面显式导入。
+`bevy_gas::gas::ability_input`：组件由 prelude 提供，错误类型从领域门面显式导入。
 测试见 `tests/gas_test/ability_input_test.rs`，由 `tests/gas_test.rs` 统一加载，遵循
 [测试领域归属约定](./13-testing-guide.md)。单独运行输入绑定与缓冲测试：
 

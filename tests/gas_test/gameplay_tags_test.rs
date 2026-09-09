@@ -1,7 +1,7 @@
 use super::support_test::{add_tag_to_entity, register_tag, remove_tag_from_entity, test_app};
 use bevy::ecs::system::RunSystemOnce;
 use bevy::prelude::*;
-use bevy_tools::{
+use bevy_gas::{
     GameplayAbilitySystemSettings, GameplayTag, GameplayTagContainer, GameplayTagError,
     GameplayTagManager, GameplayTagRegister, TagRequirements, UniqueNamePool,
 };

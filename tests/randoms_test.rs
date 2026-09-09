@@ -1,4 +1,4 @@
-use bevy_tools::Random;
+use bevy_gas::Random;
 
 #[test]
 fn random_with_same_seed_produces_same_sequence() {

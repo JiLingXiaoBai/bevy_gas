@@ -14,10 +14,10 @@ src/
 ```
 
 `randoms` 与 `unique_names` 是 crate 私有门面，分别显式重导出内部实现，再由 crate root
-公开。因此用户路径是 `bevy_tools::Random`、`bevy_tools::UniqueName`、
-`bevy_tools::UniqueNameError` 和 `bevy_tools::UniqueNamePool`；这些类型不属于
-`bevy_tools::gas::prelude`。GAS 设置则可从 `bevy_tools::gas::settings`、
-`bevy_tools::gas` 或 crate root 导入。
+公开。因此用户路径是 `bevy_gas::Random`、`bevy_gas::UniqueName`、
+`bevy_gas::UniqueNameError` 和 `bevy_gas::UniqueNamePool`；这些类型不属于
+`bevy_gas::gas::prelude`。GAS 设置则可从 `bevy_gas::gas::settings`、
+`bevy_gas::gas` 或 crate root 导入。
 
 各门面均使用显式公开项，不使用 `pub use *`。新增内部 `pub` 项不会自动扩大 crate API。
 

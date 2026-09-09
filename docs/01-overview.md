@@ -2,7 +2,7 @@
 
 ## 项目定位
 
-`bevy_tools` 是面向 Bevy 0.19 的 ECS-first Gameplay Ability System。它提供构建 RPG、MOBA、
+`bevy_gas` 是面向 Bevy 0.19 的 ECS-first Gameplay Ability System。它提供构建 RPG、MOBA、
 ARPG 等 Gameplay 规则所需的基础能力，但不替游戏决定输入映射、动画、表现层、网络同步或资源
 序列化格式。
 
@@ -174,17 +174,17 @@ EffectTicks
 
 ```rust
 // Common integration surface.
-use bevy_tools::prelude::*;
+use bevy_gas::prelude::*;
 
 // Complete domain surface.
-use bevy_tools::gas::gameplay_effects::{
+use bevy_gas::gas::gameplay_effects::{
     GameplayEffectApplicationError,
     prepare_gameplay_effect,
 };
 ```
 
-- `bevy_tools::prelude` 有意保持精简；
-- `bevy_tools::gas::<domain>` 是按领域查找完整 API 的规范位置；
+- `bevy_gas::prelude` 有意保持精简；
+- `bevy_gas::gas::<domain>` 是按领域查找完整 API 的规范位置；
 - crate root 继续显式重导出现有 API，以降低迁移成本；
 - 私有实现文件不是稳定导入路径，公开项由同名领域门面显式控制。
 

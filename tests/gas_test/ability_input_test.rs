@@ -1,6 +1,6 @@
 use bevy::input::InputSystems;
 use bevy::prelude::*;
-use bevy_tools::{
+use bevy_gas::{
     AbilityActivationContext, AbilityActivationReason, AbilityInputBindingError,
     AbilityInputBindings, AbilitySpecHandle, AbilitySystemComponent, ActiveGameplayAbility,
     GameplayAbility, GameplayAbilitySystemBundle, GameplayAbilitySystemPlugin,

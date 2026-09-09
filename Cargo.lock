@@ -801,6 +801,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "bevy_gas"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "rand",
+]
+
+[[package]]
 name = "bevy_gilrs"
 version = "0.19.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1610,14 +1618,6 @@ dependencies = [
  "crossbeam-channel",
  "log",
  "serde",
-]
-
-[[package]]
-name = "bevy_tools"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "rand",
 ]
 
 [[package]]

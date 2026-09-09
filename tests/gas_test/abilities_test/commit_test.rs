@@ -14,7 +14,7 @@ fn ability_activation_commits_cost_and_cooldown_then_cooldown_blocks_reactivatio
         })
         .id();
     let cost = instant_add_effect(mana, -20.0);
-    let cooldown = Arc::new(bevy_tools::GameplayEffect::new(
+    let cooldown = Arc::new(bevy_gas::GameplayEffect::new(
         Vec::new(),
         EffectDurationTicks::Infinite,
         None,
@@ -92,7 +92,7 @@ fn cooldown_prepare_failure_does_not_spend_ability_cost() {
         .world_mut()
         .spawn((AbilitySystemComponent::default(), attributes))
         .id();
-    let cooldown = Arc::new(bevy_tools::GameplayEffect::new(
+    let cooldown = Arc::new(bevy_gas::GameplayEffect::new(
         Vec::new(),
         EffectDurationTicks::Infinite,
         None,
@@ -124,7 +124,7 @@ fn activation_effect_failure_does_not_block_ability_success() {
         .world_mut()
         .spawn(AbilitySystemComponent::default())
         .id();
-    let best_effort_effect = Arc::new(bevy_tools::GameplayEffect::new(
+    let best_effort_effect = Arc::new(bevy_gas::GameplayEffect::new(
         Vec::new(),
         EffectDurationTicks::Infinite,
         None,

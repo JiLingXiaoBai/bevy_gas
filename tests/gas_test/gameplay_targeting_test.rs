@@ -4,7 +4,7 @@ use crate::support_test::{
 };
 use bevy::ecs::system::RunSystemOnce;
 use bevy::prelude::*;
-use bevy_tools::{
+use bevy_gas::{
     AbilityActivationContext, AbilityActivationTargets, AbilityActivationTargetsError,
     AbilitySystemComponent, AbilityTags, AbilityTargetData, AbilityTargetHit, AbilityTaskDef,
     AbilityTaskOnFinishedDef, EffectDurationTicks, GameplayAbility, GameplayEffect,
@@ -256,7 +256,7 @@ fn targeting_queue_activates_ability_with_complete_target_data() {
     let context = {
         let mut queue = app
             .world_mut()
-            .resource_mut::<bevy_tools::GameplayExecutionQueue>();
+            .resource_mut::<bevy_gas::GameplayExecutionQueue>();
         AbilityActivationContext::direct(source, queue.new_root_chain(handle))
     };
     app.world_mut()
@@ -272,7 +272,7 @@ fn targeting_queue_activates_ability_with_complete_target_data() {
 
     let targets = app
         .world_mut()
-        .run_system_once(move |query: Query<&bevy_tools::ActiveGameplayAbility>| {
+        .run_system_once(move |query: Query<&bevy_gas::ActiveGameplayAbility>| {
             query
                 .iter()
                 .find(|active| active.get_spec_handle() == handle)
@@ -365,7 +365,7 @@ fn multi_target_task_applies_effect_to_every_acquired_entity() {
     let context = {
         let mut queue = app
             .world_mut()
-            .resource_mut::<bevy_tools::GameplayExecutionQueue>();
+            .resource_mut::<bevy_gas::GameplayExecutionQueue>();
         AbilityActivationContext::direct(source, queue.new_root_chain(handle))
     };
     app.world_mut()
@@ -421,7 +421,7 @@ fn activation_effects_apply_to_every_entity_in_target_data() {
         ],
     );
     let context =
-        AbilityActivationContext::direct(source, bevy_tools::AbilityChainContext::root(handle, 1));
+        AbilityActivationContext::direct(source, bevy_gas::AbilityChainContext::root(handle, 1));
     let targets = AbilityActivationTargets::acquired(target_data).unwrap();
 
     activate_ability_with_context(&mut app, source, targets, handle, context).unwrap();

@@ -1,4 +1,4 @@
-use bevy_tools::UniqueNamePool;
+use bevy_gas::UniqueNamePool;
 
 #[test]
 fn unique_name_pool_reuses_names_and_preserves_empty_name() {

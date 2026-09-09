@@ -20,7 +20,7 @@ Execution 或 Ability System。实现文件保持私有，由同名领域门面�
 5. 不使用 `pub use *`，避免内部 `pub` 项自动扩大 API；
 6. 同步更新 rustdoc、对应知识库章节和公共路径测试。
 
-`bevy_tools::gas::<domain>` 是专项 API 的规范所有者，`bevy_tools::gas` 是显式聚合门面，
+`bevy_gas::gas::<domain>` 是专项 API 的规范所有者，`bevy_gas::gas` 是显式聚合门面，
 crate root 主要承担兼容路径。`Random` 与 `UniqueName*` 是例外：它们由 crate root 直接公开，
 不属于 GAS prelude。
 

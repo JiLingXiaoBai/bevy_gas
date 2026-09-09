@@ -1,5 +1,5 @@
 use bevy::prelude::*;
-use bevy_tools::*;
+use bevy_gas::*;
 
 fn main() {
     App::new()

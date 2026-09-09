@@ -183,9 +183,9 @@ src/
 
 公开路径分三层：
 
-1. `bevy_tools::prelude::*`：常规接入；
-2. `bevy_tools::gas::gameplay_effects::GameplayEffect` 这类领域路径：完整领域 API；
-3. `bevy_tools::GameplayEffect` 这类 crate-root 路径：保留的显式兼容重导出。
+1. `bevy_gas::prelude::*`：常规接入；
+2. `bevy_gas::gas::gameplay_effects::GameplayEffect` 这类领域路径：完整领域 API；
+3. `bevy_gas::GameplayEffect` 这类 crate-root 路径：保留的显式兼容重导出。
 
 门面禁止 `pub use *`。新增实现文件中的 `pub` 项不会自动成为 crate API；只有被门面明确重导出的
 项才属于领域公共表面。私有文件名可以调整，但不得在没有迁移方案时改变已公开的类型和函数路径。
@@ -266,7 +266,7 @@ commit 和生命周期编排的流程：
 查询和内部 pending overlay。Effect 实现不得反向导入 Ability System。
 
 `ability_input.rs` 门面显式重导出 `ability_input/bindings.rs` 中的组件与错误类型，公开路径
-仍为 `bevy_tools::gas::ability_input`；`bindings` 是私有实现模块。
+仍为 `bevy_gas::gas::ability_input`；`bindings` 是私有实现模块。
 
 `ability_input` 是独立的可选输入适配领域，只依赖 ASC 的只读规格查询和 `AbilitySpecHandle`。
 它不采集物理设备、不保存按下状态、不安装系统，也不进入 `GameplayAbilitySystemBundle`。

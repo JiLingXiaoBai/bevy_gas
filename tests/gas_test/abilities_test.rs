@@ -7,7 +7,7 @@ use crate::support_test::{
     spawn_active_ability, spawn_attribute_set, test_app,
 };
 use bevy::prelude::*;
-use bevy_tools::{
+use bevy_gas::{
     AbilityActivationContext, AbilityActivationError, AbilityActivationReason,
     AbilityActivationStatus, AbilityChainContext, AbilityChainError, AbilitySpecHandle,
     AbilitySystemComponent, AbilityTags, AbilityTask, AbilityTaskDef, AbilityTaskExecutionContext,

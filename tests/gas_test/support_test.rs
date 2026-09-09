@@ -1,17 +1,15 @@
 use bevy::ecs::system::RunSystemOnce;
 use bevy::prelude::*;
-use bevy_tools::attributes::{
+use bevy_gas::attributes::{
     AttributeId, AttributeIdManager, AttributeIdRegister, AttributeRegion, AttributeSet,
 };
-use bevy_tools::gameplay_abilities::{AbilitySpecHandle, AbilityTask, ActiveGameplayAbility};
-use bevy_tools::gameplay_effects::{
-    EffectDurationTicks, EffectPayload, EffectTags, GameplayEffect,
-};
-use bevy_tools::gameplay_tags::{
+use bevy_gas::gameplay_abilities::{AbilitySpecHandle, AbilityTask, ActiveGameplayAbility};
+use bevy_gas::gameplay_effects::{EffectDurationTicks, EffectPayload, EffectTags, GameplayEffect};
+use bevy_gas::gameplay_tags::{
     GameplayTag, GameplayTagContainer, GameplayTagManager, GameplayTagRegister,
 };
-use bevy_tools::modifiers::{Modifier, ModifierMagnitude, ModifierOperation};
-use bevy_tools::{
+use bevy_gas::modifiers::{Modifier, ModifierMagnitude, ModifierOperation};
+use bevy_gas::{
     AbilityActivationContext, AbilityActivationTargets, AbilityChainContext,
     AbilitySystemComponent, AbilitySystemParams, ActiveEffectHandle, ActiveGameplayEffects,
     GameplayAbilitySystemPlugin, apply_gameplay_effect, cleanup_finished_abilities_system,
@@ -100,7 +98,7 @@ pub fn instant_add_effect(attribute: AttributeId, value: f32) -> Arc<GameplayEff
         EffectDurationTicks::Instant,
         None,
         1.0,
-        bevy_tools::StackingPolicy::non_stacking(),
+        bevy_gas::StackingPolicy::non_stacking(),
         empty_effect_tags(),
     ))
 }
@@ -149,7 +147,7 @@ pub fn apply_effect_result(
     target: Entity,
     source: Entity,
     effect: Arc<GameplayEffect>,
-) -> Result<(), bevy_tools::GameplayEffectApplicationError> {
+) -> Result<(), bevy_gas::GameplayEffectApplicationError> {
     apply_effect_with_payload_result(app, target, effect, EffectPayload::new(source, None, 1))
 }
 
@@ -167,7 +165,7 @@ pub fn apply_effect_with_payload_result(
     target: Entity,
     effect: Arc<GameplayEffect>,
     payload: EffectPayload,
-) -> Result<(), bevy_tools::GameplayEffectApplicationError> {
+) -> Result<(), bevy_gas::GameplayEffectApplicationError> {
     app.world_mut()
         .run_system_once(move |mut params: AbilitySystemParams| {
             apply_gameplay_effect(target, &effect, &mut params, &payload)
@@ -189,7 +187,7 @@ pub fn activate_ability_result(
     source: Entity,
     target: Entity,
     handle: AbilitySpecHandle,
-) -> Result<(), bevy_tools::AbilityActivationError> {
+) -> Result<(), bevy_gas::AbilityActivationError> {
     app.world_mut()
         .run_system_once(move |mut params: AbilitySystemParams| {
             try_activate_ability_by_handle(
@@ -209,7 +207,7 @@ pub fn activate_ability_with_context(
     targets: AbilityActivationTargets,
     handle: AbilitySpecHandle,
     context: AbilityActivationContext,
-) -> Result<(), bevy_tools::AbilityActivationError> {
+) -> Result<(), bevy_gas::AbilityActivationError> {
     app.world_mut()
         .run_system_once(move |mut params: AbilitySystemParams| {
             try_activate_ability_by_handle(
@@ -245,7 +243,7 @@ pub fn active_effect_handles(app: &App, target: Entity) -> Vec<ActiveEffectHandl
 pub fn give_ability(
     app: &mut App,
     owner: Entity,
-    ability: Arc<bevy_tools::GameplayAbility>,
+    ability: Arc<bevy_gas::GameplayAbility>,
 ) -> AbilitySpecHandle {
     app.world_mut()
         .entity_mut(owner)
@@ -305,7 +303,7 @@ pub fn spawn_active_ability(
             source,
             handle,
             target,
-            bevy_tools::AbilityActivationStatus::Active,
+            bevy_gas::AbilityActivationStatus::Active,
             AbilityActivationContext::direct(source, AbilityChainContext::root(handle, 0)),
         ))
         .id()

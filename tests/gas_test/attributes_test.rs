@@ -5,7 +5,7 @@ use super::support_test::{
 };
 use bevy::ecs::system::RunSystemOnce;
 use bevy::prelude::*;
-use bevy_tools::{
+use bevy_gas::{
     ActiveGameplayEffects, AttributeIdManager, AttributeSet, EffectDurationTicks, GameplayEffect,
     GameplayEffectApplicationError, ModifierMagnitude, ModifierOperation, StackingPolicy,
     UniqueNamePool,
@@ -16,19 +16,19 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 static POST_EXECUTE_COUNT: AtomicUsize = AtomicUsize::new(0);
 static EVALUATION_COUNT: AtomicUsize = AtomicUsize::new(0);
 
-fn count_evaluations(aggregator: &bevy_tools::Aggregator, base_value: f32) -> f32 {
+fn count_evaluations(aggregator: &bevy_gas::Aggregator, base_value: f32) -> f32 {
     EVALUATION_COUNT.fetch_add(1, Ordering::SeqCst);
-    bevy_tools::default_executor(aggregator, base_value)
+    bevy_gas::default_executor(aggregator, base_value)
 }
 
-fn add_one_executor(aggregator: &bevy_tools::Aggregator, base_value: f32) -> f32 {
-    bevy_tools::default_executor(aggregator, base_value) + 1.0
+fn add_one_executor(aggregator: &bevy_gas::Aggregator, base_value: f32) -> f32 {
+    bevy_gas::default_executor(aggregator, base_value) + 1.0
 }
 
 fn count_post_execute(
     _attributes: &mut AttributeSet,
-    _manager: &bevy_tools::AttributeIdManager,
-    _id: bevy_tools::AttributeId,
+    _manager: &bevy_gas::AttributeIdManager,
+    _id: bevy_gas::AttributeId,
     old_value: f32,
     new_value: f32,
 ) {
@@ -44,7 +44,7 @@ fn custom_aggregator_executor_runs_without_modifiers() {
     let health = register_hot_attribute(&mut app, "Health");
     let manager = app
         .world()
-        .resource::<bevy_tools::AttributeIdManager>()
+        .resource::<bevy_gas::AttributeIdManager>()
         .clone();
     let mut attributes = AttributeSet::default();
     attributes
@@ -70,7 +70,7 @@ fn attribute_id_manager_routes_ordinary_ids_to_independent_hot_and_cold_slots() 
     let hot_mana = register_hot_attribute(&mut app, "Mana");
     let manager = app
         .world()
-        .resource::<bevy_tools::AttributeIdManager>()
+        .resource::<bevy_gas::AttributeIdManager>()
         .clone();
 
     assert_eq!(hot_health.to_index(), 0);
@@ -78,12 +78,12 @@ fn attribute_id_manager_routes_ordinary_ids_to_independent_hot_and_cold_slots() 
     assert_eq!(hot_mana.to_index(), 2);
     assert_eq!(
         manager.location(hot_health).unwrap().region(),
-        bevy_tools::AttributeRegion::Hot
+        bevy_gas::AttributeRegion::Hot
     );
     assert_eq!(manager.location(hot_health).unwrap().slot(), 0);
     assert_eq!(
         manager.location(cold_strength).unwrap().region(),
-        bevy_tools::AttributeRegion::Cold
+        bevy_gas::AttributeRegion::Cold
     );
     assert_eq!(manager.location(cold_strength).unwrap().slot(), 0);
     assert_eq!(manager.location(hot_mana).unwrap().slot(), 1);
@@ -125,26 +125,26 @@ fn attribute_registration_rejects_region_mismatch_and_hot_overflow() {
 
     let mismatch = app
         .world_mut()
-        .run_system_once(|mut register: bevy_tools::AttributeIdRegister| {
-            register.request_or_register_attribute_id("Health", bevy_tools::AttributeRegion::Cold)
+        .run_system_once(|mut register: bevy_gas::AttributeIdRegister| {
+            register.request_or_register_attribute_id("Health", bevy_gas::AttributeRegion::Cold)
         })
         .unwrap();
     assert_eq!(
         mismatch,
-        Err(bevy_tools::AttributeIdError::RegionMismatch {
-            existing: bevy_tools::AttributeRegion::Hot,
-            requested: bevy_tools::AttributeRegion::Cold,
+        Err(bevy_gas::AttributeIdError::RegionMismatch {
+            existing: bevy_gas::AttributeRegion::Hot,
+            requested: bevy_gas::AttributeRegion::Cold,
         })
     );
 
     let overflow = app
         .world_mut()
-        .run_system_once(|mut register: bevy_tools::AttributeIdRegister| {
+        .run_system_once(|mut register: bevy_gas::AttributeIdRegister| {
             let mut result = Ok(());
-            for index in 1..=bevy_tools::HOT_ATTRIBUTE_SET_SIZE {
+            for index in 1..=bevy_gas::HOT_ATTRIBUTE_SET_SIZE {
                 if let Err(error) = register.request_or_register_attribute_id(
                     &format!("HotAttribute{index}"),
-                    bevy_tools::AttributeRegion::Hot,
+                    bevy_gas::AttributeRegion::Hot,
                 ) {
                     result = Err(error);
                     break;
@@ -155,9 +155,9 @@ fn attribute_registration_rejects_region_mismatch_and_hot_overflow() {
         .unwrap();
     assert_eq!(
         overflow,
-        Err(bevy_tools::AttributeIdError::RegionCapacityExceeded {
-            region: bevy_tools::AttributeRegion::Hot,
-            max: bevy_tools::HOT_ATTRIBUTE_SET_SIZE,
+        Err(bevy_gas::AttributeIdError::RegionCapacityExceeded {
+            region: bevy_gas::AttributeRegion::Hot,
+            max: bevy_gas::HOT_ATTRIBUTE_SET_SIZE,
         })
     );
 }
@@ -193,7 +193,7 @@ fn custom_executor_survives_removal_of_last_modifier() {
     let health = register_attribute(&mut app, "Health");
     let manager = app
         .world()
-        .resource::<bevy_tools::AttributeIdManager>()
+        .resource::<bevy_gas::AttributeIdManager>()
         .clone();
     let mut attributes = AttributeSet::default();
     attributes
@@ -226,7 +226,7 @@ fn sparse_aggregators_support_reverse_location_insertion_and_independent_removal
     let mana = register_attribute(&mut app, "Mana");
     let manager = app
         .world()
-        .resource::<bevy_tools::AttributeIdManager>()
+        .resource::<bevy_gas::AttributeIdManager>()
         .clone();
     let mut attributes = AttributeSet::default();
     attributes
@@ -334,7 +334,7 @@ fn effect_rejects_uninitialized_attribute_before_applying_any_modifier() {
     assert_eq!(current_value(&mut app, target, health), 10.0);
     let manager = app
         .world()
-        .resource::<bevy_tools::AttributeIdManager>()
+        .resource::<bevy_gas::AttributeIdManager>()
         .clone();
     assert!(
         app.world_mut()
@@ -383,7 +383,7 @@ fn removing_missing_modifier_handle_does_not_change_current_value() {
         StackingPolicy::non_stacking(),
         empty_effect_tags(),
     ));
-    let missing_handle = bevy_tools::ActiveEffectHandle::new(target, u32::MAX, 1);
+    let missing_handle = bevy_gas::ActiveEffectHandle::new(target, u32::MAX, 1);
 
     assert!(apply_effect(&mut app, target, target, effect));
     app.world_mut()
@@ -420,7 +420,7 @@ fn attribute_id_registration_reports_capacity_exceeded() {
     let result = {
         let unique_names: Vec<_> = {
             let mut names = app.world_mut().resource_mut::<UniqueNamePool>();
-            (0..=bevy_tools::ATTRIBUTE_SET_SIZE)
+            (0..=bevy_gas::ATTRIBUTE_SET_SIZE)
                 .map(|index| names.new_name(&format!("Attribute{index}")).unwrap())
                 .collect()
         };
@@ -428,10 +428,10 @@ fn attribute_id_registration_reports_capacity_exceeded() {
         let mut manager = app.world_mut().resource_mut::<AttributeIdManager>();
         let mut result = Ok(());
         for (index, unique_name) in unique_names.into_iter().enumerate() {
-            let region = if index < bevy_tools::HOT_ATTRIBUTE_SET_SIZE {
-                bevy_tools::AttributeRegion::Hot
+            let region = if index < bevy_gas::HOT_ATTRIBUTE_SET_SIZE {
+                bevy_gas::AttributeRegion::Hot
             } else {
-                bevy_tools::AttributeRegion::Cold
+                bevy_gas::AttributeRegion::Cold
             };
             if let Err(err) = manager.register_id_internal(unique_name, region) {
                 result = Err(err);
@@ -443,8 +443,8 @@ fn attribute_id_registration_reports_capacity_exceeded() {
 
     assert_eq!(
         result,
-        Err(bevy_tools::AttributeIdError::CapacityExceeded {
-            max: bevy_tools::ATTRIBUTE_SET_SIZE
+        Err(bevy_gas::AttributeIdError::CapacityExceeded {
+            max: bevy_gas::ATTRIBUTE_SET_SIZE
         })
     );
 }
@@ -466,7 +466,7 @@ fn attribute_set_snapshot_captures_base_current_and_source_entity() {
 
     let manager = app
         .world()
-        .resource::<bevy_tools::AttributeIdManager>()
+        .resource::<bevy_gas::AttributeIdManager>()
         .clone();
     let snapshot = app
         .world_mut()
@@ -487,7 +487,7 @@ fn attribute_set_snapshot_is_not_changed_by_later_attribute_mutation() {
     let source = spawn_attribute_set(&mut app, health, 10.0);
     let manager = app
         .world()
-        .resource::<bevy_tools::AttributeIdManager>()
+        .resource::<bevy_gas::AttributeIdManager>()
         .clone();
     let snapshot = app
         .world_mut()
@@ -516,6 +516,6 @@ fn attribute_location_reports_manager_mismatch() {
 
     assert_eq!(
         empty_manager.location(health),
-        Err(bevy_tools::AttributeIdError::MissingLocation { id: health })
+        Err(bevy_gas::AttributeIdError::MissingLocation { id: health })
     );
 }

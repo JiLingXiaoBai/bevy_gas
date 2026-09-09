@@ -1,6 +1,6 @@
-# bevy_tools
+# bevy_gas
 
-`bevy_tools` 是面向 Bevy 0.19 的 ECS 优先 Gameplay Ability System（GAS）库，提供
+`bevy_gas` 是面向 Bevy 0.19 的 ECS 优先 Gameplay Ability System（GAS）库，提供
 Gameplay Tags、Attributes、Modifiers、Gameplay Effects、Gameplay Abilities、Ability Tasks、
 Targeting、技能输入绑定，以及基于 `FixedUpdate` tick 的统一 Gameplay 执行队列。
 
@@ -12,7 +12,7 @@ Targeting、技能输入绑定，以及基于 `FixedUpdate` tick 的统一 Gamep
 
 ```rust
 use bevy::prelude::*;
-use bevy_tools::prelude::*;
+use bevy_gas::prelude::*;
 
 fn main() {
     App::new()
