@@ -75,6 +75,7 @@ src/
     │       ├── planning.rs
     │       ├── application.rs
     │       ├── execution.rs
+    │       ├── modifiers.rs
     │       ├── removal.rs
     │       ├── requirements.rs
     │       └── ticking.rs
@@ -187,7 +188,8 @@ src/
 | `active_gameplay_effect/state.rs` | Handle、稳定 slot、Active Effect 状态和目标 Component |
 | `active_gameplay_effect/planning.rs` | 应用错误、Plan、prepare 和错误映射 |
 | `active_gameplay_effect/application.rs` | 同步应用入口、条件、概率、免疫和堆叠选择 |
-| `active_gameplay_effect/execution.rs` | Plan 重验证、Instant/Stack/Create、回滚和 modifier mutation |
+| `active_gameplay_effect/execution.rs` | Plan 重验证、Instant/Stack/Create 和回滚 |
+| `active_gameplay_effect/modifiers.rs` | 即时/持续属性修改，以及叠层和到期减层共用的修饰器刷新 |
 | `active_gameplay_effect/removal.rs` | 显式/按标签移除和 Effect 状态清理 |
 | `active_gameplay_effect/requirements.rs` | ongoing/removal 条件和固定点收敛 |
 | `active_gameplay_effect/ticking.rs` | Duration 与 Period fixed-tick 系统 |

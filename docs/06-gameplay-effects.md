@@ -28,7 +28,8 @@ src/gas/
     └── active_gameplay_effect/
         ├── planning.rs         # Validation, plan, and public errors
         ├── application.rs      # Synchronous entry and stack lookup
-        ├── execution.rs        # Plan execution and modifier application
+        ├── execution.rs        # Plan execution and rollback
+        ├── modifiers.rs        # Shared instant/duration modifier mutations
         ├── state.rs            # Target-owned active storage
         ├── requirements.rs     # Ongoing/removal fixed point
         ├── removal.rs          # Cleanup and public removal/query API
@@ -36,6 +37,10 @@ src/gas/
 ```
 
 排队请求类型位于 `src/gas/gameplay_execution/request.rs`，不是 Effects 目录的一部分。
+
+`active_gameplay_effect/modifiers.rs` 是私有实现模块，集中即时修改、持续修饰器安装，以及层数
+变化时的移除/重建操作。叠层与到期减层共用刷新函数，条件恢复也使用同一持续修饰器安装逻辑；
+各生命周期入口仍负责自己的执行条件、错误处理和失败清理，公共 API 与计时顺序不变。
 
 ## 公共 API
 

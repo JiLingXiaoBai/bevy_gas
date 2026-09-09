@@ -1,6 +1,6 @@
 use super::super::gameplay_effect::StackExpirationPolicy;
 use super::super::gameplay_effect_spec::EffectDurationTicksSpec;
-use super::execution::{apply_duration_modifiers, apply_instant_modifiers};
+use super::modifiers::{apply_instant_modifiers, refresh_duration_modifiers};
 use super::planning::GameplayEffectApplicationError;
 use super::removal::{EffectCleanupResources, cleanup_effect_state, force_remove_effect};
 use super::state::ActiveGameplayEffects;
@@ -63,23 +63,14 @@ pub fn tick_effect_duration_system(
                     && !snapshot.get_spec().get_modifier_specs().is_empty()
                 {
                     let update_result = match attr_query.get_mut(snapshot.get_target()) {
-                        Ok(mut attributes) => attributes
-                            .remove_modifiers_for_attributes(
-                                &attribute_id_manager,
-                                handle,
-                                snapshot.get_spec().get_modified_attribute_ids(),
-                            )
-                            .map_err(GameplayEffectApplicationError::from)
-                            .and_then(|()| {
-                                apply_duration_modifiers(
-                                    snapshot.get_target(),
-                                    &mut attributes,
-                                    &attribute_id_manager,
-                                    snapshot.get_spec(),
-                                    handle,
-                                    snapshot.get_stack_count(),
-                                )
-                            }),
+                        Ok(mut attributes) => refresh_duration_modifiers(
+                            snapshot.get_target(),
+                            &mut attributes,
+                            &attribute_id_manager,
+                            snapshot.get_spec(),
+                            handle,
+                            snapshot.get_stack_count(),
+                        ),
                         Err(_) => Err(GameplayEffectApplicationError::MissingAttributeSet {
                             target: snapshot.get_target(),
                         }),

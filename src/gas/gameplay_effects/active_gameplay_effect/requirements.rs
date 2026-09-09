@@ -1,5 +1,5 @@
 use super::super::EffectSystemParams;
-use super::execution::apply_duration_modifiers;
+use super::modifiers::apply_duration_modifiers;
 use super::planning::GameplayEffectApplicationError;
 use super::removal::{EffectCleanupResources, cleanup_effect_state, force_remove_effect};
 use super::state::{ActiveEffectHandle, ActiveGameplayEffect, ActiveGameplayEffects};

@@ -1,6 +1,9 @@
 use super::super::EffectSystemParams;
-use super::super::gameplay_effect::{StackDurationPolicy, StackMagnitudePolicy, StackPeriodPolicy};
+use super::super::gameplay_effect::{StackDurationPolicy, StackPeriodPolicy};
 use super::super::gameplay_effect_spec::{EffectDurationTicksSpec, GameplayEffectSpec};
+use super::modifiers::{
+    apply_duration_modifiers, apply_instant_modifiers, refresh_duration_modifiers,
+};
 use super::planning::{
     GameplayEffectApplicationError, GameplayEffectApplicationKind, GameplayEffectApplicationPlan,
     map_attribute_set_error,
@@ -175,12 +178,7 @@ fn execute_stack_existing_effect(
         let Ok(mut attributes) = params.attr_set_query.get_mut(target) else {
             return Err(GameplayEffectApplicationError::MissingAttributeSet { target });
         };
-        attributes.remove_modifiers_for_attributes(
-            &params.attribute_id_manager,
-            handle,
-            spec.get_modified_attribute_ids(),
-        )?;
-        apply_duration_modifiers(
+        refresh_duration_modifiers(
             target,
             &mut attributes,
             &params.attribute_id_manager,
@@ -313,52 +311,4 @@ fn rollback_new_active_effect(
         active_effects.remove(handle);
     }
     tag_result
-}
-
-pub(super) fn apply_duration_modifiers(
-    target: Entity,
-    attr_set: &mut AttributeSet,
-    attribute_id_manager: &AttributeIdManager,
-    spec: &GameplayEffectSpec,
-    handle: ActiveEffectHandle,
-    stack_count: u32,
-) -> Result<(), GameplayEffectApplicationError> {
-    let stack_multiplier = stack_multiplier(
-        spec.get_stacking_policy().get_magnitude_policy(),
-        stack_count,
-    );
-    for modifier in spec.get_modifier_specs() {
-        let stacked = modifier.scaled_by_stack(stack_multiplier);
-        attr_set
-            .apply_duration_modifier(attribute_id_manager, &stacked, handle)
-            .map_err(|error| map_attribute_set_error(target, error))?;
-    }
-    Ok(())
-}
-
-pub(super) fn apply_instant_modifiers(
-    target: Entity,
-    attr_set: &mut AttributeSet,
-    attribute_id_manager: &AttributeIdManager,
-    spec: &GameplayEffectSpec,
-    stack_count: u32,
-) -> Result<(), GameplayEffectApplicationError> {
-    let stack_multiplier = stack_multiplier(
-        spec.get_stacking_policy().get_magnitude_policy(),
-        stack_count,
-    );
-    for modifier in spec.get_modifier_specs() {
-        let stacked = modifier.scaled_by_stack(stack_multiplier);
-        attr_set
-            .apply_instant_modifier(attribute_id_manager, &stacked)
-            .map_err(|error| map_attribute_set_error(target, error))?;
-    }
-    Ok(())
-}
-
-fn stack_multiplier(policy: StackMagnitudePolicy, stack_count: u32) -> u32 {
-    match policy {
-        StackMagnitudePolicy::None => 1,
-        StackMagnitudePolicy::Linear => stack_count,
-    }
 }
