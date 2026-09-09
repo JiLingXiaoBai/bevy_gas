@@ -206,9 +206,12 @@ cargo build
   `crate` 路径绕过当前功能模块边界，也避免用多层 `super::super::...` 跨领域引用
 - **文件头统一导入** — 文件中使用的类型和函数应优先通过文件头的 `use` 语句导入，
   避免在函数签名、函数体或字段类型中重复书写 `super::...` 或 `crate::...` 完整路径
-- **`pub use` 重导出模式** — 复杂领域使用模块文件+同名目录布局；门面通过
-  `pub use submodule::{Type, function}` 显式维护公开项，禁止通配公开重导出。
-  `prelude` 只包含最常用的 Plugin、Component、定义和 SystemParam，不作为完整 API 镜像
+- **模块布局与 `pub use` 重导出** — 所有新添加的功能模块统一使用“门面文件 + 同名目录”
+  布局，即使只有一个实现文件也不例外；门面负责模块文档、私有子模块声明与显式重导出，
+  实现放在同名目录内。目录内的叶子实现文件不需要递归套用门面结构，紧密相关的类型
+  保持在同一职责文件中。门面通过 `pub use submodule::{Type, function}` 显式维护公开项，
+  禁止通配公开重导出。`prelude` 只包含最常用的 Plugin、Component、定义和 SystemParam，
+  不作为完整 API 镜像；详见 `docs/17-source-layout-and-maintenance.md`
 - **Component/Resource 为中心** — 游戏状态存储在 Bevy Component 和 Resource
   中，而非独立的 world 存储
 - **显式 ECS 组合** — `GameplayTagContainer` 和 `AttributeSet` 可独立挂载，不反向

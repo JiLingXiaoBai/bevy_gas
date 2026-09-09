@@ -6,17 +6,34 @@
 rustdoc 负责。目录变化后应优先更新本页，而不是在多篇领域文档中复制完整文件树。
 
 项目按 Gameplay 领域组织，不建立横跨所有领域的 `components/`、`systems/`、`resources/` 或
-`utils/` 目录。复杂领域使用“门面文件 + 同名实现目录”布局：
+`utils/` 目录。**所有新添加的功能模块统一使用“门面文件 + 同名实现目录”布局，即使只有一个
+实现文件也不例外。** `randoms.rs` + `randoms/random.rs`、`unique_names.rs` +
+`unique_names/unique_name.rs` 和 `ability_input.rs` + `ability_input/bindings.rs` 都遵循这一规则。
+
+最小布局以输入绑定模块为例：
 
 ```text
-feature.rs
-feature/
-├── state.rs
-├── definition.rs
-└── execution.rs
+ability_input.rs
+ability_input/
+└── bindings.rs
 ```
 
-门面决定领域边界，实现文件只承担一种主要变更原因。
+门面只负责模块文档、私有子模块声明和显式重导出：
+
+```rust
+//! Optional mappings from logical actions to granted ability handles.
+
+mod bindings;
+
+pub use bindings::{AbilityInputBindingError, AbilityInputBindings};
+```
+
+组件、错误类型和相关实现放在 `ability_input/bindings.rs`。门面决定领域边界，实现文件只承担
+一种主要变更原因；功能增长后，再按职责在同名目录中增加 `state.rs`、`definition.rs` 或
+`execution.rs` 等文件。
+
+这条规则适用于新建的功能模块边界，不要求目录内每个叶子实现文件继续递归建立门面和同名目录。
+小型值类型与紧密相关的实现仍放在同一职责文件中，也不因这条规则批量调整既有辅助文件。
 
 ## 当前源码树
 
@@ -96,6 +113,9 @@ src/
     │       ├── state.rs
     │       ├── completion.rs
     │       └── ticking.rs
+    ├── ability_input.rs
+    ├── ability_input/
+    │   └── bindings.rs
     ├── ability_system.rs
     ├── ability_system/
     │   ├── component.rs
@@ -127,7 +147,8 @@ src/
 ```
 
 完整技能与效果时间线示例位于 `examples/ability_effect_flow.rs`；标签注册示例位于
-`examples/tag_registration.rs`。集成测试布局见本文后半部分。
+`examples/tag_registration.rs`；独立输入绑定示例位于 `examples/ability_input_bindings.rs`。
+集成测试布局见本文后半部分。
 
 ## 顶层门面和公开路径
 
@@ -205,7 +226,7 @@ commit 和生命周期编排的流程：
 | 文件 | 主要所有权 |
 | --- | --- |
 | `gameplay_ability.rs` | AbilityTags、startup task、cost/cooldown/activation Effect 定义 |
-| `gameplay_ability_spec.rs` | 授予 Handle、level、input ID/pressed 和 active count |
+| `gameplay_ability_spec.rs` | 授予 Handle、level 和 active count |
 | `activation_data.rs` | 唯一组合 source、targets 与传播 context 的不可变激活值 |
 | `ability_chain.rs`、`activation_context.rs` | 请求与运行实例共用的链保护、传播上下文，以及 Ability → Effect payload 转换 |
 | `active_gameplay_ability/state.rs` | 只持有 spec handle、共享激活数据和状态的活跃实例 |
@@ -219,9 +240,18 @@ commit 和生命周期编排的流程：
 | `ability_system/activation/*` | 错误、预检、startup 创建和同步/batch 激活 |
 | `ability_system/commit.rs` | cost/cooldown prepare、支付检查和执行 |
 | `ability_system/lifecycle.rs` | end、cancel、回滚和 Cleanup system |
+| `ability_input/bindings.rs` | 游戏逻辑动作到同实体 ASC 的技能 Handle 映射、稳定遍历和绑定错误 |
 
 `AbilitySystemParams` 内嵌 `EffectSystemParams`，再增加 `Commands`、ASC、来源快照、活跃 Ability
 查询和内部 pending overlay。Effect 实现不得反向导入 Ability System。
+
+`ability_input.rs` 门面显式重导出 `ability_input/bindings.rs` 中的组件与错误类型，公开路径
+仍为 `bevy_tools::gas::ability_input`；`bindings` 是私有实现模块。
+
+`ability_input` 是独立的可选输入适配领域，只依赖 ASC 的只读规格查询和 `AbilitySpecHandle`。
+它不采集物理设备、不保存按下状态、不安装系统，也不进入 `GameplayAbilitySystemBundle`。
+输入生产系统由游戏配置，在 `RequestProducers` 将动作解析成 Handle 后写入统一队列；ASC
+生命周期不反向查询输入组件。详细职责见 [18 — 技能输入绑定](./18-ability-input-bindings.md)。
 
 ### Targeting 与统一 Execution
 
@@ -273,6 +303,7 @@ commit 和生命周期编排的流程：
 
 ```text
 tests/
+├── ability_input_test.rs
 ├── gas_test.rs
 ├── gas_test/
 │   ├── support_test.rs
@@ -314,12 +345,14 @@ tests/
 | Effect 应用/堆叠/条件/tick | `gameplay_effects/` | `effects_test/*` | 06 |
 | Ability 定义/实例/task | `gameplay_abilities/` | `abilities_test/*` | 07、08 |
 | ASC 激活/commit/lifecycle | `ability_system/` | `abilities_test/*` | 09 |
+| 输入动作绑定、重绑和清理 | `ability_input/bindings.rs` | `ability_input_test.rs` | 18 |
 | 目标管线与队列 | `gameplay_targeting/` | `gameplay_targeting_test.rs` | 15 |
 | 统一 FIFO 与阶段可见性 | `gameplay_execution/`、`runtime_plugin.rs` | `queues_test.rs`、`runtime_paths_test.rs` | 02、16 |
 | 公共导出/prelude | 各门面、`gas.rs`、`lib.rs`、`prelude.rs` | 全目标编译/rustdoc | 11、17 |
 
 ## 何时继续拆文件
 
+新功能模块从一开始就使用门面和同名目录；本节讨论的是何时进一步拆分目录内的实现文件。
 不以固定行数作为唯一标准。出现下列情况时优先拆分：
 
 - 一个文件同时定义持久状态、配置、事务执行和调度系统；

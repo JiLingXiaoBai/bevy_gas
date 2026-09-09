@@ -6,6 +6,11 @@
 Execution 或 Ability System。实现文件保持私有，由同名领域门面显式公开；不要把新类型放进
 全局 `components/`、`systems/` 或 `utils/`。
 
+新建功能模块时，无论大小，都必须同时建立门面文件 `<module>.rs` 和同名实现目录 `<module>/`；
+即使只需一个实现文件，也将实现放入目录，门面仅保留模块文档、私有子模块声明和显式重导出。
+这不要求叶子实现文件递归嵌套，也不要求每个类型独占一个文件；最小示例见
+[17 — 源码布局与维护边界](./17-source-layout-and-maintenance.md)。
+
 公开 API 的固定检查顺序：
 
 1. 在 owning domain facade 中使用 `pub use submodule::{Type, function}` 显式重导出；
