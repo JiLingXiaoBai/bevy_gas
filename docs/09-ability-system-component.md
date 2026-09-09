@@ -80,7 +80,6 @@ pub fn give_ability(
     &mut self,
     ability: Arc<GameplayAbility>,
     level: u32,
-    input_id: Option<u16>,
 ) -> AbilitySpecHandle;
 
 pub fn clear_ability(&mut self, handle: AbilitySpecHandle) -> bool;
@@ -92,6 +91,10 @@ pub fn get_blocked_ability_tags(&self) -> &GameplayTagContainer;
 
 - Handle 从 ASC 局部的递增 `u32` 分配。
 - `clear_ability()` 在 Handle 不存在或规格仍有活跃实例时返回 `false`。
+- 输入绑定通过同实体的 `AbilityInputBindings<Action>` 显式附加，不属于 ASC 或默认 Bundle。
+  `clear_ability()` 成功后，由调用方执行 `bindings.unbind_ability(handle)` 清除该技能的所有
+  绑定；ASC 不反向依赖输入层。替换整个 ASC 时必须同步清空或重建绑定。详见
+  [18 — 技能输入绑定](./18-ability-input-bindings.md)。
 - `get_blocked_ability_tags()` 返回技能互斥容器，不是实体自己的 Gameplay Tag 容器。
 - 可变规格查找、阻止标签写入和索引重建均为领域内部实现，不是公共扩展点。
 

@@ -4,6 +4,7 @@
 
 ```text
 tests/
+├── ability_input_test.rs               # Logical input bindings and fixed-tick buffering
 ├── gas_test.rs                         # GAS 集成测试 crate 门面
 ├── gas_test/
 │   ├── support_test.rs                       # App、builder、tick 和查询 helper
@@ -30,6 +31,7 @@ tests/
 └── unique_names_test.rs                # 驻留复用与名称区分
 
 examples/
+├── ability_input_bindings.rs           # Buffered input and slot rebinding without a window
 ├── ability_effect_flow.rs              # 无窗口的完整技能、伤害与冷却时间线
 └── tag_registration.rs                 # 完整 App 中的标签注册
 ```
@@ -54,6 +56,9 @@ cargo test
 # GAS integration-test crate
 cargo test --test gas_test
 
+# Input binding and buffering integration tests
+cargo test --test ability_input_test
+
 # One nested behavior module
 cargo test --test gas_test effects_test::requirements_test
 
@@ -69,6 +74,7 @@ cargo test --test gas_test -- --list
 
 # Compile or run the checked example
 cargo run --example ability_effect_flow
+cargo run --example ability_input_bindings
 cargo check --example tag_registration
 cargo run --example tag_registration
 ```

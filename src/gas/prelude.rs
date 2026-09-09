@@ -3,6 +3,7 @@
 //! The prelude is intentionally small. Specialized systems, errors, and
 //! low-level runtime types remain available from their owning domain modules.
 
+pub use super::ability_input::AbilityInputBindings;
 pub use super::ability_system::{
     AbilitySystemComponent, AbilitySystemParams, GameplayAbilitySystemBundle,
 };

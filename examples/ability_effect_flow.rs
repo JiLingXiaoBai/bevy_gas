@@ -107,9 +107,7 @@ fn spawn_actors(
     caster
         .attributes
         .initialize_attribute(&manager, ids.mana, 50.0, None)?;
-    let ability = caster
-        .ability_system
-        .give_ability(make_fireball(&ids), 1, None);
+    let ability = caster.ability_system.give_ability(make_fireball(&ids), 1);
 
     let mut target = GameplayAbilitySystemBundle::default();
     target

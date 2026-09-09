@@ -300,7 +300,7 @@ fn startup_task_context_preserves_ability_handle_and_level() {
         .entity_mut(source)
         .get_mut::<AbilitySystemComponent>()
         .unwrap()
-        .give_ability(ability, 9, None);
+        .give_ability(ability, 9);
 
     {
         let mut queue = app.world_mut().resource_mut::<GameplayExecutionQueue>();

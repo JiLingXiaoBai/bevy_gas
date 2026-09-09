@@ -59,11 +59,21 @@ cargo run --example ability_effect_flow
 第 6 tick 结束技能；冷却 Effect 自己继续存活到第 20 tick。示例展示具名配置入口，原有
 `GameplayAbility::new(...)`、`AbilityTags::new(...)` 仍兼容。
 
+输入与技能栏绑定见 [`examples/ability_input_bindings.rs`](../examples/ability_input_bindings.rs)：
+
+```bash
+cargo run --example ability_input_bindings
+```
+
+它演示独立绑定组件如何将逻辑动作转换为技能请求。物理输入适配、帧与 fixed tick 之间的缓冲、
+重绑和清理规则见 [18 — 技能输入绑定](./18-ability-input-bindings.md)。
+
 ## 源码入口
 
 | 用途 | 源码 |
 |---|---|
 | 完整角色组件组合 | `src/gas/ability_system/component.rs` |
+| 逻辑动作与技能 Handle 绑定 | `src/gas/ability_input/bindings.rs` |
 | 固定 tick 阶段与插件 | `src/gas/runtime_plugin.rs` |
 | 能力定义、激活上下文 | `src/gas/gameplay_abilities/` |
 | Task 定义与完成动作 | `src/gas/gameplay_abilities/ability_task/` |
@@ -207,7 +217,7 @@ fn grant_fireball(
     ability_system: &mut AbilitySystemComponent,
     ability: Arc<GameplayAbility>,
 ) -> AbilitySpecHandle {
-    ability_system.give_ability(ability, 1, Some(0))
+    ability_system.give_ability(ability, 1)
 }
 ```
 

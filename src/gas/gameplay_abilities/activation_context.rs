@@ -7,9 +7,14 @@ use bevy::prelude::Entity;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AbilityActivationReason {
     Direct,
-    Input { input_id: u16 },
-    Chained { parent_ability: ActiveAbilityHandle },
-    TaskEvent { event_id: UniqueName },
+    /// Activation requested by an application-defined input action.
+    Input,
+    Chained {
+        parent_ability: ActiveAbilityHandle,
+    },
+    TaskEvent {
+        event_id: UniqueName,
+    },
     GameplayEffect,
 }
 
@@ -31,6 +36,17 @@ impl AbilityActivationContext {
             causer: None,
             source_snapshot: None,
             reason: AbilityActivationReason::Direct,
+        }
+    }
+
+    /// Creates an input activation context using `source` as the default instigator.
+    ///
+    /// `chain` identifies the queued ability execution chain. Returns a context with reason
+    /// [`AbilityActivationReason::Input`]; device and logical-action metadata stay in the input layer.
+    pub fn input(source: Entity, chain: AbilityChainContext) -> Self {
+        Self {
+            reason: AbilityActivationReason::Input,
+            ..Self::direct(source, chain)
         }
     }
 

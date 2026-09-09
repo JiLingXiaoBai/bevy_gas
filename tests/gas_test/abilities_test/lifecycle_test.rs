@@ -276,7 +276,7 @@ fn cleanup_finished_ability_despawns_startup_tasks_and_is_repeatable() {
 }
 
 #[test]
-fn ability_spec_preserves_input_id_and_clear_rebuilds_indices() {
+fn ability_spec_preserves_granted_level_and_clear_rebuilds_indices() {
     let mut asc = AbilitySystemComponent::default();
     let first = Arc::new(GameplayAbility::new(
         AbilityTags::default(),
@@ -297,46 +297,18 @@ fn ability_spec_preserves_input_id_and_clear_rebuilds_indices() {
         false,
     ));
 
-    let first_handle = asc.give_ability(first, 2, Some(4));
-    let second_handle = asc.give_ability(second, 3, Some(8));
+    let first_handle = asc.give_ability(first, 2);
+    let second_handle = asc.give_ability(second, 3);
 
-    assert_eq!(
-        asc.find_ability_spec(first_handle).unwrap().get_input_id(),
-        Some(4)
-    );
-    assert_eq!(
-        asc.find_ability_spec(second_handle).unwrap().get_input_id(),
-        Some(8)
-    );
+    assert_eq!(asc.find_ability_spec(first_handle).unwrap().get_level(), 2);
+    assert_eq!(asc.find_ability_spec(second_handle).unwrap().get_level(), 3);
     assert!(asc.clear_ability(first_handle));
     assert!(asc.find_ability_spec(first_handle).is_none());
     assert_eq!(asc.find_ability_spec(second_handle).unwrap().get_level(), 3);
     assert_eq!(
-        asc.find_ability_spec(second_handle).unwrap().get_input_id(),
-        Some(8)
+        asc.find_ability_spec(second_handle).unwrap().get_handle(),
+        second_handle
     );
-}
-
-#[test]
-fn ability_spec_tracks_input_pressed_state() {
-    let ability = Arc::new(GameplayAbility::new(
-        AbilityTags::default(),
-        Vec::new(),
-        None,
-        None,
-        Vec::new(),
-        true,
-        false,
-    ));
-    let mut spec = GameplayAbilitySpec::new(AbilitySpecHandle::new(0), ability, 1, Some(4));
-
-    assert!(!spec.is_input_pressed());
-
-    spec.set_input_pressed(true);
-    assert!(spec.is_input_pressed());
-
-    spec.set_input_pressed(false);
-    assert!(!spec.is_input_pressed());
 }
 
 #[test]

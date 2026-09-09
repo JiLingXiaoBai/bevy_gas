@@ -32,17 +32,13 @@ pub struct GameplayAbilitySystemBundle {
 }
 
 impl AbilitySystemComponent {
-    pub fn give_ability(
-        &mut self,
-        ability: Arc<GameplayAbility>,
-        level: u32,
-        input_id: Option<u16>,
-    ) -> AbilitySpecHandle {
+    /// Grants the shared `ability` definition at `level` and returns its owner-local handle.
+    pub fn give_ability(&mut self, ability: Arc<GameplayAbility>, level: u32) -> AbilitySpecHandle {
         let handle = AbilitySpecHandle::new(self.next_ability_handle);
         self.next_ability_handle = self.next_ability_handle.wrapping_add(1);
         let index = self.abilities.len();
         self.abilities
-            .push(GameplayAbilitySpec::new(handle, ability, level, input_id));
+            .push(GameplayAbilitySpec::new(handle, ability, level));
         self.ability_indices.insert(handle, index);
         handle
     }

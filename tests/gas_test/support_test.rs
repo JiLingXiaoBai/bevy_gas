@@ -251,7 +251,7 @@ pub fn give_ability(
         .entity_mut(owner)
         .get_mut::<AbilitySystemComponent>()
         .unwrap()
-        .give_ability(ability, 1, None)
+        .give_ability(ability, 1)
 }
 
 pub fn run_effect_duration_tick(app: &mut App) {

@@ -14,7 +14,7 @@
 | GAS 聚合门面 | `bevy_tools::gas::GameplayEffect` | 对 GAS 领域公开项做显式聚合 |
 | crate root | `bevy_tools::GameplayEffect` | 显式兼容重导出；另拥有 `Random` 与 `UniqueName*` 支撑类型 |
 
-`lib.rs` 还显式重导出 `ability_system`、`attributes`、`gameplay_abilities`、
+`lib.rs` 还显式重导出 `ability_input`、`ability_system`、`attributes`、`gameplay_abilities`、
 `gameplay_effects`、`gameplay_execution`、`gameplay_tags`、`gameplay_targeting`、
 `modifiers` 与 `settings` 模块，因此旧的 `bevy_tools::gameplay_effects::...` 路径仍可用。
 所有门面都禁止 `pub use *`；新增内部 `pub` 项不会自动成为公开 API。
@@ -27,6 +27,7 @@
 | --- | --- |
 | Runtime | `GameplayAbilitySystemPlugin`、`GameplayAbilitySystemRuntimePlugin`、`GameplayAbilitySystemSet` |
 | Ability System | `AbilitySystemComponent`、`AbilitySystemParams`、`GameplayAbilitySystemBundle` |
+| Ability Input | `AbilityInputBindings` |
 | Attributes | `AttributeId`、`AttributeIdRegister`、`AttributeRegion`、`AttributeSet` |
 | Abilities | `AbilityActivationContext`、`AbilitySpecHandle`、`AbilityTags`、`GameplayAbility` |
 | Effects | `ActiveGameplayEffects`、`EffectDurationTicks`、`EffectPayload`、`EffectSystemParams`、`EffectTags`、`GameplayEffect`、`StackingPolicy` |
@@ -207,6 +208,19 @@ ASC、Active Ability 或 `Commands`。`AbilitySystemParams` 内嵌它并实现 `
 | `AbilityChainError`        | `enum`       | 链验证错误                                            |
 | `AbilityActivationError`   | `enum`       | 激活失败原因                                          |
 | `AbilityCommitError`       | `enum`       | Cost/Cooldown 准备与执行失败原因                      |
+
+### 技能输入绑定
+
+公开路径为 `bevy_tools::gas::ability_input`，行为契约见
+[18 — 技能输入绑定](./18-ability-input-bindings.md)。
+
+| 项 | 类型 | 说明 |
+| --- | --- | --- |
+| `AbilityInputBindings<Action>` | `Component` | 同实体 ASC 的逻辑动作到技能 Handle 映射；支持重绑、解绑和稳定顺序遍历 |
+| `AbilityInputBindingError` | `enum` | 未绑定输入或绑定的技能已不在 ASC 中；不进入 prelude |
+
+`get(&action)` 只读取映射；`resolve(&action, &ability_system)` 同时检查规格是否仍存在。
+输入产生激活时使用 `AbilityActivationContext::input(source, chain)`；`Input` 原因不携带动作 ID。
 
 ### 技能任务
 

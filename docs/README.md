@@ -20,6 +20,7 @@
 | --- | --- |
 | 第一次接入 GAS | [01 总览](./01-overview.md) → [02 插件与生命周期](./02-plugins-and-lifecycle.md) → [09 ASC](./09-ability-system-component.md) → [12 使用模式](./12-usage-patterns.md) |
 | 理解一次技能如何结算 | [07 技能](./07-gameplay-abilities.md) → [08 任务](./08-ability-tasks.md) → [15 目标抓取](./15-gameplay-targeting.md) → [16 统一执行](./16-gameplay-execution.md) |
+| 接入输入与技能栏 | [18 输入绑定](./18-ability-input-bindings.md) → [09 ASC](./09-ability-system-component.md) → [16 统一执行](./16-gameplay-execution.md) |
 | 扩展数值与状态系统 | [03 标签](./03-gameplay-tags.md) → [04 属性](./04-attributes.md) → [05 修饰器](./05-modifiers-and-aggregator.md) → [06 效果](./06-gameplay-effects.md) |
 | 维护或重构源码 | [17 源码布局](./17-source-layout-and-maintenance.md) → [13 测试](./13-testing-guide.md) → [14 扩展系统](./14-extending-the-system.md) |
 
@@ -50,6 +51,7 @@
 | [07 — Gameplay 技能](./07-gameplay-abilities.md) | Ability 定义、规格、激活、commit、链和活跃实例 |
 | [08 — 技能任务](./08-ability-tasks.md) | Instant/WaitTicks、完成动作、事件和任务生命周期 |
 | [15 — Gameplay 目标抓取](./15-gameplay-targeting.md) | 有序目标管线、同步抓取、请求队列和多目标数据 |
+| [18 — 技能输入绑定](./18-ability-input-bindings.md) | 逻辑动作与技能栏绑定、输入边界、重绑和生命周期 |
 
 ### 用法、参考与维护
 

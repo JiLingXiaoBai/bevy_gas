@@ -32,7 +32,7 @@ src/gas/
 | 文件 | 职责 |
 | ---- | ---- |
 | `gameplay_ability.rs` | 不可变技能定义与 `AbilityTags` |
-| `gameplay_ability_spec.rs` | 某个 ASC 已授予技能的等级、输入状态和活跃计数 |
+| `gameplay_ability_spec.rs` | 某个 ASC 已授予技能的等级和活跃计数 |
 | `activation_data.rs` | 一次激活共享的 source、targets 与传播 context 不可变值 |
 | `ability_chain.rs` | 链 ID、深度限制和重复 Handle 检查 |
 | `activation_context.rs` | Instigator、Causer、来源快照、激活原因和 Ability → Effect payload 转换 |
@@ -114,14 +114,14 @@ pub struct GameplayAbilitySpec {
     handle: AbilitySpecHandle,
     ability: Arc<GameplayAbility>,
     level: u32,
-    input_id: Option<u16>,
-    input_pressed: bool,
     active_count: u32,
 }
 ```
 
-`input_pressed` 默认为 `false`，只记录外部输入系统写入的瞬时状态，不会自动激活技能。
-`active_count` 用于多实例检查；仍有活跃实例时，ASC 不允许清除对应规格。
+`GameplayAbilitySpec::new(handle, ability, level)` 只接收授予 Handle、共享定义和等级。
+`active_count` 用于多实例检查；仍有活跃实例时，ASC 不允许清除对应规格。规格不保存输入编号或
+按下状态；逻辑动作与 Handle 的映射由独立的
+[`AbilityInputBindings<Action>`](./18-ability-input-bindings.md) Component 管理。
 
 ## 激活数据、上下文与技能链
 
@@ -164,6 +164,7 @@ pub struct AbilityActivationContext {
 | API | 作用 |
 | --- | ---- |
 | `AbilityActivationContext::direct(source, chain)` | 创建 `Direct` 上下文，默认 Instigator 为 `source` |
+| `AbilityActivationContext::input(source, chain)` | 创建 `Input` 上下文，默认 Instigator 为 `source` |
 | `with_instigator(entity)` | 指定实际发起者 |
 | `with_causer(Option<Entity>)` | 指定直接造成行为的物理实体 |
 | `with_source_snapshot(snapshot)` | 固定来源属性快照 |
@@ -186,8 +187,9 @@ Request 与 Active Ability 都通过 `AbilityActivationData` 持有该值，star
 `AbilityActivationTargets::entities()` 的确定顺序逐个应用：single 产生一个实体，acquired 按
 Target Data 的 Hit 顺序产生实体。
 
-当前公共构造路径产生 `Direct`，链式 API 产生 `Chained`；`Input`、`TaskEvent` 和
-`GameplayEffect` 原因目前没有公共 Setter 或专用构造器。
+公共构造路径可产生 `Direct` 或 `Input`，链式 API 产生 `Chained`；`TaskEvent` 和
+`GameplayEffect` 原因目前没有公共 Setter 或专用构造器。`AbilityActivationReason::Input`
+只标记激活来源，不携带输入编号；具体动作、按下/释放和长按状态仍属于游戏输入层。
 
 ### `AbilityChainContext`
 

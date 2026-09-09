@@ -56,6 +56,7 @@ cargo run --example ability_effect_flow
 - [知识库导航](./docs/README.md)：按使用、运行时、领域和维护场景组织的文档入口
 - [项目与架构总览](./docs/01-overview.md)：领域边界、数据所有权和 fixed-tick 数据流
 - [使用模式](./docs/12-usage-patterns.md)：伤害、DoT、Buff、连招和事件驱动示例
+- [技能输入绑定](./docs/18-ability-input-bindings.md)：独立动作映射、技能栏重绑和固定 tick 输入接入
 - [源码布局与维护边界](./docs/17-source-layout-and-maintenance.md)：真实目录结构和修改路由
 
 公共导入建议：常用类型使用 `bevy_tools::prelude::*`，完整 API 从
@@ -74,7 +75,7 @@ cargo run --example ability_effect_flow
 
 ## 当前边界
 
-- `GameplayAbilitySpec` 保存输入 ID 和按下状态，但尚未内置玩家输入到技能激活的完整适配层；
+- 输入通过独立的 `AbilityInputBindings<Action>` 映射到技能 Handle；物理设备采集、按下/释放状态和固定 tick 缓冲由游戏输入层负责；
 - 尚未提供 serde/ron 配置序列化；
 - Ability cost 必须是仅含 `ModifierOperation::Add` 的 Instant Effect。
 

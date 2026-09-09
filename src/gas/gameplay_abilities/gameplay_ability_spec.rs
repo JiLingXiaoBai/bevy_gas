@@ -18,24 +18,17 @@ pub struct GameplayAbilitySpec {
     handle: AbilitySpecHandle,
     ability: Arc<GameplayAbility>,
     level: u32,
-    input_id: Option<u16>,
-    input_pressed: bool,
     active_count: u32,
 }
 
 impl GameplayAbilitySpec {
-    pub fn new(
-        handle: AbilitySpecHandle,
-        ability: Arc<GameplayAbility>,
-        level: u32,
-        input_id: Option<u16>,
-    ) -> Self {
+    /// Creates an inactive granted ability from its owner-local `handle`, shared `ability`
+    /// definition, and granted `level`.
+    pub fn new(handle: AbilitySpecHandle, ability: Arc<GameplayAbility>, level: u32) -> Self {
         Self {
             handle,
             ability,
             level,
-            input_id,
-            input_pressed: false,
             active_count: 0,
         }
     }
@@ -50,20 +43,6 @@ impl GameplayAbilitySpec {
 
     pub fn get_level(&self) -> u32 {
         self.level
-    }
-
-    pub fn get_input_id(&self) -> Option<u16> {
-        self.input_id
-    }
-
-    /// Returns whether the input bound to this ability is currently pressed.
-    pub fn is_input_pressed(&self) -> bool {
-        self.input_pressed
-    }
-
-    /// Updates whether the input bound to this ability is currently pressed.
-    pub fn set_input_pressed(&mut self, input_pressed: bool) {
-        self.input_pressed = input_pressed;
     }
 
     pub fn get_active_count(&self) -> u32 {

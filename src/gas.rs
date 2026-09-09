@@ -1,5 +1,6 @@
 //! Gameplay Ability System domains and fixed-tick runtime orchestration.
 
+pub mod ability_input;
 pub mod ability_system;
 pub mod attributes;
 pub mod gameplay_abilities;
@@ -12,6 +13,7 @@ pub mod prelude;
 mod runtime_plugin;
 pub mod settings;
 
+pub use ability_input::{AbilityInputBindingError, AbilityInputBindings};
 pub use ability_system::{
     AbilityActivationError, AbilityCommitError, AbilitySystemComponent, AbilitySystemParams,
     GameplayAbilitySystemBundle, PendingActiveGameplayAbilities, can_activate_ability,
