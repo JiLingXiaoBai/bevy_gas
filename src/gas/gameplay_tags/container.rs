@@ -41,7 +41,7 @@ impl GameplayTagContainer {
             let mut current_block = block_bits;
 
             while current_block != 0 {
-                let least_significant_bit = current_block & current_block.wrapping_neg();
+                let least_significant_bit = current_block.isolate_lowest_one();
                 let bit_offset = least_significant_bit.trailing_zeros() as usize;
                 let index = base_index + bit_offset;
                 debug_assert!(index < self.ref_counts.len());
@@ -84,7 +84,7 @@ impl GameplayTagContainer {
             let mut current_block = block_bits;
 
             while current_block != 0 {
-                let least_significant_bit = current_block & current_block.wrapping_neg();
+                let least_significant_bit = current_block.isolate_lowest_one();
                 let bit_offset = least_significant_bit.trailing_zeros() as usize;
                 let index = base_index + bit_offset;
                 debug_assert!(index < self.ref_counts.len());
