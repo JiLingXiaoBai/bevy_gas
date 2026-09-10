@@ -13,6 +13,7 @@ pub use application::apply_gameplay_effect;
 pub(crate) use application::apply_gameplay_effect_in_batch;
 pub use execution::execute_gameplay_effect_plan;
 pub(crate) use execution::{execute_gameplay_effect_plan_in_batch, validate_gameplay_effect_plan};
+pub(crate) use planning::preview_instant_effect_modifiers;
 pub use planning::{
     GameplayEffectApplicationError, GameplayEffectApplicationPlan, prepare_gameplay_effect,
 };

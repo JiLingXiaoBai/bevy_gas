@@ -51,6 +51,9 @@ impl Default for Aggregator {
 
 impl Aggregator {
     /// Replaces the value executor when `executor` is present.
+    ///
+    /// Executors also run during cost affordability previews. They must produce deterministic
+    /// values without side effects or dependence on how often they are called.
     pub fn set_executor(&mut self, executor: Option<fn(&Aggregator, f32) -> f32>) {
         if let Some(executor) = executor {
             self.executor = executor;

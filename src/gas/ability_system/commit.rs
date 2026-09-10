@@ -1,10 +1,12 @@
 use super::params::AbilitySystemParams;
+use crate::attributes::AttributeSnapshot;
 use crate::gameplay_abilities::{
     AbilityActivationContext, GameplayAbility, effect_payload_from_ability_context,
 };
 use crate::gameplay_effects::{
     EffectContext, GameplayEffectApplicationError, GameplayEffectApplicationPlan,
-    execute_gameplay_effect_plan_in_batch, prepare_gameplay_effect, validate_gameplay_effect_plan,
+    execute_gameplay_effect_plan_in_batch, prepare_gameplay_effect,
+    preview_instant_effect_modifiers, validate_gameplay_effect_plan,
 };
 use crate::modifiers::ModifierSpec;
 use bevy::prelude::*;
@@ -21,7 +23,7 @@ pub enum AbilityCommitError {
     CostPreparation(GameplayEffectApplicationError),
     /// A cost definition is not instant.
     CostMustBeInstant,
-    /// The source does not have enough initialized attribute value.
+    /// A cost magnitude or projected base is non-finite, or projected current is non-finite or negative.
     InsufficientCost,
     /// The cooldown effect could not be prepared.
     CooldownPreparation(GameplayEffectApplicationError),
@@ -69,6 +71,11 @@ impl AbilityCommitError {
 
 /// Applies an ability's cost and cooldown without starting an ability instance.
 ///
+/// Costs are previewed in modifier order using their base operations and aggregators after any
+/// planned effect removals. Each resulting current value must be finite and nonnegative; cost
+/// magnitudes and resulting base values must also be finite. Post-execute callbacks run only
+/// during actual execution and their mutations are outside the affordability preview.
+///
 /// # Errors
 ///
 /// Returns [`AbilityCommitError`] when the cost or cooldown cannot be prepared,
@@ -105,7 +112,7 @@ pub(super) fn prepare_ability_commit_plans(
         if !plan.is_instant() {
             return Err(AbilityCommitError::CostMustBeInstant);
         }
-        if !can_pay_cost_modifiers(source, plan.get_modifier_specs(), params) {
+        if !can_pay_cost_plan(&plan, params).map_err(AbilityCommitError::CostPreparation)? {
             return Err(AbilityCommitError::InsufficientCost);
         }
         Some(plan)
@@ -142,6 +149,9 @@ pub(super) fn execute_ability_commit_plans(
     }
 
     if let Some(plan) = plans.cost_plan {
+        if !can_pay_cost_plan(&plan, params).map_err(AbilityCommitError::CostExecution)? {
+            return Err(AbilityCommitError::InsufficientCost);
+        }
         execute_gameplay_effect_plan_in_batch(plan, &mut params.effects)
             .map_err(AbilityCommitError::CostExecution)?;
     }
@@ -154,27 +164,24 @@ pub(super) fn execute_ability_commit_plans(
     Ok(())
 }
 
-fn can_pay_cost_modifiers(
-    source: Entity,
-    cost_modifiers: &[ModifierSpec],
-    params: &mut AbilitySystemParams,
-) -> bool {
-    let Ok(mut attr_set) = params.effects.attr_set_query.get_mut(source) else {
-        return false;
-    };
+fn cost_modifiers_are_finite(modifiers: &[ModifierSpec]) -> bool {
+    modifiers
+        .iter()
+        .all(|modifier| modifier.get_value().is_finite())
+}
 
-    for cost in cost_modifiers {
-        let Ok(Some(current_val)) =
-            attr_set.get_current_value(&params.effects.attribute_id_manager, cost.get_id())
-        else {
-            return false;
-        };
-        if current_val + cost.get_value() < 0.0 {
-            return false;
-        }
+fn cost_balance_is_payable(value: AttributeSnapshot) -> bool {
+    value.base().is_finite() && value.current().is_finite() && value.current() >= 0.0
+}
+
+fn can_pay_cost_plan(
+    plan: &GameplayEffectApplicationPlan,
+    params: &AbilitySystemParams,
+) -> Result<bool, GameplayEffectApplicationError> {
+    if !cost_modifiers_are_finite(plan.get_modifier_specs()) {
+        return Ok(false);
     }
-
-    true
+    plan.preview_modifier_application(&params.effects, cost_balance_is_payable)
 }
 
 pub(super) fn can_pay_ability_cost(
@@ -204,5 +211,12 @@ pub(super) fn can_pay_ability_cost(
         cost_def.make_spec(&context)
     };
 
-    can_pay_cost_modifiers(source, cost_spec.get_modifier_specs(), params)
+    cost_modifiers_are_finite(cost_spec.get_modifier_specs())
+        && preview_instant_effect_modifiers(
+            source,
+            &cost_spec,
+            &params.effects,
+            cost_balance_is_payable,
+        )
+        .is_ok_and(|payable| payable)
 }

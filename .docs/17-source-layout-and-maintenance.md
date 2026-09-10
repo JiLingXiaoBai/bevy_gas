@@ -217,7 +217,7 @@ src/
 | `attributes/aggregation.rs` | `Aggregator` 与 AttributeSet 内部稀疏聚合器集合 |
 | `attributes/snapshot.rs` | 单属性与整套来源快照 |
 | `attributes/attribute_set/state.rs` | AttributeSet 存储、dirty 位图和错误 |
-| `attributes/attribute_set/mutation.rs` | 初始化、Instant/Duration 修改和来源清理 |
+| `attributes/attribute_set/mutation.rs` | 初始化、Instant/Duration 修改、成本数值预演和来源清理 |
 | `attributes/attribute_set/recalculation.rs` | 按需/批量重算与末尾系统 |
 | `modifiers/definition.rs` | Modifier 操作、幅度和自定义计算 trait |
 | `modifiers/context.rs` | 与具体 Effect runtime 无关的只读求值接口 |
@@ -239,7 +239,7 @@ src/
 | `gameplay_effect/effect_tags.rs` | Effect 标签、私有 source/target 条件对和公开链式 builder |
 | `gameplay_effect_spec.rs` | 保留 definition `Arc`，捕获 Modifier/Duration/Period 求值结果；不复制 StackingPolicy |
 | `active_gameplay_effect/state.rs` | Handle、稳定 slot、Active Effect 状态和目标 Component |
-| `active_gameplay_effect/planning.rs` | 应用错误、Plan、prepare 和错误映射 |
+| `active_gameplay_effect/planning.rs` | 应用错误、Plan、prepare、修饰器预演桥接和错误映射 |
 | `active_gameplay_effect/application.rs` | 同步应用入口、条件、概率、免疫和堆叠选择 |
 | `active_gameplay_effect/execution.rs` | Plan 重验证、Instant/Stack/Create 和回滚 |
 | `active_gameplay_effect/modifiers.rs` | 即时/持续属性修改，以及叠层和到期减层共用的修饰器刷新 |
@@ -270,7 +270,7 @@ commit 和生命周期编排的流程：
 | `ability_system/component.rs` | ASC 规格存储和显式 `GameplayAbilitySystemBundle` |
 | `ability_system/params.rs` | `AbilitySystemParams` 和同 batch pending overlay |
 | `ability_system/activation/*` | 错误、预检、startup 创建和同步/batch 激活 |
-| `ability_system/commit.rs` | cost/cooldown prepare、支付检查和执行 |
+| `ability_system/commit.rs` | cost/cooldown prepare、逐笔支付条件检查和执行 |
 | `ability_system/lifecycle.rs` | end、cancel、回滚和 Cleanup system |
 | `ability_input/bindings.rs` | 游戏逻辑动作到同实体 ASC 的技能 Handle 映射、稳定遍历和绑定错误 |
 

@@ -20,8 +20,8 @@ pub use active_gameplay_effect::{
 };
 pub(crate) use active_gameplay_effect::{
     ActiveEffectRequirementSync, apply_gameplay_effect_in_batch,
-    execute_gameplay_effect_plan_in_batch, resolve_active_effect_tag_requirements_if_dirty,
-    validate_gameplay_effect_plan,
+    execute_gameplay_effect_plan_in_batch, preview_instant_effect_modifiers,
+    resolve_active_effect_tag_requirements_if_dirty, validate_gameplay_effect_plan,
 };
 pub use effect_system_params::EffectSystemParams;
 pub use gameplay_effect::{

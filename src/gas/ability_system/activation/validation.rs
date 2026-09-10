@@ -10,6 +10,10 @@ use std::sync::Arc;
 /// duration, or effect application requirements. It does not prepare or commit effects.
 /// Successful prechecking therefore does not guarantee successful activation.
 ///
+/// Cost modifiers are previewed in definition order using their base operations and aggregators,
+/// excluding effect sources selected by the cost's removal tags. The preview does not modify
+/// attributes or invoke post-execute callbacks; callback mutations are not part of affordability.
+///
 /// # Parameters
 ///
 /// - `source`: Ability owner whose activation tags and current attributes are checked.
@@ -17,7 +21,7 @@ use std::sync::Arc;
 ///   its cost against `source` and may also include captured activation context.
 /// - `ability`: Shared ability definition to check.
 /// - `level`: Ability level used when evaluating cost magnitudes.
-/// - `params`: ECS access used to inspect tags and resolve current attribute values.
+/// - `params`: ECS access used to inspect tags, effect sources, and projected attribute values.
 ///
 /// # Returns
 ///

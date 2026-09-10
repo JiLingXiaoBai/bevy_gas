@@ -158,7 +158,8 @@ pub type AttributePostExecute =
 ```
 
 回调只在成功执行即时修饰器后触发。参数依次为 set、manager、ID、修改前 current 和修改后
-current；修改后值已经重新应用仍然存在的持续聚合器。
+current；修改后值已经重新应用仍然存在的持续聚合器。成本预演不会调用该回调，也不模拟回调
+对整个属性集的修改；回调的可观察副作用只发生在真实即时修改时。
 
 ### 快照
 
@@ -227,6 +228,16 @@ ID 造成部分移除。
 
 重新调用 `initialize_attribute()` 会清空该槽位已有的 Aggregator 和持续修饰器，并用新 base
 重新初始化；`executor: None` 恢复默认求值器，`Some(function)` 安装函数指针执行器。
+
+### 成本数值预演
+
+Ability 支付检查通过 Effect 层进入 AttributeSet 的内部预演入口。预演在栈上的 Hot/Cold
+临时槽位中保留每个受影响属性的计算状态，重复属性按原条目顺序累计 base；每一步与实际即时
+修改共用 base 运算和 current 重算函数，使用同一个默认或自定义聚合 executor。
+
+通常直接借用已有聚合器；成本计划包含效果移除时，才复制内部稀疏聚合器并临时移除对应
+`ModifierSourceId`。预演读取真实 base，不依赖可能尚未重算的 current 缓存，不消费真实 dirty
+位，也不写入属性或执行 post-execute 回调。是否可支付由 Ability 领域提供的数值条件判断。
 
 ### Hot/Cold 存储
 

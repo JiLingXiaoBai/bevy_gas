@@ -1,6 +1,13 @@
-use super::super::{Aggregator, AttributeId, AttributeIdError, AttributeIdManager};
-use super::state::{Attribute, AttributePostExecute, AttributeSet, AttributeSetError};
+use super::super::{
+    Aggregator, AttributeId, AttributeIdError, AttributeIdManager, AttributeRegion,
+    AttributeSnapshot,
+};
+use super::state::{
+    Attribute, AttributePostExecute, AttributeSet, AttributeSetError, COLD_ATTRIBUTE_SET_SIZE,
+    HOT_ATTRIBUTE_SET_SIZE,
+};
 use crate::modifiers::{ModifierSourceId, ModifierSpec};
+use std::borrow::Cow;
 
 impl AttributeSet {
     /// Initializes the storage slot assigned to `id` by the global manager.
@@ -44,7 +51,7 @@ impl AttributeSet {
         let id = spec.get_id();
         let location = self.initialized_attribute_location(manager, id)?;
         let was_dirty = self.take_dirty(location);
-        let old_value = {
+        let (old_value, new_value) = {
             let (attribute, aggregators) = self.attribute_and_aggregators_mut(location);
             let Some(attribute) = attribute.as_mut() else {
                 return Err(AttributeSetError::UninitializedAttribute { id });
@@ -53,18 +60,58 @@ impl AttributeSet {
                 attribute.recalculate(aggregators.get(location));
             }
             let old_value = attribute.get_current_value();
-            attribute.modify_base_value(spec);
-            old_value
-        };
-        self.mark_dirty(location);
-
-        let Some(new_value) = self.get_current_value(manager, id)? else {
-            return Err(AttributeSetError::UninitializedAttribute { id });
+            attribute.apply_instant_modifier(spec, aggregators.get(location));
+            (old_value, attribute.get_current_value())
         };
         if let Some(post_execute) = self.post_execute {
             post_execute(self, manager, id, old_value, new_value);
         }
         Ok(())
+    }
+
+    /// Previews ordered instant modifiers against temporary attribute values.
+    ///
+    /// Removed sources are excluded from the temporary aggregators before evaluation. Each
+    /// modified attribute retains its projected base across repeated entries. The predicate
+    /// observes every recalculated value before any post-execute callback.
+    ///
+    /// This borrows the current aggregators when no sources are removed. It does not modify
+    /// live values, dirty flags, or callbacks; custom aggregator executors must be pure.
+    pub(crate) fn preview_instant_modifiers(
+        &self,
+        manager: &AttributeIdManager,
+        modifiers: &[ModifierSpec],
+        removed_sources: impl IntoIterator<Item = ModifierSourceId>,
+        mut accepts: impl FnMut(AttributeSnapshot) -> bool,
+    ) -> Result<bool, AttributeSetError> {
+        let mut aggregators = Cow::Borrowed(&self.aggregators);
+        for source in removed_sources {
+            aggregators
+                .to_mut()
+                .remove_modifiers_by_source(source, |_| {});
+        }
+
+        let mut hot: [Option<Attribute>; HOT_ATTRIBUTE_SET_SIZE] = [None; HOT_ATTRIBUTE_SET_SIZE];
+        let mut cold: [Option<Attribute>; COLD_ATTRIBUTE_SET_SIZE] =
+            [None; COLD_ATTRIBUTE_SET_SIZE];
+        for modifier in modifiers {
+            let id = modifier.get_id();
+            let location = self.initialized_attribute_location(manager, id)?;
+            let attribute = self
+                .attribute_slot(location)
+                .as_ref()
+                .ok_or(AttributeSetError::UninitializedAttribute { id })?;
+            let projected_slot = match location.region() {
+                AttributeRegion::Hot => &mut hot[location.slot()],
+                AttributeRegion::Cold => &mut cold[location.slot()],
+            };
+            let projected = projected_slot.get_or_insert(*attribute);
+            projected.apply_instant_modifier(modifier, aggregators.get(location));
+            if !accepts(projected.make_snapshot()) {
+                return Ok(false);
+            }
+        }
+        Ok(true)
     }
 
     /// Applies a duration modifier associated with a runtime source.

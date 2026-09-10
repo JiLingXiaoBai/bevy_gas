@@ -8,9 +8,9 @@ use super::application::{
 use super::execution::validate_effect_execution_requirements;
 use super::removal::collect_active_effects_with_tags_for_params;
 use super::state::{ActiveEffectHandle, ActiveEffectStorageError};
-use crate::attributes::{AttributeId, AttributeIdError, AttributeSetError};
+use crate::attributes::{AttributeId, AttributeIdError, AttributeSetError, AttributeSnapshot};
 use crate::gameplay_tags::GameplayTagError;
-use crate::modifiers::ModifierSpec;
+use crate::modifiers::{ModifierSourceId, ModifierSpec};
 use bevy::prelude::*;
 use std::error::Error;
 use std::fmt;
@@ -49,10 +49,73 @@ impl GameplayEffectApplicationPlan {
         matches!(self.kind, GameplayEffectApplicationKind::Instant)
     }
 
+    /// Previews this plan's modifier sequence after removing its selected effect sources.
+    ///
+    /// Calls `accepts` after each modifier and returns `false` on the first rejected
+    /// snapshot. Attribute state and post-execute callbacks remain untouched.
+    ///
+    /// Returns an application error if the target or a modified attribute is missing.
+    pub(crate) fn preview_modifier_application(
+        &self,
+        params: &EffectSystemParams,
+        accepts: impl FnMut(AttributeSnapshot) -> bool,
+    ) -> Result<bool, GameplayEffectApplicationError> {
+        preview_modifiers_after_effect_removal(
+            self.target,
+            &self.spec,
+            &self.removed_effects,
+            params,
+            accepts,
+        )
+    }
+
     pub(super) fn changes_active_effect_requirements(&self) -> bool {
         !self.removed_effects.is_empty()
             || matches!(self.kind, GameplayEffectApplicationKind::CreateActive)
     }
+}
+
+/// Previews instant modifiers with the effect sources selected by removal tags excluded.
+///
+/// This only inspects the target and evaluates attribute values. It does not check
+/// application requirements, roll probability, invoke post-execute callbacks, or mutate ECS state.
+/// Calls `accepts` after each modifier and returns `false` on the first rejected snapshot.
+///
+/// Returns an application error for invalid removal tags or missing target attributes.
+pub(crate) fn preview_instant_effect_modifiers(
+    target: Entity,
+    spec: &GameplayEffectSpec,
+    params: &EffectSystemParams,
+    accepts: impl FnMut(AttributeSnapshot) -> bool,
+) -> Result<bool, GameplayEffectApplicationError> {
+    let removed_effects = collect_active_effects_with_tags_for_params(
+        target,
+        spec.get_def_tags().get_remove_effects_with_tags(),
+        &params.active_effect_query,
+        &params.tag_manager,
+    )?;
+    preview_modifiers_after_effect_removal(target, spec, &removed_effects, params, accepts)
+}
+
+fn preview_modifiers_after_effect_removal(
+    target: Entity,
+    spec: &GameplayEffectSpec,
+    removed_effects: &[ActiveEffectHandle],
+    params: &EffectSystemParams,
+    accepts: impl FnMut(AttributeSnapshot) -> bool,
+) -> Result<bool, GameplayEffectApplicationError> {
+    let attributes = params
+        .attr_set_query
+        .get(target)
+        .map_err(|_| GameplayEffectApplicationError::MissingAttributeSet { target })?;
+    attributes
+        .preview_instant_modifiers(
+            &params.attribute_id_manager,
+            spec.get_modifier_specs(),
+            removed_effects.iter().copied().map(ModifierSourceId::from),
+            accepts,
+        )
+        .map_err(|error| map_attribute_set_error(target, error))
 }
 
 /// Describes why a gameplay effect could not be prepared or executed.

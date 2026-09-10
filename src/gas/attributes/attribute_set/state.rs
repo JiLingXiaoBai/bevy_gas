@@ -20,6 +20,9 @@ pub(super) const HOT_DIRTY_WORDS: usize = HOT_ATTRIBUTE_SET_SIZE.div_ceil(64);
 pub(super) const COLD_DIRTY_WORDS: usize = COLD_ATTRIBUTE_SET_SIZE.div_ceil(64);
 
 /// Callback invoked after an instant modifier changes an initialized attribute.
+///
+/// Cost affordability previews do not invoke this callback or simulate its mutations. It runs
+/// once per modifier only during actual execution, after base modification and aggregation.
 pub type AttributePostExecute = fn(&mut AttributeSet, &AttributeIdManager, AttributeId, f32, f32);
 
 /// Describes why an operation on an [`AttributeSet`] could not be completed.
@@ -81,7 +84,17 @@ impl Attribute {
         self.current
     }
 
-    pub(super) fn modify_base_value(&mut self, spec: &ModifierSpec) {
+    /// Applies the base operation and reevaluates its current value with the same aggregator.
+    pub(super) fn apply_instant_modifier(
+        &mut self,
+        spec: &ModifierSpec,
+        aggregator: Option<&Aggregator>,
+    ) {
+        self.modify_base_value(spec);
+        self.recalculate(aggregator);
+    }
+
+    fn modify_base_value(&mut self, spec: &ModifierSpec) {
         match spec.get_operation() {
             ModifierOperation::Add => self.base += spec.get_value(),
             ModifierOperation::PercentAdd => self.base *= 1.0 + spec.get_value(),

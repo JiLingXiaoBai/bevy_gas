@@ -191,9 +191,19 @@ pub fn commit_ability(
 ```
 
 它准备并预验证 Cost/Cooldown Plan，然后先执行 Cost、再执行 Cooldown，不创建活跃技能实例。
-Cost 必须是只含 Add Modifier 的 Instant Effect。当前支付检查会把每个已准备的 Modifier
-分别与检查开始时的属性当前值比较；因此同一 Cost 不应为同一个属性配置多个扣减 Modifier，
-否则各项可能分别通过检查，但合计扣减后仍把属性降到零以下。这是当前实现边界，不是组合扣减保证。
+Cost 必须是只含 Add Modifier 的 Instant Effect。支付检查按定义顺序在临时属性上逐笔执行
+与实际扣费相同的 base 修改和聚合计算；同一属性的后续条目接着上一步结果计算。每个成本幅度、
+每一步的 base 和 current 必须有限，且每一步 current 必须非负。base 不额外要求非负，是否可支付
+取决于当前聚合规则；不能先合并金额或跳过中间结果。
+
+预演会排除成本 Effect 计划移除的效果来源，使用扣费时实际生效的聚合器。准备阶段和执行成本前
+共用同一个计划预演入口；拒绝时不会执行本次扣费或本次成本计划的效果移除。例如 base 为 10、
+持续倍率为 2 时，扣除 15 会把 current 算成 -10，因此拒绝；base 为 20、持续倍率为 0.5 时，
+同样扣除 15 会得到 base=5、current=2.5，因此允许。
+
+数值预演不修改实际 AttributeSet、dirty 位或 Active Effects，也不触发 `post_execute`。
+回调只在实际执行每条即时 Modifier 后调用一次，其修改不参与支付预演；需要影响支付资格的
+规则应通过 Modifier 或纯聚合 executor 表达。Cost/Cooldown 提交仍遵循 Effect Plan 的非事务语义。
 
 独立 `commit_ability()` 不调用 Requirement 固定点。调用方若必须在返回后立即观察 Cooldown
 granted tags 或 Effect 抑制状态，应显式调用 `resolve_active_effect_tag_requirements()`；正常激活
@@ -244,8 +254,8 @@ tick task 完成时从父 `ActiveGameplayAbility` 的激活数据读取同一值
 并排队销毁；普通 `cancel_ability()` 则等待 Cleanup。两条路径共用内部状态更新入口，同时同步
 Query 已可见实例与尚未提交的 pending 实例；共用操作不改变各自的清理时机。
 
-消耗预检查与真实 commit 共用对已求值 `ModifierSpec` 的支付检查，但仍分别构造 Spec 与 Effect
-Plan。`can_activate_ability()` 仅预检查标签与消耗，不验证授予 Handle、实例数限制或完整 Effect
+消耗预检查与真实 commit 共用 Attribute 领域的逐笔数值预演和支付条件，但仍分别构造 Spec 与
+Effect Plan；快速预检按当前 removal tags 选择临时排除的来源，commit 使用计划中捕获的来源。`can_activate_ability()` 仅预检查标签与消耗，不验证授予 Handle、实例数限制或完整 Effect
 应用计划，也不携带本次激活上下文，因此返回 `true` 不保证后续激活成功。
 
 ## 默认 FixedUpdate 阶段
