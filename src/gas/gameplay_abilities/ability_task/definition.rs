@@ -13,6 +13,13 @@ pub enum AbilityTaskOnFinishedDef {
     None,
     /// Marks the active ability as ending.
     EndAbility,
+    /// Dispatches actions in order, stopping at the first `EndAbility`.
+    ///
+    /// Previously queued gameplay requests remain queued. A batch is not a transaction.
+    Batch {
+        /// Ordered completion actions; nested batches preserve depth-first order.
+        actions: Vec<AbilityTaskOnFinishedDef>,
+    },
     /// Emits an [`AbilityTaskEvent`](super::AbilityTaskEvent).
     EmitEvent {
         /// Identifies the emitted event.
@@ -85,6 +92,9 @@ impl AbilityTaskOnFinishedDef {
         match self {
             AbilityTaskOnFinishedDef::None => AbilityTaskOnFinished::None,
             AbilityTaskOnFinishedDef::EndAbility => AbilityTaskOnFinished::EndAbility,
+            AbilityTaskOnFinishedDef::Batch { actions } => AbilityTaskOnFinished::Batch {
+                actions: actions.iter().map(Self::instantiate).collect(),
+            },
             AbilityTaskOnFinishedDef::EmitEvent { event_id } => AbilityTaskOnFinished::EmitEvent {
                 event_id: *event_id,
             },

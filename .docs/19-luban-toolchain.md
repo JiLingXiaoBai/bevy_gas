@@ -2,25 +2,29 @@
 
 ## 当前范围
 
-项目在 `config/` 维护 Excel 配置工程，在 `tools/luban/` 固定 Luban、Luban.Agent 与 Luban.Mcp 工具链。
+项目在 `config/` 维护 XML 定义与 Excel 数据，在 `tools/luban/` 固定 Luban、Luban.Agent 与 Luban.Mcp 工具链。
 日常通过 `config/export.ps1` 将配置导出为 Rust 代码和二进制数据；工具缓存与配置源文件分开存放。
 Codex 通过 Luban.Mcp 查询表结构、校验和生成配置；Luban.Agent 保留为 MCP 的查询与校验后端。
-当前配置沿用官方 MiniTemplate 的 `demo` 示例，用于验证目录和导表流程。
-
-GAS 配置结构、Rust 读取库的 Safe Rust / Result 适配，以及配置到运行时定义的转换，
-属于后续接入工作。生成的 crate 尚未作为本库依赖，也未接入游戏运行时。
+当前配置包含七张 GAS 表，提供真实 Excel 火球配置包。
+Safe Rust 解码和 GAS 适配代码位于根 `bevy_gas` 包的 `config` 模块，通过默认关闭的
+`luban-config` feature 启用；加载后构造共享 GAS 定义，GAS 领域不反向依赖配置层。
+仓库只维护根 `Cargo.toml`。业务结构与使用流程见
+[20 — Excel 技能配置与 GAS 接入](./20-gas-configuration.md)。
 
 ## 配置路径与日常导表
 
 | 路径 | 职责 | Git 管理 |
 | --- | --- | --- |
-| `config/tables/` | Excel 数据表，当前为 `#demo.item.xlsx` | 提交 |
-| `config/defines/` | 表、Bean、枚举定义及 `builtin.xml` | 提交 |
+| `config/tables/` | 七张 `gas.*.xlsx` 数据表 | 提交 |
+| `config/defines/gas.xml`、`builtin.xml` | GAS 表登记、枚举及 Luban 内置定义 | 提交 |
 | `config/luban.conf` | 输入目录、定义文件和导出目标 | 提交 |
-| `config/export.ps1` | 项目导表入口，固定参数与输出路径 | 提交 |
+| `config/export.ps1` | 项目导表入口，暂存生成、编译、玩法校验后发布 | 提交 |
+| `config/templates/rust-bin/` | 项目维护的 Rust Result 解码模板 | 提交 |
+| `src/config.rs`、`src/config/` | 可选配置模块：安全解码、配置包校验、GAS 编译与加载 | 提交 |
+| `src/bin/gas_config.rs`、`examples/config_fireball.rs` | 由 `luban-config` 启用的 CLI 与火球示例 | 提交 |
 | `config/LICENSE.Luban` | 初始示例文件的上游 MIT 许可证 | 提交 |
-| `config/generated/` | 自动生成的 `cfg` 和 `macros` Rust 源码及 Cargo 清单 | 提交，导表生成 |
-| `config/bin/` | 导出的二进制数据，当前为 `demo_tbitem.bytes` | 忽略，导表生成 |
+| `config/generated/` | 自动生成的 `mod.rs`、`gas.rs` 等 Rust 模块，无独立 Cargo 清单 | 提交，导表生成 |
+| `config/bin/` | 七张 GAS 表的二进制数据及 `manifest.json` | 忽略，导表生成 |
 | `tools/luban/.cache/` | 三种 Luban 工具的下载归档、已安装工具及临时验证产物 | 忽略 |
 
 首次使用先准备工具链，再导表。以下命令在仓库根目录执行：
@@ -33,19 +37,29 @@ pwsh -NoProfile -File config/export.ps1
 之后修改 Excel 或定义文件，只需重新执行 `config/export.ps1`。
 该入口根据脚本自身位置解析路径，向 `tools/luban/run.ps1` 传递配置入口及输出目录的绝对路径，
 不会受到调用者当前工作目录影响；初始入口不提供路径或生成参数覆盖选项。
-生成参数固定为 `-t all -c rust-bin -d bin --strict`，导表失败会保留非零退出码。
+生成参数固定为 `-t all -c rust-bin -d bin --strict`，并使用 `config/templates/` 自定义模板。
+脚本先暂存生成结果并提取 Rust 模块，再复制根包的 `src/`、`examples/`、`Cargo.toml`、
+`Cargo.lock` 和候选生成模块组成临时单包项目，格式化后以 `--features luban-config --offline --locked`
+编译真实配置 CLI。新 CLI 生成清单、读取真实二进制并构建 GAS 定义。全部成功后发布代码与数据，
+发布失败恢复原目录；并发导表由排他锁拒绝。原生进程失败保留非零退出码。
+首次导表前可运行 `cargo build --features luban-config` 准备依赖缓存。发布不保证两个目录对并发读取者瞬时切换，
+导表期间不要启动加载；运行中热更新不在首版范围内。
 
 `luban.conf` 的路径相对于 `config/`：`dataDir` 指向 `tables`，`schemaFiles` 显式列出
-`defines/builtin.xml`、`defines/__tables__.xlsx`、`defines/__beans__.xlsx` 和
-`defines/__enums__.xlsx`；三个 Excel 定义文件分别使用 `table`、`bean` 和 `enum` 类型。
-当前只有 `all` 目标，包含 `c`、`s`、`e` 分组，管理器为 `Tables`，顶层模块为 `cfg`。
+`defines/builtin.xml` 和 `defines/gas.xml`，两者的 `type` 均为空字符串，按 XML 解析。
+`gas.xml` 统一登记七张 GAS 表与普通枚举；表的行结构继续从对应 Excel 的 `##var`、`##type`
+表头读取。原三个定义 Excel 已移除，原 `__beans__.xlsx` 没有业务 Bean 定义，不保留空的替代文件。
+当前只有 `all` 目标，包含 `c`、`s`、`e` 分组，管理器为 `Tables`，生成器顶层模块为 `cfg`。
+上游生成器的内置模板仍会在暂存区产生 Cargo 清单与宏包；导表脚本只提取需要的 Rust 模块，
+将生成入口发布为 `config/generated/mod.rs`，由 `src/config.rs` 通过外部路径声明
+`generated` 模块。仓库不维护生成包的 Cargo 清单，也不需要自定义 `toml.sbn`。
 
 `config/tables/`、`config/defines/` 是人工维护的源文件。生成代码与二进制必须由同一次
 导表产生，不手动修改；Luban 会清理输出目录，因此生成目录内只能放生成产物。
 手写读取库、GAS 适配代码或自定义模板应单独维护，不能放入 `config/generated/` 或 `config/bin/`。
 配置源文件、结构定义或模板变更后，应重新导表，并将相关生成代码与源文件变更放在同一次提交中。
-所有层级的 `target/` 构建目录均由 Git 忽略，避免提交生成子 crate 的编译产物；
-`config/bin/` 和工具 `.cache/` 继续忽略。
+Cargo 的 `target/` 构建缓存、`config/bin/` 和工具 `.cache/` 均由 Git 忽略。
+删除根 `target/` 后，下次 Cargo 命令会重新创建构建缓存。
 删除 `.cache` 不会删除配置源文件，重新执行准备和导表即可恢复工具及产物。
 
 本仓库是 GAS 库，二进制先输出到 `config/bin/`。具体游戏负责将需要的数据部署到自身的
@@ -56,13 +70,14 @@ pwsh -NoProfile -File config/export.ps1
 初始文件来自 [Luban 官方示例](https://github.com/focus-creative-games/luban_examples/tree/8e1727d5a466682684ecc081fd89551665f2e117/MiniTemplate)，
 固定提交为 `8e1727d5a466682684ecc081fd89551665f2e117`：
 
-- `MiniTemplate/Data/#demo.item.xlsx` 原样复制到 `config/tables/`；
-- `MiniTemplate/Data/__tables__.xlsx`、`__beans__.xlsx`、`__enums__.xlsx` 原样复制到 `config/defines/`；
+- 最初曾将 `MiniTemplate/Data/#demo.item.xlsx` 原样复制到 `config/tables/`，该 demo 源文件和对应生成产物现已移除；
+- 最初使用 `MiniTemplate/Data/__tables__.xlsx`、`__beans__.xlsx`、`__enums__.xlsx` 作为定义起点；
+  当前 GAS 表登记与枚举已迁入 `config/defines/gas.xml`，三个定义 Excel 已移除；
 - `MiniTemplate/Defines/builtin.xml` 原样复制到 `config/defines/`；
 - 上游 MIT 许可证保留为 [`config/LICENSE.Luban`](../config/LICENSE.Luban)。
 
 `config/luban.conf` 与 `config/export.ps1` 是本项目的入口，目录约定在本页维护。
-这些示例只提供可运行的起点，尚未定义正式的 GAS 业务配置结构。
+这些示例提供最初起点；当前定义文件维护 GAS 表与枚举，导出包不再包含 demo 数据或类型。
 
 ## 固定版本与运行时要求
 
@@ -93,7 +108,7 @@ Luban.Mcp 的上游 DLL 产品版本为 `1.0.0+52d329fb93be79810ed090f489ba4bf38
 
 | 文件 | 职责 | 使用时机 |
 | --- | --- | --- |
-| [`config/export.ps1`](../config/export.ps1) | 使用固定项目路径和严格校验参数导出 Rust 代码与二进制 | 日常导表 |
+| [`config/export.ps1`](../config/export.ps1) | 暂存生成、编译、完整校验和发布，并负责子进程退出码、受限路径操作和双目录回滚 | 日常导表 |
 | [`setup.ps1`](../tools/luban/setup.ps1) | 检查本机运行时，下载、校验并安装三种工具，验证版本与 Agent 能力查询 | 首次使用、清理缓存后或升级工具时 |
 | [`run.ps1`](../tools/luban/run.ps1) | 使用本机运行时启动 Luban，传递参数并保留退出码 | 由项目入口调用，也可手动查询帮助或诊断 |
 | [`mcp.ps1`](../tools/luban/mcp.ps1) | 启动固定版本的 Luban.Mcp stdio 服务，为其指定 Luban 与 Agent DLL | 由 Codex MCP 客户端启动 |
@@ -120,7 +135,7 @@ dotnet --list-runtimes
 通过本机检查后，准备脚本下载三个固定归档，分别校验，再解压到各自的暂存目录并完成安装。
 下载归档、已安装工具及临时生成验证产物均位于 `tools/luban/.cache/`，已由 Git 忽略。
 锁文件和工具脚本需要提交；工具二进制和缓存不提交。
-`config/` 中的初始示例已作为项目输入提交，后续可在其中维护自己的表格；正常导表不依赖
+`config/` 中的配置源文件已作为项目输入提交，后续可在其中维护自己的表格；正常导表不依赖
 官方示例仓库。准备脚本不再下载官方示例，也不会清理此前可能保留的示例缓存。
 
 安装后，准备脚本检查 Luban 的完整版本字符串，以及 Agent、Mcp 入口 DLL 的 `ProductVersion`，
@@ -171,8 +186,8 @@ Codex 加载该项目配置后，通过 `pwsh` 启动 [`mcp.ps1`](../tools/luban
 | `generate` | 导出配置代码和二进制 |
 
 启动器将服务的工作目录固定为仓库根目录，因此查询和校验可统一传入
-`conf: "config/luban.conf"`、`target: "all"`；查询示例表时，向 `describe`
-再传入 `name: "demo.Tbitem"`。也可将 `conf` 替换为配置文件的绝对路径。
+`conf: "config/luban.conf"`、`target: "all"`；查询技能表时，向 `describe`
+再传入 `name: "gas.TbAbility"`。也可将 `conf` 替换为配置文件的绝对路径。
 本项目未准备上游本地文档目录，因此当前不启用 `search_docs`。
 
 MCP 工具响应的文本内容为 JSON；外层 `ok`、`exitCode` 表示执行状态，
@@ -184,12 +199,13 @@ MCP 调用 Agent 完成查询与校验，调用 Luban 完成生成；因此 Agen
 启动器复用本机 .NET 检查，并向服务及其子进程设置 `DOTNET_ROLL_FORWARD=LatestMajor`，
 使下游调用继续遵循本机 Runtime 8+ 的约定。MCP 和 Agent 均用于开发阶段，不参与游戏运行时。
 
-日常严格导表继续使用 `config/export.ps1`。MCP 查询和校验不会更新生成产物；
-通过 `generate` 导表时，向工具传入下列 `args`，保持相同的严格检查与输出目录：
+日常严格导表使用 `config/export.ps1`。MCP 查询和校验不会更新生成产物。
+MCP 的原始 `generate` 仅用于诊断，不能替代 Rust 编译、包清单和玩法校验；
+需要直接生成时输出到缓存目录，例如：
 
 ```json
 {
-  "args": "--conf config/luban.conf -t all -c rust-bin -d bin --strict -x outputCodeDir=config/generated -x outputDataDir=config/bin"
+  "args": "--conf config/luban.conf -t all -c rust-bin -d bin --strict --customTemplateDir config/templates -x outputCodeDir=tools/luban/.cache/diagnostic/code -x outputDataDir=tools/luban/.cache/diagnostic/data"
 }
 ```
 
@@ -210,13 +226,18 @@ MCP 调用 Agent 完成查询与校验，调用 Luban 完成生成；因此 Agen
 固定提交 `3b6641410dcdfdbe4143b12313ff30c2e69d3d6a`。已逐文件核对六个上游 `SKILL.md` 的
 Git blob，与工具链 v5.0.0 的提交 `52d329fb93be79810ed090f489ba4bf3821c4e4c` 完全一致。
 保留上游正文，在每个 skill 的元数据之后添加指向本节的项目上下文说明；
+新增表、Schema 设计和生成排错的上下文同时明确本仓库使用 `config/defines/gas.xml`，
+上游 `__tables__` / `__beans__` 等 Excel Schema 示例不代表本项目的维护入口；
 为 `luban-excel-fill` 和 `luban-validator` 的 description 添加 YAML 引号，避免 `##` 被解析成注释而截断触发描述。
 上游 MIT 许可证保留在 `.agents/skills/LICENSE.Luban`。
 
 ### 本项目使用约定
 
-- 配置入口使用 `config/luban.conf`，当前目标是 `all`；Excel 数据在 `config/tables/`，
-  表、Bean 和枚举登记在 `config/defines/`。上游 `Data/`、`Defines/` 是示例路径。
+- 配置入口使用 `config/luban.conf`，当前目标是 `all`；Excel 数据在 `config/tables/`。
+  新增 GAS 表与枚举在 `config/defines/gas.xml` 登记，不重建 `__tables__.xlsx`、
+  `__beans__.xlsx` 或 `__enums__.xlsx`。表字段默认继续从数据 Excel 表头读取，不重复声明同名 Bean。
+  需要共享 Bean 时可在该 XML 中定义。`builtin.xml` 保留 Luban 内置定义，不放业务表。
+  上游 `Data/`、`Defines/` 和 Excel Schema 文件均为泛用示例。
 - 修改前按需使用原生 MCP `list_tables`、`get_schema` 或 `describe` 确认实际结构；
   上游 `ListTables` / `GetSchema` 在本项目对应这两个 snake_case 工具名。
   修改后使用 `validate` 检查；检查返回文本 JSON 的 `ok`、`exitCode` 和 `report`，
@@ -226,17 +247,18 @@ Git blob，与工具链 v5.0.0 的提交 `52d329fb93be79810ed090f489ba4bf3821c4e
 - 日常生成使用 `pwsh -NoProfile -File config/export.ps1`，保持 `all + rust-bin + bin + --strict`。
   上游 `gen.bat`、`gen.sh`、直接启动 DLL 的命令需要替换为本项目入口；诊断优先使用原生 MCP，
   需要生成器 CLI 时使用 `tools/luban/run.ps1`。Agent 保留为 MCP 后端，无需恢复 `agent.ps1`。
-  使用 MCP `generate` 时遵循上节列出的等价参数。生成产物规则见本页“配置路径与日常导表”。
+  使用 MCP `generate` 时仅写诊断缓存，正式发布走完整导表入口。生成产物规则见本页“配置路径与日常导表”。
 - 上游 Schema 的继承/多态建议只用于评估配置表达方式；运行时仍遵循 Bevy ECS、
   Component/Resource/System 与现有 GAS 架构，不据此改造为 OOP。`luban-runtime-load` 的
-  C#/Unity 示例只供概念参考，实际使用 Rust；读取库和 GAS 适配尚未完成。
+  C#/Unity 示例只供概念参考，实际使用 Rust；解码和适配实现位于 `src/config/`，通过
+  `luban-config` feature 启用。当前模板不开放继承、多态和 flags 枚举。
 - 安装或解释 skill 本身不需要修改表格或生成代码；实际任务涉及配置源文件变更时，
   按已有导表流程更新对应产物，不能通过削弱校验掩盖错误数据。
 
 ### 发现、知识库与维护
 
 Codex 会从项目 `.agents/skills/` 发现 skill 的名称和描述，在任务匹配或显式指定时读取正文。
-安装后从下一轮消息即可使用，例如 `$luban-excel-fill 修改 demo.Tbitem 中指定物品的 count`。
+安装后从下一轮消息即可使用，例如 `$luban-excel-fill 修改 gas.TbAbility 中 Fireball 的 max_level`。
 如果技能列表未刷新，再重启 Codex。机制参考 [Codex 官方说明](https://learn.chatgpt.com/docs/build-skills)。
 
 `.docs/` 是按需阅读的知识库，单独复制 `SKILL.md` 到其中不会注册 skill，也不表示每轮都会
@@ -248,9 +270,9 @@ Codex 会从项目 `.agents/skills/` 发现 skill 的名称和描述，在任务
 升级时对比上游规则与固定工具链的兼容性，保留本地项目说明，并更新本节来源记录。
 
 
-## 工具验证与后续接入
+## 工具验证与运行时接入
 
-工具准备阶段已完成归档摘要、生成器版本、重复准备以及官方 MiniTemplate 的
+初始工具准备阶段已完成归档摘要、生成器版本、重复准备以及官方 MiniTemplate 的
 `rust-bin + bin + --strict` 真实生成验证。本机 .NET `10.0.9` 与原 .NET `8.0.31`
 基线的 6 个输出文件逐一一致。
 Luban.Agent 5.0.0 已在本机 .NET `10.0.9` 下通过五种模式验证，以及错误用法、名称不存在
@@ -263,17 +285,12 @@ Luban.Mcp 5.0.0 已在本机 .NET `10.0.9` 下通过真实 stdio 握手、工具
 
 `tools/luban/.cache/smoke/code/` 和 `tools/luban/.cache/smoke/data/` 是此前工具验证的
 临时产物，清理缓存后不要求保留。日常项目产物统一使用 `config/generated/` 和 `config/bin/`。
-生成成功只确认导表流程可用，不代表 Rust 配置读取或 GAS 接入已经完成。
-
-当前生成的 `cfg` crate 仍按上游模板依赖 `../../luban_lib`，其路径对应 `config/luban_lib/`。
-该读取库尚未建立，生成 crate 也未加入根项目的依赖；需要完成读取库与模板适配后再编译接入。
-后续适配可按需查阅上述来源提交中的
-[`Projects/Rust_bin/`](https://github.com/focus-creative-games/luban_examples/tree/8e1727d5a466682684ecc081fd89551665f2e117/Projects/Rust_bin)
-及其 `luban_lib/`，不依赖准备脚本下载参考快照。
-
-下一步可设计一张瞬时属性加减效果表，验证 Excel 数值经导出、读取和适配后改变 GAS
-结算结果，再扩展到冷却、消耗和任务。涉及 `read_* -> Result` 的改动需要同步调整生成的
-反序列化表达式；自定义模板应在生成目录之外单独维护。
+项目使用 `config/templates/rust-bin/` 与 `src/config/` 中的安全解码实现，解码返回 Result。
+生成 Rust 模块与配置适配代码通过 `luban-config` 编译进同一个包；真实 Excel 火球示例包含
+消耗、冷却、目标过滤、按等级伤害及同 tick 动作结束。导表入口为每次候选产物建立临时
+单包项目，重新编译并执行完整校验后才发布。发布流程失败时恢复上一套代码和数据；
+检查回滚行为时必须使用隔离临时目录，不能以正式产物作为故障测试对象。
+配置包验证、运行示例与测试维护见 [20 — 技能配置](./20-gas-configuration.md)。
 
 ## 升级约定
 

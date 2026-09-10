@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<module name="gas">
+    <!-- Row fields are read from the Excel data headers. -->
+    <table name="TbTag" value="gas.Tag" readSchemaFromFile="true" input="gas.tag.xlsx" index="name" mode="map" comment="Gameplay tag names and descriptions."/>
+    <table name="TbAttribute" value="gas.Attribute" readSchemaFromFile="true" input="gas.attribute.xlsx" index="name" mode="map" comment="Attribute names and storage regions."/>
+    <table name="TbEffect" value="gas.Effect" readSchemaFromFile="true" input="gas.effect.xlsx" index="id" mode="map" comment="Gameplay effect definitions."/>
+    <table name="TbModifier" value="gas.Modifier" readSchemaFromFile="true" input="gas.modifier.xlsx" index="id" mode="map" comment="Ordered attribute modifiers grouped by effect."/>
+    <table name="TbAbility" value="gas.Ability" readSchemaFromFile="true" input="gas.ability.xlsx" index="id" mode="map" comment="Gameplay ability definitions and activation rules."/>
+    <table name="TbAbilityAction" value="gas.AbilityAction" readSchemaFromFile="true" input="gas.ability_action.xlsx" index="id" mode="map" comment="Ordered actions scheduled relative to ability activation."/>
+    <table name="TbTargeting" value="gas.Targeting" readSchemaFromFile="true" input="gas.targeting.xlsx" index="id" mode="map" comment="Target selection, filtering, ordering, and limits."/>
+
+    <enum name="AttributeRegion" flags="false" unique="true" comment="Valid AttributeRegion values.">
+        <var name="Hot" value="0" comment="Hot behavior."/>
+        <var name="Cold" value="1" comment="Cold behavior."/>
+    </enum>
+
+    <enum name="DurationKind" flags="false" unique="true" comment="Valid DurationKind values.">
+        <var name="Instant" value="0" comment="Instant behavior."/>
+        <var name="DurationTicks" value="1" comment="DurationTicks behavior."/>
+        <var name="Infinite" value="2" comment="Infinite behavior."/>
+    </enum>
+
+    <enum name="ModifierOperation" flags="false" unique="true" comment="Valid ModifierOperation values.">
+        <var name="Add" value="0" comment="Add behavior."/>
+        <var name="PercentAdd" value="1" comment="PercentAdd behavior."/>
+        <var name="Multiply" value="2" comment="Multiply behavior."/>
+        <var name="Override" value="3" comment="Override behavior."/>
+    </enum>
+
+    <enum name="MagnitudeKind" flags="false" unique="true" comment="Valid MagnitudeKind values.">
+        <var name="Flat" value="0" comment="Flat behavior."/>
+        <var name="LinearLevel" value="1" comment="LinearLevel behavior."/>
+    </enum>
+
+    <enum name="ActionKind" flags="false" unique="true" comment="Valid ActionKind values.">
+        <var name="ApplyEffect" value="0" comment="ApplyEffect behavior."/>
+        <var name="EndAbility" value="1" comment="EndAbility behavior."/>
+    </enum>
+
+    <enum name="TargetScope" flags="false" unique="true" comment="Valid TargetScope values.">
+        <var name="None" value="0" comment="None behavior."/>
+        <var name="Primary" value="1" comment="Primary behavior."/>
+        <var name="AllCaptured" value="2" comment="AllCaptured behavior."/>
+    </enum>
+
+    <enum name="SelectionKind" flags="false" unique="true" comment="Valid SelectionKind values.">
+        <var name="SelfTarget" alias="Self" value="0" comment="SelfTarget behavior."/>
+        <var name="ExplicitEntity" value="1" comment="ExplicitEntity behavior."/>
+        <var name="Sphere" value="2" comment="Sphere behavior."/>
+        <var name="Cone" value="3" comment="Cone behavior."/>
+    </enum>
+
+    <enum name="SortOrder" flags="false" unique="true" comment="Valid SortOrder values.">
+        <var name="None" value="0" comment="None behavior."/>
+        <var name="Nearest" value="1" comment="Nearest behavior."/>
+        <var name="Farthest" value="2" comment="Farthest behavior."/>
+    </enum>
+</module>

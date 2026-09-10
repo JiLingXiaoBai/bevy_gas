@@ -4,6 +4,8 @@
 //! and a deterministic fixed-tick execution pipeline through domain modules and
 //! compatibility re-exports at the crate root.
 
+#[cfg(feature = "luban-config")]
+pub mod config;
 pub mod gas;
 mod randoms;
 mod unique_names;

@@ -1,0 +1,79 @@
+//! Generated Luban tables. Regenerate with the project export script.
+#![forbid(unsafe_code)]
+
+pub use super::decoding::{ByteBuf, Decode, DecodeError, DecodeLimits};
+use std::error::Error;
+use std::fmt;
+use std::sync::Arc;
+
+/// Describes a file-loading, binary-decoding, or table-integrity failure.
+#[derive(Debug)]
+pub enum LubanError {
+    /// A table file could not be loaded.
+    Loader(String),
+    /// A binary field could not be decoded.
+    Decode(DecodeError),
+    /// A table violates its key or record-count contract.
+    Table(String),
+}
+
+impl fmt::Display for LubanError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Loader(message) | Self::Table(message) => formatter.write_str(message),
+            Self::Decode(error) => error.fmt(formatter),
+        }
+    }
+}
+
+impl Error for LubanError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::Decode(error) => Some(error),
+            _ => None,
+        }
+    }
+}
+
+impl From<DecodeError> for LubanError {
+    fn from(error: DecodeError) -> Self {
+        Self::Decode(error)
+    }
+}
+
+/// Holds all tables loaded from one configuration export.
+#[derive(Debug, Clone)]
+pub struct Tables {
+{{~ for table in __tables ~}}
+    /// Contains the {{table.full_name}} records.
+    pub {{regex.replace table.name '([a-z0-9])([A-Z])' '$1_$2' | string.downcase}}: Arc<{{full_name table | string.replace "crate::" "crate::config::generated::"}}>,
+{{~end~}}
+}
+
+impl Tables {
+    /// Loads all tables using names without the `.bytes` suffix.
+    ///
+    /// Returns complete tables, or a loading, decoding, or duplicate-key error.
+    pub fn new(mut loader: impl FnMut(&str) -> Result<ByteBuf, LubanError>) -> Result<Self, LubanError> {
+        Ok(Self {
+{{~ for table in __tables ~}}
+            {{regex.replace table.name '([a-z0-9])([A-Z])' '$1_$2' | string.downcase}}: {{full_name table | string.replace "crate::" "crate::config::generated::"}}::new(&mut loader("{{table.output_data_file}}")?)?,
+{{~end~}}
+        })
+    }
+}
+
+/// Lists the expected table file stems for one complete configuration package.
+pub const TABLE_FILES: &[&str] = &[
+{{~ for table in __tables ~}}
+    "{{table.output_data_file}}",
+{{~end~}}
+];
+
+/// Describes the generated wire schema, including enum discriminants.
+pub const SCHEMA_PARTS: &[&str] = &[
+    SCHEMA_DESCRIPTOR,
+{{~ for ns in __ns ~}}
+    {{ns | string.replace "crate::" "crate::config::generated::"}}::SCHEMA_DESCRIPTOR,
+{{~end~}}
+];

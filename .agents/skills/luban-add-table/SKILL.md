@@ -7,6 +7,9 @@ description: Adds a new Luban config table (Excel + __tables__ registration + re
 
 Before using this skill in this repository, read the [AI skills project conventions](../../../.docs/19-luban-toolchain.md#ai-skills).
 Use those conventions for paths, MCP calls, export commands, and Rust/Bevy integration; the upstream examples below are generic.
+In this repository, create Excel data in `config/tables/` and register GAS tables in `config/defines/gas.xml`.
+Keep row fields in the data workbook headers; do not recreate `__tables__.xlsx`, `__beans__.xlsx`, or `__enums__.xlsx`.
+Use `config/export.ps1` to regenerate after registration.
 
 
 # Luban: 加一张表

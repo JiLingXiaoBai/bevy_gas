@@ -49,6 +49,7 @@ pub enum AbilityTaskDef {
 
 ```rust
 pub enum AbilityTaskOnFinishedDef {
+    Batch { actions: Vec<AbilityTaskOnFinishedDef> },
     None,
     EndAbility,
     EmitEvent { event_id: UniqueName },
@@ -60,6 +61,7 @@ pub enum AbilityTaskOnFinishedDef {
 
 | 完成动作 | 行为 |
 | -------- | ---- |
+| `Batch` | 按定义顺序派发子动作，遇到第一个 `EndAbility` 停止 |
 | `None` | 不产生副作用 |
 | `EndAbility` | 请求把父技能状态设为 `Ending` |
 | `EmitEvent` | 通过 `Commands::trigger()` 触发 `AbilityTaskEvent` Observer Event |
@@ -105,6 +107,7 @@ activation data 读取同一 targets。
 
 ```rust
 pub enum AbilityTaskOnFinished {
+    Batch { actions: Vec<AbilityTaskOnFinished> },
     None,
     EndAbility,
     EmitEvent { event_id: UniqueName },
@@ -145,6 +148,17 @@ pub enum AbilityTaskOnFinished {
 
 startup definitions 按定义顺序处理。遇到 `Instant EndAbility` 后停止启动后续 sibling；此前已
 排入 `Commands` 的 `WaitTicks` 会随结束中的父技能在 `Cleanup` 阶段递归清理。
+
+## 同一任务内的顺序动作
+
+需要在同一 tick 先应用效果、再结束技能时，将动作放入一个 `Batch`，由一个任务完成时派发。
+嵌套 Batch 按深度优先顺序展开；任意子动作的 `EndAbility` 会截断整个外层 Batch。
+空 Batch 不产生副作用。已经写入 Gameplay FIFO 的请求不会因后续 EndAbility 撤回，
+各请求仍按现有规则独立结算；Batch 不提供事务回滚，也不改变 Event 的 deferred 时机。
+
+独立 sibling 任务仍按 Entity bits 排序，不能通过创建多个同 tick WaitTicks 表达策划的 order。
+配置编译器因此将同一技能、同一 at_tick 的动作合为一个 Batch，详情见
+[20 — 技能配置](./20-gas-configuration.md)。
 
 ## Tick 算法与生命周期
 
@@ -237,7 +251,7 @@ task_commands.set_parent_in_place(active_ability);
 
 | 测试文件 | 覆盖范围 |
 | -------- | -------- |
-| `tests/gas_test/abilities_test/tasks_test.rs` | Wait tick 计数和 startup `EndAbility` 截断 sibling |
+| `tests/gas_test/abilities_test/tasks_test.rs` | Wait tick 计数、startup `EndAbility` 截断 sibling、嵌套 Batch 与已入队效果保留 |
 | `tests/gas_test/abilities_test/lifecycle_test.rs` | 父技能结束时递归清理 startup task |
 | `tests/gas_test/queues_test.rs` | 缺失父实例、效果/技能入队、上下文继承和 Event payload |
 | `tests/gas_test/runtime_paths_test.rs` | startup `Instant` 同 tick 与 `WaitTicks` 跨 tick |

@@ -7,6 +7,9 @@ description: Designs Luban schema (beans, enums, polymorphism, collections, grou
 
 Before using this skill in this repository, read the [AI skills project conventions](../../../.docs/19-luban-toolchain.md#ai-skills).
 Use those conventions for paths, MCP calls, export commands, and Rust/Bevy integration; the upstream examples below are generic.
+This repository maintains GAS table registrations and enums in `config/defines/gas.xml`, with row fields read from Excel data headers.
+Add shared beans to that XML only when needed; do not duplicate row beans inferred from the data headers.
+`builtin.xml` contains Luban built-ins, and the Excel Schema files mentioned below are generic alternatives.
 
 
 # Luban: Schema 设计

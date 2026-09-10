@@ -184,6 +184,19 @@ handle/spec、管理器和系统函数应从 `bevy_gas::gas::<domain>` 或 crate
 `examples/tag_registration.rs` 当前使用 crate-root 兼容导入，验证既有根路径；知识库示例优先
 使用精简 prelude，专项 API 则展示领域门面路径。
 
+## 可选配置模块验证
+
+项目只维护根 `bevy_gas` 包，配置功能位于 `src/config.rs` 和 `src/config/`，
+由默认关闭的 `luban-config` feature 启用。根目录的 `cargo test` 运行现有测试，
+GAS 核心任务测试仍归属 `tests/gas_test/`；
+`cargo clippy --all-targets --all-features -- -D warnings` 会包含配置模块、CLI 和示例。
+
+修改 Excel、schema 或模板后，执行 `pwsh -NoProfile -File config/export.ps1`。
+导表在临时单包项目中用候选生成模块编译启用 `luban-config` 的 CLI，校验真实 bytes、
+manifest 和 GAS 编译结果后才发布；随后可运行配置预览和 `config_fireball` 示例验证玩法。
+源表与生成 Rust 模块应同步提交，不能只更新清单来掩盖结构或数据变化。命令与包约定见
+[20 — 技能配置](./20-gas-configuration.md)。
+
 ## 关键测试领域
 
 | 领域 | 应验证的内容 |

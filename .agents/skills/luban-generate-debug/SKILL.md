@@ -7,6 +7,8 @@ description: Diagnoses Luban generation and validation failures. Use when gen.ba
 
 Before using this skill in this repository, read the [AI skills project conventions](../../../.docs/19-luban-toolchain.md#ai-skills).
 Use those conventions for paths, MCP calls, export commands, and Rust/Bevy integration; the upstream examples below are generic.
+For missing table registrations or enum definitions in this repository, inspect `config/defines/gas.xml` and its entry in `config/luban.conf`.
+Data and row field headers remain in `config/tables/*.xlsx`; the `__tables__` examples below refer to the upstream Excel Schema option.
 
 
 # Luban: 生成失败排查

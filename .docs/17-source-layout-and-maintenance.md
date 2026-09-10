@@ -159,7 +159,9 @@ src/
 | --- | --- |
 | `config/tables/`、`config/defines/` | 人工维护的 Excel 数据及结构定义，纳入 Git |
 | `config/luban.conf`、`config/export.ps1` | 项目输入和输出约定、严格导表入口，纳入 Git |
-| `config/generated/` | 自动生成的 `cfg`、`macros` Rust 源码和 Cargo 清单，纳入 Git，不手动修改 |
+| `config/templates/rust-bin/` | 手写 Rust 生成模板，纳入 Git；模板变更后重新导表 |
+| `config/generated/` | 自动生成的 `mod.rs`、`gas.rs` 等 Rust 模块，纳入 Git，不手动修改 |
+| `src/config.rs`、`src/config/` | 根包内默认关闭的配置模块，拥有解码、编译、加载和包校验 |
 | `config/bin/` | 自动生成的二进制，Git 忽略，不放手写文件 |
 | `tools/luban/` | 工具链锁文件、Luban 生成器入口、MCP 服务入口和本机 .NET 环境检查脚本 |
 | `tools/luban/.cache/` | 可重新下载的三种 Luban 工具归档、已安装工具及临时验证产物，Git 忽略 |
@@ -168,17 +170,21 @@ src/
 `tools/luban/mcp.ps1` 由 Codex 启动 stdio 服务，Agent 包作为该服务的查询和校验后端。
 
 配置源文件或结构定义变更后，应重新导表并将相关生成代码放在同一次提交中。
-仓库使用 `target/` 忽略所有层级的构建目录，包含生成子 crate 的编译产物。
+仓库只维护根 `Cargo.toml`；`target/` 是 Git 忽略的构建缓存，删除后由 Cargo 重新创建。
 
-生成的 crate 尚未加入根项目依赖，GAS 运行时继续由 `src/` 拥有。
-手写读取库、GAS 适配或自定义模板必须放在生成目录之外；游戏资源部署由使用本库的游戏负责。
+`src/lib.rs` 使用 `#[cfg(feature = "luban-config")] pub mod config;` 暴露可选配置入口。
+`src/config.rs` 是门面，声明 `decoding`、`compiler`、`catalog`、`loading` 和 `package`，
+并通过外部路径加载 `config/generated/mod.rs` 为 `generated` 模块。
+配置层将表数据转换为共享 GAS 定义，`src/gas/` 不反向引用生成表类型。
+手写解码、GAS 适配和模板始终位于生成目录之外；游戏资源部署由使用本库的游戏负责。
 
 ## 顶层门面和公开路径
 
 | 文件 | 职责 |
 | --- | --- |
-| `src/lib.rs` | crate 文档、`gas` 命名空间、Random/UniqueName 和 crate-root 兼容重导出 |
+| `src/lib.rs` | crate 文档、`gas` 命名空间、可选 `config` 模块、Random/UniqueName 和 crate-root 兼容重导出 |
 | `src/gas.rs` | 声明 GAS 领域模块并显式聚合公共 API |
+| `src/config.rs` | `luban-config` 配置门面，显式重导出编译、加载与授予接口，声明生成模块 |
 | `src/gas/<domain>.rs` | 声明私有实现子模块，显式维护该领域的 `pub use` / `pub(crate) use` |
 | `src/gas/prelude.rs` | 只重导出高频 Plugin、Component、定义和 SystemParam |
 | `src/gas/runtime_plugin.rs` | Plugin 组合、Resource 初始化和 `FixedUpdate` 阶段排序 |
@@ -189,6 +195,9 @@ src/
 1. `bevy_gas::prelude::*`：常规接入；
 2. `bevy_gas::gas::gameplay_effects::GameplayEffect` 这类领域路径：完整领域 API；
 3. `bevy_gas::GameplayEffect` 这类 crate-root 路径：保留的显式兼容重导出。
+
+可选配置 API 使用 `bevy_gas::config` 路径，不进入 GAS prelude；生成 DTO 位于
+`bevy_gas::config::generated`。
 
 门面禁止 `pub use *`。新增实现文件中的 `pub` 项不会自动成为 crate API；只有被门面明确重导出的
 项才属于领域公共表面。私有文件名可以调整，但不得在没有迁移方案时改变已公开的类型和函数路径。

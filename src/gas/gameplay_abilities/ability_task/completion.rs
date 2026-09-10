@@ -90,6 +90,22 @@ pub(crate) fn dispatch_ability_task_completion(
     match on_finished {
         AbilityTaskOnFinished::None => {}
         AbilityTaskOnFinished::EndAbility => return AbilityTaskCompletion::EndAbility,
+        AbilityTaskOnFinished::Batch { actions } => {
+            for action in actions {
+                let completion = dispatch_ability_task_completion(
+                    active_ability,
+                    context,
+                    action,
+                    targets,
+                    active_context,
+                    commands,
+                    execution_queue,
+                );
+                if matches!(completion, AbilityTaskCompletion::EndAbility) {
+                    return completion;
+                }
+            }
+        }
         AbilityTaskOnFinished::EmitEvent { event_id } => {
             commands.trigger(AbilityTaskEvent::new(
                 context,

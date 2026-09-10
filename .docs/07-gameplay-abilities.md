@@ -84,6 +84,8 @@ let ability = GameplayAbility::default()
 [`ability_effect_flow`](../examples/ability_effect_flow.rs)。激活自动支付 cost/cooldown；
 `with_activation_effects(...)` 配置的效果在 startup tasks 之前立即作用于捕获目标，不会等待前摇。
 多个等待任务从同一激活时刻开始计时，结束 Ability 不自动移除已应用的 Effect。
+同 tick 的有序动作使用一个 `AbilityTaskOnFinishedDef::Batch`；它在首个 EndAbility 处停止，
+已入队效果继续结算。任务顺序与边界见 [08 — 技能任务](./08-ability-tasks.md)。
 
 ### `AbilityTags`
 

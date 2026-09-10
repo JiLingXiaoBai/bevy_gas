@@ -11,6 +11,11 @@ pub enum AbilityTaskOnFinished {
     None,
     /// Marks the active ability as ending.
     EndAbility,
+    /// Dispatches actions in order until the first `EndAbility`, without rollback.
+    Batch {
+        /// Ordered completion actions; nested batches preserve depth-first order.
+        actions: Vec<AbilityTaskOnFinished>,
+    },
     /// Emits an [`AbilityTaskEvent`](super::AbilityTaskEvent).
     EmitEvent {
         /// Identifies the emitted event.

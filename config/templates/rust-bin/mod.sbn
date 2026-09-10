@@ -1,0 +1,169 @@
+{{~ for mod in __mod.sub_mods ~}}
+/// Generated {{mod.name}} configuration types.
+pub mod {{mod.name}};
+{{~end~}}
+{{~ if __mod.name != '' ~}}
+use super::{ByteBuf, Decode, DecodeError, LubanError};
+use std::sync::Arc;
+{{~end~}}
+
+{{~ for enum in __mod.enums ~}}
+{{~ if enum.is_flags ~}}
+compile_error!("The project Rust template does not support flags enums.");
+{{~else~}}
+/// Defines the supported {{enum.name}} configuration values.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(i32)]
+pub enum {{enum.name}} {
+{{~ for item in enum.items ~}}
+    /// Selects {{item.name}}.
+    {{item.name}} = {{item.value}},
+{{~end~}}
+}
+
+impl TryFrom<i32> for {{enum.name}} {
+    type Error = DecodeError;
+
+    fn try_from(value: i32) -> Result<Self, Self::Error> {
+        match value {
+{{~ for item in enum.items ~}}
+            {{item.value}} => Ok(Self::{{item.name}}),
+{{~end~}}
+            _ => Err(DecodeError::new(0, format!("invalid {{enum.name}} value: {value}"))),
+        }
+    }
+}
+
+impl Decode for {{enum.name}} {
+    fn decode(buf: &mut ByteBuf) -> Result<Self, DecodeError> {
+        let offset = buf.offset();
+        let value = i32::decode(buf)?;
+        Self::try_from(value).map_err(|_| {
+            DecodeError::new(offset, format!("invalid {{enum.name}} value: {value}"))
+        })
+    }
+}
+{{~end~}}
+{{~end~}}
+
+{{~ for bean in __mod.beans ~}}
+{{~if bean.is_abstract_type || bean.parent != ''~}}
+compile_error!("The project Rust template requires non-inherited concrete beans.");
+{{~else~}}
+/// Stores one {{bean.name}} configuration record.
+#[allow(non_camel_case_types)]
+#[derive(Debug, Clone)]
+pub struct {{bean.name}} {
+{{~ for field in bean.hierarchy_export_fields ~}}
+    /// Configures {{field.name}}.
+    pub {{field.name}}: {{declaring_type_name field.ctype | string.replace "crate::" "crate::config::generated::"}},
+{{~end~}}
+}
+
+impl Decode for {{bean.name}} {
+    fn decode(buf: &mut ByteBuf) -> Result<Self, DecodeError> {
+{{~ for field in bean.hierarchy_export_fields ~}}
+        let {{field.name}}: {{declaring_type_name field.ctype | string.replace "crate::" "crate::config::generated::"}} =
+            Decode::decode(buf).map_err(|error| error.context("{{bean.name}}.{{field.name}}"))?;
+{{~end~}}
+        Ok(Self {
+{{~ for field in bean.hierarchy_export_fields ~}}
+            {{field.name}},
+{{~end~}}
+        })
+    }
+}
+{{~end~}}
+{{~end~}}
+
+{{~ for table in __mod.tables
+    key_type = declaring_type_name table.key_ttype
+    value_type = declaring_type_name table.value_ttype | string.replace "crate::" "crate::config::generated::"
+    name = table.name
+~}}
+{{~if !table.is_map_table || table.value_ttype.def_bean.is_abstract_type ~}}
+compile_error!("The project Rust template requires map tables with concrete records.");
+{{~else~}}
+/// Stores {{table.full_name}} rows and a checked primary-key index.
+#[derive(Debug, Clone)]
+pub struct {{name}} {
+    rows: Vec<Arc<{{value_type}}>>,
+    indices: std::collections::BTreeMap<{{key_type}}, usize>,
+}
+
+impl {{name}} {
+    /// Decodes a complete table file, rejecting malformed bytes or duplicate keys.
+    pub fn new(buf: &mut ByteBuf) -> Result<Arc<Self>, LubanError> {
+        let count = buf.read_size().map_err(|error| error.context("{{table.full_name}}.count"))?;
+        let mut rows = Vec::new();
+        rows.try_reserve_exact(count).map_err(|error| LubanError::Table(error.to_string()))?;
+        for index in 0..count {
+            rows.push({{value_type}}::decode(buf).map_err(|error| {
+                error.context(format!("{{table.full_name}} row {index}"))
+            })?);
+        }
+        buf.finish().map_err(|error| error.context("{{table.full_name}}"))?;
+        Ok(Arc::new(Self::from_rows(rows)?))
+    }
+
+    /// Builds an indexed table from records, returning an error for duplicate keys.
+    pub fn from_rows(rows: Vec<{{value_type}}>) -> Result<Self, LubanError> {
+        let mut indices = std::collections::BTreeMap::new();
+        let mut shared_rows = Vec::with_capacity(rows.len());
+        for row in rows {
+            let key = row.{{table.index_field.name}}{{if key_type == 'String'}}.clone(){{end}};
+            if indices.contains_key(&key) {
+                return Err(LubanError::Table(format!("duplicate {{table.full_name}} key: {key:?}")));
+            }
+            indices.insert(key, shared_rows.len());
+            shared_rows.push(Arc::new(row));
+        }
+        Ok(Self { rows: shared_rows, indices })
+    }
+
+    /// Returns the matching record, or `None` if the primary key is absent.
+    pub fn get<Q>(&self, key: &Q) -> Option<&Arc<{{value_type}}>>
+    where
+        {{key_type}}: std::borrow::Borrow<Q>,
+        Q: Ord + ?Sized,
+    {
+        self.indices.get(key).and_then(|index| self.rows.get(*index))
+    }
+
+    /// Iterates through records in exported row order.
+    pub fn iter(&self) -> impl ExactSizeIterator<Item = &Arc<{{value_type}}>> {
+        self.rows.iter()
+    }
+
+    /// Returns the number of records in this table.
+    pub fn len(&self) -> usize {
+        self.rows.len()
+    }
+
+    /// Returns whether this table has no records.
+    pub fn is_empty(&self) -> bool {
+        self.rows.is_empty()
+    }
+}
+{{~end~}}
+{{~end~}}
+
+/// Describes this module's binary field order and enum discriminants.
+pub const SCHEMA_DESCRIPTOR: &str = concat!(
+    "module:{{__mod.name}};",
+{{~ for enum in __mod.enums ~}}
+    "enum:{{enum.name}};",
+{{~ for item in enum.items ~}}
+    "{{item.name}}={{item.value}};",
+{{~end~}}
+{{~end~}}
+{{~ for bean in __mod.beans ~}}
+    "bean:{{bean.name}};",
+{{~ for field in bean.hierarchy_export_fields ~}}
+    "{{field.name}}:{{declaring_type_name field.ctype}};",
+{{~end~}}
+{{~end~}}
+{{~ for table in __mod.tables ~}}
+    "table:{{table.full_name}}:{{declaring_type_name table.value_ttype}}:{{table.index_field.name}}:{{table.output_data_file}};",
+{{~end~}}
+);

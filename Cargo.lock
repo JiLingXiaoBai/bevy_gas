@@ -805,7 +805,9 @@ name = "bevy_gas"
 version = "0.1.0"
 dependencies = [
  "bevy",
+ "blake3",
  "rand",
+ "serde_json",
 ]
 
 [[package]]
