@@ -41,7 +41,7 @@ fn spawn_gameplay_actor(mut commands: Commands) {
 | [标签注册](./examples/tag_registration.rs) | 注册层级标签并读取标签信息 | `cargo run --example tag_registration` |
 | [技能输入绑定](./examples/ability_input_bindings.rs) | 无窗口演示技能栏重绑与固定 tick 输入缓冲 | `cargo run --example ability_input_bindings` |
 
-详细流程与日志输出说明见 [示例运行说明](./docs/12-usage-patterns.md#完整可运行示例)。
+详细流程与日志输出说明见 [示例运行说明](./.docs/12-usage-patterns.md#完整可运行示例)。
 
 ## 配置工具
 
@@ -59,13 +59,13 @@ pwsh -NoProfile -File config/export.ps1
 
 首次准备后，日常导表只需执行 `config/export.ps1`。工具链同时固定 Luban.Agent 与
 Luban.Mcp 5.0.0；Codex 可通过项目 MCP 配置查询表结构、校验和生成配置。
-配置路径、MCP 启用方式与升级约定见 [Luban 配置工程与工具链](./docs/19-luban-toolchain.md)。
+配置路径、MCP 启用方式与升级约定见 [Luban 配置工程与工具链](./.docs/19-luban-toolchain.md)。
 
 ## 文档
 
-- [知识库导航](./docs/README.md)：推荐阅读路径、架构、领域 API 与行为约束。
-- [使用指南](./docs/12-usage-patterns.md)：接入前提，以及伤害、DoT、Buff 和连招等用法。
-- [测试与开发检查](./docs/13-testing-guide.md)：测试组织、验证方法与提交前检查。
-- [源码布局与维护边界](./docs/17-source-layout-and-maintenance.md)：目录职责、修改路由与文档维护约定。
+- [知识库导航](./.docs/README.md)：推荐阅读路径、架构、领域 API 与行为约束。
+- [使用指南](./.docs/12-usage-patterns.md)：接入前提，以及伤害、DoT、Buff 和连招等用法。
+- [测试与开发检查](./.docs/13-testing-guide.md)：测试组织、验证方法与提交前检查。
+- [源码布局与维护边界](./.docs/17-source-layout-and-maintenance.md)：目录职责、修改路由与文档维护约定。
 
 许可证：[MIT](./LICENSE)。

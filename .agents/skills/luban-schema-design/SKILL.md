@@ -5,7 +5,7 @@ description: Designs Luban schema (beans, enums, polymorphism, collections, grou
 
 ## bevy_gas project context
 
-Before using this skill in this repository, read the [AI skills project conventions](../../../docs/19-luban-toolchain.md#ai-skills).
+Before using this skill in this repository, read the [AI skills project conventions](../../../.docs/19-luban-toolchain.md#ai-skills).
 Use those conventions for paths, MCP calls, export commands, and Rust/Bevy integration; the upstream examples below are generic.
 
 

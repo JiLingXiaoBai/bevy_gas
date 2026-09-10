@@ -173,7 +173,7 @@ cargo build
 - Effect-only API 是否误用 `AbilitySystemParams`；
 - Tag/Attribute 是否重新反向 require Active Effects；
 - 新公开项是否同时更新 owning facade、聚合门面、兼容根路径与必要的 prelude；
-- `docs/`、测试路径和 example 是否仍指向已移动文件。
+- `.docs/`、测试路径和 example 是否仍指向已移动文件。
 
 ## 设计约束
 

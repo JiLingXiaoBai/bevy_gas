@@ -239,7 +239,7 @@ Codex 会从项目 `.agents/skills/` 发现 skill 的名称和描述，在任务
 安装后从下一轮消息即可使用，例如 `$luban-excel-fill 修改 demo.Tbitem 中指定物品的 count`。
 如果技能列表未刷新，再重启 Codex。机制参考 [Codex 官方说明](https://learn.chatgpt.com/docs/build-skills)。
 
-`docs/` 是按需阅读的知识库，单独复制 `SKILL.md` 到其中不会注册 skill，也不表示每轮都会
+`.docs/` 是按需阅读的知识库，单独复制 `SKILL.md` 到其中不会注册 skill，也不表示每轮都会
 自动读取全文。本项目由各 skill 显式链接本节，使相关任务能找到实际路径和工具约定；
 通用规则正文只保留在 skill 中，避免在知识库维护重复副本。
 

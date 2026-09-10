@@ -141,7 +141,7 @@ Gameplay 逻辑应尽可能保持确定性。
 集成测试按 crate 顶层功能领域归属组织：`src/gas/` 内功能的集成测试统一放在
 `tests/gas_test/`，由 `tests/gas_test.rs` 声明和加载，不为 GAS 子模块新建顶层测试目标。
 领域内部按外部行为拆分，不要求镜像私有源码文件或为叶子测试文件递归添加门面结构。
-测试文件名主干和子目录名统一以 `_test` 结尾；详见 `docs/13-testing-guide.md`。
+测试文件名主干和子目录名统一以 `_test` 结尾；详见 `.docs/13-testing-guide.md`。
 
 完成开发后，应至少执行以下检查：
 
@@ -174,7 +174,7 @@ cargo build
 - 尽量缩小修改范围。
 - 对重要设计决策进行说明。
 - 未经要求，不主动修改公共 API 名称。
-- **修改代码后，应及时更新 `docs/` 知识库中的相关内容**，尽量使用中文，确保文档与代码保持一致。
+- **修改代码后，应及时更新 `.docs/` 知识库中的相关内容**，尽量使用中文，确保文档与代码保持一致。
 
 如果需求存在歧义，应先询问，而不是擅自进行架构调整。
 
@@ -200,7 +200,7 @@ cargo build
 
 ## 知识库
 
-项目的详细架构、API 参考、使用模式等文档位于 `docs/` 目录，详见 [docs/README.md](docs/README.md)。
+项目的详细架构、API 参考、使用模式等文档位于 `.docs/` 目录，详见 [.docs/README.md](.docs/README.md)。
 
 ## 编码约定
 
@@ -216,7 +216,7 @@ cargo build
   实现放在同名目录内。目录内的叶子实现文件不需要递归套用门面结构，紧密相关的类型
   保持在同一职责文件中。门面通过 `pub use submodule::{Type, function}` 显式维护公开项，
   禁止通配公开重导出。`prelude` 只包含最常用的 Plugin、Component、定义和 SystemParam，
-  不作为完整 API 镜像；详见 `docs/17-source-layout-and-maintenance.md`
+  不作为完整 API 镜像；详见 `.docs/17-source-layout-and-maintenance.md`
 - **Component/Resource 为中心** — 游戏状态存储在 Bevy Component 和 Resource
   中，而非独立的 world 存储
 - **显式 ECS 组合** — `GameplayTagContainer` 和 `AttributeSet` 可独立挂载，不反向
