@@ -211,7 +211,7 @@ src/
 | `gameplay_tags/tag.rs` | `GameplayTag` 值类型和注册错误 |
 | `gameplay_tags/bitset.rs` | 固定容量位集和继承位操作 |
 | `gameplay_tags/registry.rs` | 名称注册、父标签递归注册和 `SystemParam` 注册入口 |
-| `gameplay_tags/container.rs` | 每实体引用计数 Tag 状态 |
+| `gameplay_tags/container.rs` | 每实体显式/汇总引用计数、容量预检与层级 Tag 位图 |
 | `gameplay_tags/requirements.rs` | required/blocked/ignored 条件匹配 |
 | `attributes/registry.rs` | Attribute ID、Region、Location 和注册表 |
 | `attributes/aggregation.rs` | `Aggregator` 与 AttributeSet 内部稀疏聚合器集合 |

@@ -57,14 +57,14 @@ impl GameplayTagRegister<'_> {
 | `get_tag(unique_name)` | 查找已经注册的名称 |
 | `get_inherited_bits(tag)` | 返回自身与所有祖先的缓存位集 |
 | `register_tag_internal(name, parent_index)` | 低层注册入口；通常优先使用 `GameplayTagRegister` |
-| `check_has_active_descendants(index, ref_counts)` | 面向自定义存储的低层后代检查 |
 
-错误类型只有以下三类：
+注册、查找与容器修改共用以下错误类型：
 
 ```rust
 pub enum GameplayTagError {
     UniqueName(UniqueNameError),
     CapacityExceeded { max: usize },
+    ReferenceCountOverflow { index: usize, max: u16 },
     InvalidTagIndex { index: usize },
 }
 ```
@@ -97,15 +97,15 @@ pub fn add_bit_with_tag(
 
 | API | 语义 |
 | --- | --- |
-| `add_tag(tag, manager)` | 增加标签及其全部祖先的引用计数 |
-| `remove_tag(tag, manager)` | 减少引用计数，仅在归零时清位 |
-| `add_tags(tags, manager)` | 先验证整个切片，再批量添加 |
+| `add_tag(tag, manager)` | 增加标签的显式引用，以及自身和全部祖先的汇总引用 |
+| `remove_tag(tag, manager)` | 仅消耗显式引用；对应汇总引用归零时才清位 |
+| `add_tags(tags, manager)` | 先验证整个切片与合计引用容量，再批量添加 |
 | `remove_tags(tags, manager)` | 先验证整个切片，再批量移除 |
 | `has_tag(tag)` | 检查一个标签位 |
 | `has_all(tags)` / `has_any(tags)` | 检查精确标签切片 |
 | `has_all_bits(bits)` / `has_any_bits(bits)` | 检查预计算位集 |
 
-`has_all(&[])` 为 `true`，`has_any(&[])` 为 `false`。移除从未持有的合法标签是无操作，
+`has_all(&[])` 为 `true`，`has_any(&[])` 为 `false`。移除没有显式引用的合法标签是无操作，
 不会清除其他标签。
 
 ### `TagRequirements`
@@ -138,13 +138,27 @@ impl TagRequirements {
 
 ### 层级与引用计数
 
-向容器添加 `Effect.Debuff.Stun` 时，自身、`Effect.Debuff` 和 `Effect` 都会增加一次引用。
-若另一个子标签也引用同一父标签，移除其中一个子标签不会过早清除父标签。这是重叠 Buff、
-Debuff 能安全共同授予标签的基础。
+容器为每个标签保存两类计数，放在同一份 boxed 数组中：
 
-每个实体的每个标签最多有 `u16::MAX` 个引用。Debug 构建会用 `debug_assert!` 暴露溢出；
-Release 构建使用饱和加法，避免整数回绕。
+- **显式引用**：调用方直接添加该标签的次数，用于配对添加与移除；
+- **汇总引用**：该标签的显式引用，加上所有后代贡献的引用，用于维护查询位图。
+
+向容器添加 `Effect.Debuff.Stun` 时，只增加 Stun 的显式引用，同时增加自身、`Effect.Debuff`
+和 `Effect` 的汇总引用。移除操作必须先确认被移除标签还有显式引用，再扣除其对自身和祖先的
+贡献；只因继承而存在的父标签不能被单独移除。
+
+例如，仅添加 `State.Ready` 后移除 `State` 是无操作，两个标签仍然可查询到。如果先分别添加
+`State` 和 `State.Ready`，再移除 `State`，则正常扣除父标签的显式引用，子标签继续维持父位；
+随后再移除 `State.Ready`，两个标签都消失。父标签显式引用耗尽后的重复移除也不会吞掉继承引用。
+这同时保证兄弟标签以及重叠 Buff、Debuff 的添加/移除不会互相误清理。
+
+每个实体的每个标签最多有 `u16::MAX` 个汇总引用，包括后代贡献。单次和批量添加都在写入前
+检查容量，失败返回 `GameplayTagError::ReferenceCountOverflow { index, max }`，其中 `index`
+标识将溢出的标签，可能是输入标签的祖先。批量检查会合计重复标签与共享祖先的所有增量；无论
+注册验证还是容量检查失败，整个调用都保持原状态，不采用饱和计数。
 计数更新按块序、从低位到高位扫描继承位集，使用标准库 `isolate_lowest_one()` 取得当前最低置位。
+
+注册表缓存每个标签的祖先位集；实体的标签状态由容器的引用计数和查询位图维护。
 
 ### 条件中的继承
 
@@ -199,5 +213,5 @@ fn apply_stun_tag(
 - `TagRequirements::new()` 只能检查索引是否超出编译期容量；需要确认标签属于当前 manager
   时，使用 manager-aware API。
 - `has_tag()`、`has_all()` 和 `has_any()` 不展开输入标签；继承信息来自容器已有的位集。
-- 批量添加和移除会在修改前验证全部标签，避免只完成切片的一部分。
+- 批量添加和移除会在修改前验证全部标签；批量添加还会验证合计引用容量，避免部分写入。
 - Gameplay Tags 不负责自动触发效果 Requirement 收敛；使用完整插件时由固定更新流水线处理。

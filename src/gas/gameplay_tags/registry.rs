@@ -8,8 +8,6 @@ use bevy::prelude::{ResMut, Resource};
 #[derive(Resource, Default)]
 pub struct GameplayTagManager {
     tag_name_to_index: HashMap<UniqueName, u16>,
-    tag_parent_index: Vec<Option<u16>>,
-    tag_children: Vec<Vec<u16>>,
     tag_inherited_bits: Vec<GameplayTagBits>,
     next_tag_index: u16,
 }
@@ -59,13 +57,8 @@ impl GameplayTagManager {
         let tag = GameplayTag::new(new_index);
         add_bit_with_tag(&mut inherited_bits, &tag)?;
 
-        self.tag_parent_index.push(parent_tag_index);
         self.tag_inherited_bits.push(inherited_bits);
-        self.tag_children.push(Vec::new());
         self.tag_name_to_index.insert(unique_name, new_index);
-        if let Some(parent_index) = parent_tag_index {
-            self.tag_children[parent_index as usize].push(new_index);
-        }
         self.next_tag_index += 1;
 
         Ok(tag)
@@ -86,25 +79,6 @@ impl GameplayTagManager {
             .ok_or(GameplayTagError::InvalidTagIndex {
                 index: tag.get_bit_index_usize(),
             })
-    }
-
-    /// Returns whether any registered descendant has a nonzero reference count.
-    pub fn check_has_active_descendants(&self, tag_index: usize, ref_counts: &[u16]) -> bool {
-        let Some(children) = self.tag_children.get(tag_index) else {
-            return false;
-        };
-        let mut stack = children.clone();
-
-        while let Some(current_index) = stack.pop() {
-            let index = current_index as usize;
-            if ref_counts.get(index).is_some_and(|count| *count > 0) {
-                return true;
-            }
-            if let Some(children) = self.tag_children.get(index) {
-                stack.extend(children.iter().copied());
-            }
-        }
-        false
     }
 }
 

@@ -248,3 +248,160 @@ fn tag_registration_rejects_invalid_parent_index() {
         })
     );
 }
+
+#[test]
+fn removing_inherited_ancestors_preserves_descendant_references() {
+    let mut app = test_app();
+    let child = register_tag(&mut app, "State.CrowdControl.Stunned");
+    let parent = register_tag(&mut app, "State.CrowdControl");
+    let root = register_tag(&mut app, "State");
+    let manager = app.world().resource::<GameplayTagManager>();
+    let mut tags = GameplayTagContainer::default();
+
+    tags.add_tag(&child, manager).unwrap();
+    tags.remove_tag(&parent, manager).unwrap();
+    tags.remove_tag(&root, manager).unwrap();
+    tags.remove_tags(&[root, parent, parent], manager).unwrap();
+    assert!(tags.has_all(&[root, parent, child]));
+
+    tags.remove_tag(&child, manager).unwrap();
+    assert!(!tags.has_any(&[root, parent, child]));
+}
+
+#[test]
+fn mixed_removals_consume_only_explicit_parent_and_child_references() {
+    let mut app = test_app();
+    let child = register_tag(&mut app, "State.CrowdControl.Stunned");
+    let parent = register_tag(&mut app, "State.CrowdControl");
+    let root = register_tag(&mut app, "State");
+    let manager = app.world().resource::<GameplayTagManager>();
+    let mut tags = GameplayTagContainer::default();
+
+    tags.add_tags(&[root, parent, parent, child, child], manager)
+        .unwrap();
+    tags.remove_tag(&parent, manager).unwrap();
+    tags.remove_tags(&[root, parent, parent, root], manager)
+        .unwrap();
+    assert!(tags.has_all(&[root, parent, child]));
+
+    tags.remove_tag(&child, manager).unwrap();
+    assert!(tags.has_all(&[root, parent, child]));
+
+    tags.remove_tags(&[parent, child, parent, root], manager)
+        .unwrap();
+    assert!(!tags.has_any(&[root, parent, child]));
+}
+
+#[test]
+fn parent_and_child_references_remain_independent_across_bit_blocks() {
+    let mut app = test_app();
+    for index in 0..63 {
+        register_tag(&mut app, &format!("Padding{index}"));
+    }
+    let child = register_tag(&mut app, "Boundary.Child");
+    let parent = register_tag(&mut app, "Boundary");
+    assert_eq!(parent.get_bit_index_usize(), 63);
+    assert_eq!(child.get_bit_index_usize(), 64);
+    let manager = app.world().resource::<GameplayTagManager>();
+    let mut tags = GameplayTagContainer::default();
+
+    tags.add_tag(&child, manager).unwrap();
+    tags.remove_tag(&parent, manager).unwrap();
+    assert!(tags.has_all(&[parent, child]));
+
+    tags.add_tag(&parent, manager).unwrap();
+    tags.remove_tags(&[parent, parent], manager).unwrap();
+    assert!(tags.has_all(&[parent, child]));
+
+    tags.remove_tag(&child, manager).unwrap();
+    assert!(!tags.has_any(&[parent, child]));
+}
+
+#[test]
+fn single_tag_reference_overflow_preserves_existing_references() {
+    let mut app = test_app();
+    let child = register_tag(&mut app, "State.Ready");
+    let sibling = register_tag(&mut app, "State.Running");
+    let parent = register_tag(&mut app, "State");
+    let manager = app.world().resource::<GameplayTagManager>();
+    let mut tags = GameplayTagContainer::default();
+
+    for _ in 0..u16::MAX {
+        tags.add_tag(&child, manager).unwrap();
+    }
+    for rejected_tag in [parent, child, sibling] {
+        assert_eq!(
+            tags.add_tag(&rejected_tag, manager),
+            Err(GameplayTagError::ReferenceCountOverflow {
+                index: parent.get_bit_index_usize(),
+                max: u16::MAX,
+            })
+        );
+    }
+    assert!(tags.has_all(&[parent, child]));
+    assert!(!tags.has_tag(&sibling));
+
+    tags.remove_tag(&parent, manager).unwrap();
+    tags.remove_tag(&child, manager).unwrap();
+    tags.add_tag(&sibling, manager).unwrap();
+    for _ in 0..u16::MAX - 1 {
+        tags.remove_tag(&child, manager).unwrap();
+    }
+    assert!(!tags.has_tag(&child));
+    assert!(tags.has_all(&[parent, sibling]));
+
+    tags.remove_tag(&sibling, manager).unwrap();
+    assert!(!tags.has_any(&[parent, child, sibling]));
+}
+
+#[test]
+fn batch_reference_overflow_is_atomic_for_duplicates_and_shared_ancestors() {
+    let mut app = test_app();
+    let child = register_tag(&mut app, "State.Ready");
+    let sibling = register_tag(&mut app, "State.Running");
+    let parent = register_tag(&mut app, "State");
+    let unrelated = register_tag(&mut app, "Unrelated");
+    let manager = app.world().resource::<GameplayTagManager>();
+    let mut tags = GameplayTagContainer::default();
+
+    for _ in 0..u16::MAX - 1 {
+        tags.add_tag(&child, manager).unwrap();
+    }
+    for rejected_batch in [
+        [unrelated, parent, parent],
+        [unrelated, sibling, sibling],
+        [unrelated, sibling, child],
+    ] {
+        assert_eq!(
+            tags.add_tags(&rejected_batch, manager),
+            Err(GameplayTagError::ReferenceCountOverflow {
+                index: parent.get_bit_index_usize(),
+                max: u16::MAX,
+            })
+        );
+        assert!(tags.has_all(&[parent, child]));
+        assert!(!tags.has_any(&[sibling, unrelated]));
+    }
+
+    tags.remove_tag(&parent, manager).unwrap();
+    for _ in 0..u16::MAX - 1 {
+        tags.remove_tag(&child, manager).unwrap();
+    }
+    assert!(!tags.has_any(&[parent, child, sibling, unrelated]));
+
+    let oversized_batch = vec![child; usize::from(u16::MAX) + 1];
+    assert_eq!(
+        tags.add_tags(&oversized_batch, manager),
+        Err(GameplayTagError::ReferenceCountOverflow {
+            index: parent.get_bit_index_usize(),
+            max: u16::MAX,
+        })
+    );
+    assert!(!tags.has_any(&[parent, child, sibling, unrelated]));
+
+    tags.add_tags(&[parent, child, sibling, unrelated], manager)
+        .unwrap();
+    tags.remove_tags(&[child, parent, parent, sibling, unrelated], manager)
+        .unwrap();
+    assert!(!tags.has_any(&[parent, child, sibling, unrelated]));
+}
