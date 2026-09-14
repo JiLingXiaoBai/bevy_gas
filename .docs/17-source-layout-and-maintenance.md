@@ -42,6 +42,8 @@ pub use bindings::{AbilityInputBindingError, AbilityInputBindings};
 ```text
 src/
 ├── lib.rs
+├── bin/
+│   └── gas_config.rs
 ├── randoms.rs
 ├── randoms/
 │   └── random.rs
@@ -161,7 +163,7 @@ src/
 | `config/luban.conf`、`config/export.ps1` | 项目输入和输出约定、严格导表入口，纳入 Git |
 | `config/templates/rust-bin/` | 手写 Rust 生成模板，纳入 Git；模板变更后重新导表 |
 | `config/generated/` | 自动生成的 `mod.rs`、`gas.rs` 等 Rust 模块，纳入 Git，不手动修改 |
-| `src/config.rs`、`src/config/` | 根包内默认关闭的配置模块，拥有解码、编译、加载和包校验 |
+| `src/config.rs`、`src/config/` | 默认提供二进制读取、解码和 GAS 编译；feature 控制哈希、清单与包校验、完整业务校验和离线工具 |
 | `config/bin/` | 自动生成的二进制，Git 忽略，不放手写文件 |
 | `tools/luban/` | 工具链锁文件、Luban 生成器入口、MCP 服务入口和本机 .NET 环境检查脚本 |
 | `tools/luban/.cache/` | 可重新下载的三种 Luban 工具归档、已安装工具及临时验证产物，Git 忽略 |
@@ -172,9 +174,12 @@ src/
 配置源文件或结构定义变更后，应重新导表并将相关生成代码放在同一次提交中。
 仓库只维护根 `Cargo.toml`；`target/` 是 Git 忽略的构建缓存，删除后由 Cargo 重新创建。
 
-`src/lib.rs` 使用 `#[cfg(feature = "luban-config")] pub mod config;` 暴露可选配置入口。
+`src/lib.rs` 使用 `pub mod config;` 无条件暴露配置入口。
 `src/config.rs` 是门面，声明 `decoding`、`compiler`、`catalog`、`loading` 和 `package`，
 并通过外部路径加载 `config/generated/mod.rs` 为 `generated` 模块。
+默认关闭的 `luban-config` 控制包哈希、清单解析与校验、完整业务校验和离线工具。
+默认 `read_package` 只按生成表名单读取受大小限制的 `.bytes`，不要求或检查清单；
+解码和运行时必要构建约束仍保留，配置运行时与生成模块不受 feature 控制。
 配置层将表数据转换为共享 GAS 定义，`src/gas/` 不反向引用生成表类型。
 手写解码、GAS 适配和模板始终位于生成目录之外；游戏资源部署由使用本库的游戏负责。
 
@@ -182,9 +187,9 @@ src/
 
 | 文件 | 职责 |
 | --- | --- |
-| `src/lib.rs` | crate 文档、`gas` 命名空间、可选 `config` 模块、Random/UniqueName 和 crate-root 兼容重导出 |
+| `src/lib.rs` | crate 文档、`gas` 与 `config` 命名空间、Random/UniqueName 和 crate-root 兼容重导出 |
 | `src/gas.rs` | 声明 GAS 领域模块并显式聚合公共 API |
-| `src/config.rs` | `luban-config` 配置门面，显式重导出编译、加载与授予接口，声明生成模块 |
+| `src/config.rs` | 配置门面，显式重导出编译、加载与授予接口，声明生成模块，按 feature 重导出摘要、完整校验和离线工具 |
 | `src/gas/<domain>.rs` | 声明私有实现子模块，显式维护该领域的 `pub use` / `pub(crate) use` |
 | `src/gas/prelude.rs` | 只重导出高频 Plugin、Component、定义和 SystemParam |
 | `src/gas/runtime_plugin.rs` | Plugin 组合、Resource 初始化和 `FixedUpdate` 阶段排序 |
@@ -196,7 +201,7 @@ src/
 2. `bevy_gas::gas::gameplay_effects::GameplayEffect` 这类领域路径：完整领域 API；
 3. `bevy_gas::GameplayEffect` 这类 crate-root 路径：保留的显式兼容重导出。
 
-可选配置 API 使用 `bevy_gas::config` 路径，不进入 GAS prelude；生成 DTO 位于
+配置 API 使用 `bevy_gas::config` 路径，不进入 GAS prelude；生成 DTO 位于
 `bevy_gas::config::generated`。
 
 门面禁止 `pub use *`。新增实现文件中的 `pub` 项不会自动成为 crate API；只有被门面明确重导出的
@@ -335,6 +340,9 @@ commit 和生命周期编排的流程：
 
 ```text
 tests/
+├── config_test.rs
+├── config_test/
+│   └── runtime_test.rs
 ├── gas_test.rs
 ├── gas_test/
 │   ├── ability_input_test.rs
@@ -366,6 +374,8 @@ tests/
 `tests/gas_test/`，由 `tests/gas_test.rs` 声明和加载；新增 GAS 子模块不新建顶层测试目标。
 因此输入绑定测试使用 `tests/gas_test/ability_input_test.rs`。`randoms_test.rs` 和
 `unique_names_test.rs` 对应 crate 顶层的独立领域，可以保留独立测试目标。
+`config` 同样属于 crate 顶层领域，其集成测试通过 `tests/config_test.rs` 加载
+`tests/config_test/`，分别验证默认构建和 `--all-features` 下的读取、包校验与业务校验边界。
 
 领域内部按外部行为拆分测试，不要求镜像私有源码文件，也不要求叶子测试文件递归套用门面结构。
 具体命名和运行命令见 [13 — 测试指南](./13-testing-guide.md)。

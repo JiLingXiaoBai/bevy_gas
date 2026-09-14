@@ -5,8 +5,8 @@
 首版支持标签、属性、效果、修改器、技能、动作时间线和目标规则七张表。
 配置使用固定 Luban 5.0.0 的 `rust-bin + bin + --strict`，经安全读取和业务编译后形成
 `GameplayCatalog` Resource。配置接入位于同一个 `bevy_gas` 包的 `config` 模块，
-由默认关闭的 `luban-config` feature 启用；GAS 领域代码不依赖生成的配置类型。
-仓库只维护根 `Cargo.toml`，生成代码作为 Rust 模块参与编译。
+运行时接口和生成代码始终参与编译；GAS 领域代码不依赖生成的配置类型。
+默认关闭的 `luban-config` feature 启用配置包校验、完整业务校验和离线工具，仓库只维护根 `Cargo.toml`。
 
 | 路径 | 职责 |
 | --- | --- |
@@ -19,12 +19,39 @@
 | `config/generated/` | 自动生成的 `mod.rs`、`gas.rs` 等 Rust 模块，包含 DTO、表索引与结构描述 |
 | `config/bin/` | 导出配置包，包括七张 GAS 表的 bytes 与 manifest.json；Git 忽略 |
 | `src/bin/gas_config.rs` | 启用 `luban-config` 后可用的配置预览与导表校验 CLI |
-| `examples/config_fireball.rs` | 启用 `luban-config` 后可用的无窗口火球示例 |
+| `examples/config_fireball.rs` | 默认可编译运行的无窗口火球示例 |
 | `tools/luban/.cache/export/` | 每次导表的临时单包项目、验证产物与发布备份 |
 
-完整配置包包含上述七张 GAS 表的七个数据文件和 `manifest.json`。
+导表产物包含上述七张 GAS 表的七个 `.bytes` 文件和 `manifest.json`。
+默认运行时只需部署七个 `.bytes` 文件；启用 `luban-config` 的加载器还要求匹配的清单。
 `src/config.rs` 通过外部路径加载 `config/generated/mod.rs`，公开为
 `bevy_gas::config::generated`；生成目录不维护独立 Cargo 包。
+
+## Feature 边界
+
+`default = []` 保持不变。`luban-config` 不控制配置读取、编译和授予能力，也不控制生成模块的可见性。
+
+| 能力 | 默认构建 | 启用 `luban-config` |
+| --- | --- | --- |
+| 生成 DTO、`load_tables`、`read_package`、`compile_catalog`、技能授予与撤销 | 可用 | 可用 |
+| manifest、schema、文件与整包摘要校验 | 不编译，不读取清单 | 必须通过校验 |
+| 文件与解码大小限制，非法枚举、重复主键及二进制合法性 | 始终检查 | 始终检查 |
+| 构建所需引用、运行时注册表容量与状态、基本数值合法性 | 始终检查 | 始终检查 |
+| 命名规范、未使用字段、跨表业务约束、时间线、成本与冷却策略 | 跳过完整业务校验 | `compile_catalog` 在注册前调用 `validate_tables` |
+| `package_schema_hash`、`MAX_MANIFEST_BYTES`、`validate_tables`、`describe_ability*`、`write_package_manifest`、`gas-config` CLI | 不编译 | 可用 |
+| `config_fireball` 示例 | 可用，直接读取表数据 | 可用，并执行包校验和完整业务校验 |
+
+默认加载器按生成的 `TABLE_FILES` 直接读取 `.bytes`，不要求 `manifest.json`，已有清单即使无效也会忽略。
+I/O、分配边界、解码和必要构建错误仍返回 `Result`。发布前的导表流程始终启用 `luban-config`，
+完成清单、结构、摘要与业务校验后才发布；默认运行时加载这批已验证的表数据。
+
+基本数值检查包含正数最大等级、有限且位于 `[0, 1]` 的应用概率、实际使用的有限幅度参数，
+以及正数持续时间/周期和转换为运行时 f32 tick 时的无损性。使用的球形/锥形半径与最大距离
+也必须具有有限平方。最大等级 100、tick 上限 1,000,000 等制作限制属于完整业务校验。
+
+在 Zed 中打开仓库根目录时，`src/config/` 和 `config/generated/` 已属于默认 Cargo 模块图，
+rust-analyzer 无需额外启用 feature 即可分析运行时接口的定义与引用。
+需要编辑或导航完整校验和离线工具代码时，仍需让 rust-analyzer 启用 `luban-config`。
 
 ## 日常使用
 
@@ -34,7 +61,7 @@
 pwsh -NoProfile -File tools/luban/setup.ps1
 pwsh -NoProfile -File config/export.ps1
 cargo run --features luban-config --bin gas-config -- inspect config/bin 1001 3
-cargo run --features luban-config --example config_fireball -- config/bin
+cargo run --example config_fireball -- config/bin
 ```
 
 首次导表需要已安装的 Rust 工具链及依赖缓存。导表使用锁文件和离线构建；
@@ -105,9 +132,14 @@ AbilityTasks 推进后目标 Health=320，技能在同一 tick 结束；冷却�
 
 ## 数值、时间与动作
 
+以下规则描述配置制作约定，由启用 `luban-config` 的完整业务校验执行；
+默认构建仍检查构建定义所需的基本数值与引用合法性，但不重复执行全部策略检查。
+
 Flat 使用 base，per_level 必须为零。LinearLevel 使用
 `base + per_level * (level - 1)`，等级从 1 开始。
-编译器、预览与运行时计算器共用求值规则，验证允许等级范围内的结果可表示为有限 f32。
+编译器、预览与运行时计算器共用求值规则；完整业务校验检查允许等级范围内的结果
+可表示为有限 f32。默认构建检查实际使用的 base 与 LinearLevel 的 per_level 有限，
+不检查 Flat 未使用的 per_level，也不预演全部等级；动态公式溢出时沿用计算器返回零的行为。
 适配器授予技能时检查等级；独立使用导出的 Effect 定义时，调用者仍须遵循其等级契约。
 
 首版效果统一 non_stacking。Instant 不允许周期或保留 granted tags；
@@ -137,12 +169,16 @@ ApplyEffect 的 Primary/AllCaptured 分别使用激活时捕获的主目标/全�
 
 ## 加载、注册与授予
 
-启用 `luban-config` 后，从 `bevy_gas::config` 导入配置 API。
-`load_tables(directory)` 先校验 manifest，再将同一次读取并验过摘要的 bytes 交给
-`generated::Tables::new`。不在校验后重新读取文件，不提供忽略包校验的默认路径。
+直接从 `bevy_gas::config` 导入运行时配置 API，无需启用 feature。
+`load_tables(directory)` 始终通过 `read_package` 读取表数据，再交给 `generated::Tables::new`。
+默认构建使用标准库按 `TABLE_FILES` 读取受大小限制的 `.bytes`，不解析清单、计算摘要或检查 schema。
+启用 `luban-config` 时，先检查 manifest、schema、大小和摘要，再将同一次读取并验证的 bytes
+交给解码器，不在校验后重新读取文件。
 
-`validate_tables(&tables)` 检查名称、引用、未使用参数、成本/冷却、动作顺序与公式。
-`compile_catalog(&tables, &mut world)` 复用这些检查，再登记名称并构建 Arc 定义。
+启用 `luban-config` 后，`validate_tables(&tables)` 检查名称、引用、未使用参数、
+成本/冷却、动作顺序与公式；`compile_catalog(&tables, &mut world)` 在注册前调用它。
+默认构建跳过这次完整业务校验；两种构建均在名称注册与 Arc 定义构建过程中
+保留所需引用、数值及运行时注册状态检查。
 World 应先安装 GameplayAbilitySystemPlugin。
 
 ```rust
@@ -153,9 +189,10 @@ let catalog = compile_catalog(&tables, app.world_mut())?;
 app.world_mut().insert_resource(catalog);
 ```
 
-配置语义校验在注册前完成；名称注册采用追加语义。
+启用 feature 时，完整业务校验在注册前完成；名称注册采用追加语义。
 同名现存标签必须具有与配置一致的完整继承位图，同名属性必须属于一致的 Hot/Cold 区域。
-如果现存注册表容量不足，已成功登记的名字可能保留，但不会自动发布不完整 catalog。
+如果现存注册表容量不足，或默认构建在部分名称登记后发现后续构建错误，已成功登记的名字
+可能保留，但不会自动发布不完整 catalog。
 调用方只在 compile_catalog 成功后插入 Resource。首版在启动加载，不替换战斗中的 catalog。
 
 - 按名字排序登记 Tag/Attribute，祖先先于子标签，避免依赖 HashMap 或 Excel 行顺序。
@@ -174,17 +211,19 @@ app.world_mut().insert_resource(catalog);
 
 ## 包版本与生成模板
 
-manifest.json 包含格式/模板版本、结构摘要、整包内容摘要与每个文件的大小及摘要。
+导表生成的 manifest.json 包含格式/模板版本、结构摘要、整包内容摘要与每个文件的大小及摘要。
 结构描述包含生成字段顺序、字段类型、普通枚举判别值、表主键及输出名称；
-因此字段顺序或枚举编码变化不能被旧生成代码悄悄接受。
-数据内容摘要标识具体配置版本，普通数值变动允许由兼容的同一份读取代码加载。
+启用 `luban-config` 的加载器据此拒绝结构不兼容的数据。默认加载器不执行这一兼容性检查，
+部署时应配套使用同次导表生成的 Rust 模块和表数据。
+数据内容摘要标识具体配置版本，普通数值变动允许由兼容的同一份读取代码加载；包协议和模板不因 feature 改变。
 
-BLAKE3 与 serde_json 复用现有 Bevy 依赖树，分别承担标准内容摘要和清单 JSON 解析，
-由 `luban-config` feature 启用；二进制解码模块本身只使用 Rust 标准库。
+BLAKE3 与 serde_json 是由 `luban-config` 启用的可选直接依赖，分别负责摘要与清单 JSON。
+关闭 feature 时，本库不编译相关哈希、清单解析和校验代码；二进制读取与解码使用标准库。
+Bevy 的默认 feature 可能独立引入同名传递依赖，因此整个依赖树中仍可能出现这些 crate。
 
-读取限制为单文件 64 MiB、整包 256 MiB、清单 1 MiB；二进制集合和字符串另有上限。
-清单必须包含恰好全部预期表，拒绝重复/未知路径、结构不兼容和摘要不一致。
-内容摘要用于一致性检查，不承担发布者签名认证。
+两种构建均限制单文件 64 MiB、表数据合计 256 MiB；二进制集合和字符串另有上限。
+启用 `luban-config` 时，另限制清单 1 MiB，要求恰好包含全部预期表，
+拒绝重复/未知路径、结构不兼容和摘要不一致。内容摘要用于一致性检查，不承担发布者签名认证。
 
 模板支持基础类型、Option、Vec、普通枚举和非继承 map 表。
 所有 Decode 返回 Result，非法枚举、截断、长度错误、重复主键、尾随字节均返回错误。
@@ -199,10 +238,13 @@ BLAKE3 与 serde_json 复用现有 Bevy 依赖树，分别承担标准内容摘�
 cargo fmt
 cargo clippy --all-targets --all-features -- -D warnings
 cargo test
+cargo test --all-features
 cargo build
 ```
 
-`cargo test` 运行现有测试；默认构建不启用配置模块，`--all-features` 检查会包含它。
+`cargo test` 包含默认运行时配置测试；`cargo test --all-features` 同时验证包校验和完整业务校验，
+两种构建均通过 `tests/config_test.rs` 加载 `tests/config_test/` 中的测试。
+这些测试自建表数据和临时配置包，不依赖导表生成的 `config/bin/`。
 配置变更使用完整导表验证候选 Rust 模块、真实二进制包和 GAS 语义，再运行上面的
 配置预览与火球示例检查实际行为。修改 Excel、schema 或模板后，必须重新导表并同步提交
 源文件和生成 Rust 模块；不手动修改 manifest 来掩盖结构或数据变化。

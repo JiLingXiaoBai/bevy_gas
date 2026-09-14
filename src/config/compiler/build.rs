@@ -1,6 +1,8 @@
+#[cfg(feature = "luban-config")]
+use super::validate_tables;
 use super::{
     AbilityId, CompiledAbility, ConfigError, EffectId, GameplayCatalog, Tables, data,
-    evaluate_linear, validate_tables,
+    evaluate_linear,
 };
 use crate::{
     AbilityTags, AbilityTaskDef, AbilityTaskOnFinishedDef, AttributeId, AttributeIdManager,
@@ -14,15 +16,18 @@ use bevy::prelude::World;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
-/// Validates `tables`, registers their stable names, and compiles shared definitions.
+/// Registers stable names from `tables` and compiles shared runtime definitions.
 ///
 /// `world` must contain `UniqueNamePool`, `GameplayTagManager`, and
 /// `AttributeIdManager`, normally installed by `GameplayAbilitySystemPlugin`.
 /// Returns an unpublished catalog, or a contextual configuration/registration error.
-/// All table validation happens before mutation. Registration is append-only and
-/// may leave successfully registered names after a later registration failure.
+/// With `luban-config`, full authoring validation happens before mutation.
+/// Without it, only required runtime construction checks are performed.
+/// Registration is append-only; any later construction or registration failure
+/// may leave successfully registered names, but never publishes a partial catalog.
 /// Call this during startup; replacing catalogs during combat is unsupported.
 pub fn compile_catalog(tables: &Tables, world: &mut World) -> Result<GameplayCatalog, ConfigError> {
+    #[cfg(feature = "luban-config")]
     validate_tables(tables)?;
     if !world.contains_resource::<GameplayTagManager>()
         || !world.contains_resource::<AttributeIdManager>()
@@ -103,6 +108,12 @@ fn compile_with_names(
         let max_level = u32::try_from(row.max_level).map_err(|error| {
             ConfigError::new(format!("Ability[{}].max_level", row.id), error.to_string())
         })?;
+        if max_level == 0 {
+            return Err(ConfigError::new(
+                format!("Ability[{}].max_level", row.id),
+                "maximum level must be positive",
+            ));
+        }
         abilities.insert(
             AbilityId(row.id),
             CompiledAbility {
@@ -243,6 +254,17 @@ impl ModifierMagnitudeCalculation for LinearLevelMagnitude {
     }
 }
 
+fn positive_effect_ticks(ticks: i32, context: String) -> Result<f32, ConfigError> {
+    let value = ticks as f32;
+    if ticks <= 0 || f64::from(value) != f64::from(ticks) {
+        return Err(ConfigError::new(
+            context,
+            "ticks must be positive and exactly representable as f32",
+        ));
+    }
+    Ok(value)
+}
+
 fn compile_effects(
     tables: &Tables,
     tags: &BTreeMap<String, GameplayTag>,
@@ -250,6 +272,12 @@ fn compile_effects(
 ) -> Result<BTreeMap<EffectId, Arc<GameplayEffect>>, ConfigError> {
     let mut effects = BTreeMap::new();
     for row in tables.tb_effect.iter() {
+        if !row.probability.is_finite() || !(0.0..=1.0).contains(&row.probability) {
+            return Err(ConfigError::new(
+                format!("Effect[{}].probability", row.id),
+                "probability must be finite and in 0..=1",
+            ));
+        }
         let mut rows: Vec<_> = tables
             .tb_modifier
             .iter()
@@ -273,6 +301,15 @@ fn compile_effects(
                 data::ModifierOperation::Multiply => ModifierOperation::Multiply,
                 data::ModifierOperation::Override => ModifierOperation::Override,
             };
+            if !modifier.base.is_finite()
+                || (modifier.magnitude_kind == data::MagnitudeKind::LinearLevel
+                    && !modifier.per_level.is_finite())
+            {
+                return Err(ConfigError::new(
+                    format!("Modifier[{}].magnitude", modifier.id),
+                    "used formula parameters must be finite",
+                ));
+            }
             let magnitude = match modifier.magnitude_kind {
                 data::MagnitudeKind::Flat => ModifierMagnitude::Flat(modifier.base),
                 data::MagnitudeKind::LinearLevel => {
@@ -287,21 +324,27 @@ fn compile_effects(
         let duration = match row.duration_kind {
             data::DurationKind::Instant => EffectDurationTicks::Instant,
             data::DurationKind::Infinite => EffectDurationTicks::Infinite,
-            data::DurationKind::DurationTicks => EffectDurationTicks::DurationTicks(
-                ModifierMagnitude::Flat(row.duration_ticks.ok_or_else(|| {
-                    ConfigError::new(
-                        format!("Effect[{}].duration_ticks", row.id),
-                        "missing duration",
-                    )
-                })? as f32),
-            ),
+            data::DurationKind::DurationTicks => {
+                let context = format!("Effect[{}].duration_ticks", row.id);
+                let ticks = row
+                    .duration_ticks
+                    .ok_or_else(|| ConfigError::new(&context, "missing duration"))?;
+                EffectDurationTicks::DurationTicks(ModifierMagnitude::Flat(positive_effect_ticks(
+                    ticks, context,
+                )?))
+            }
         };
-        let period = row.period_ticks.map(|ticks| {
-            EffectPeriodTicks::new(
-                ModifierMagnitude::Flat(ticks as f32),
-                row.execute_on_applied,
-            )
-        });
+        let period = row
+            .period_ticks
+            .map(|ticks| {
+                let ticks =
+                    positive_effect_ticks(ticks, format!("Effect[{}].period_ticks", row.id))?;
+                Ok::<_, ConfigError>(EffectPeriodTicks::new(
+                    ModifierMagnitude::Flat(ticks),
+                    row.execute_on_applied,
+                ))
+            })
+            .transpose()?;
         let effect_tags = EffectTags::new(
             resolve_tags(&row.asset_tags, tags)?,
             resolve_tags(&row.granted_tags, tags)?,
@@ -326,6 +369,22 @@ fn compile_targeting(
     tags: &BTreeMap<String, GameplayTag>,
 ) -> Result<TargetingDefinition, ConfigError> {
     let context = format!("Targeting[{}]", row.id);
+    let used_radius = if matches!(
+        row.selection,
+        data::SelectionKind::Sphere | data::SelectionKind::Cone
+    ) {
+        row.radius
+    } else {
+        None
+    };
+    for (name, distance) in [("radius", used_radius), ("max_distance", row.max_distance)] {
+        if distance.is_some_and(|value| !(value * value).is_finite()) {
+            return Err(ConfigError::new(
+                format!("{context}.{name}"),
+                "distance must have a finite square",
+            ));
+        }
+    }
     let selection = match row.selection {
         data::SelectionKind::SelfTarget => TargetingOperation::SelectSelf,
         data::SelectionKind::ExplicitEntity => TargetingOperation::SelectExplicitEntity,

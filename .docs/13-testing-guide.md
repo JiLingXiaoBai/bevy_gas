@@ -4,6 +4,9 @@
 
 ```text
 tests/
+├── config_test.rs                      # 配置领域集成测试门面
+├── config_test/
+│   └── runtime_test.rs                 # 默认读取、包校验和业务校验的 feature 边界
 ├── gas_test.rs                         # GAS 集成测试 crate 门面
 ├── gas_test/
 │   ├── ability_input_test.rs            # Logical input bindings and fixed-tick buffering
@@ -33,6 +36,7 @@ tests/
 examples/
 ├── ability_input_bindings.rs           # Buffered input and slot rebinding without a window
 ├── ability_effect_flow.rs              # 无窗口的完整技能、伤害与冷却时间线
+├── config_fireball.rs                  # 默认可用的二进制配置火球示例
 └── tag_registration.rs                 # 完整 App 中的标签注册
 ```
 
@@ -41,6 +45,8 @@ examples/
 也不单独创建顶层测试目标。例如，输入绑定属于 GAS，其测试位于
 `tests/gas_test/ability_input_test.rs`。`randoms_test.rs` 和 `unique_names_test.rs` 则分别
 对应 crate 顶层的 `randoms` 和 `unique_names` 领域，保留独立测试目标。
+配置属于 crate 顶层 `config` 领域，集成测试放在 `tests/config_test/`，
+由 `tests/config_test.rs` 声明和加载。
 
 领域内部的测试按外部行为拆分，不镜像私有实现文件，也不要求叶子测试文件递归套用门面结构。
 移动私有函数不应迫使测试目录改名；新增行为时应放入最接近其 Gameplay 语义的模块。
@@ -62,6 +68,10 @@ cargo test
 
 # GAS integration-test crate
 cargo test --test gas_test
+
+# Configuration runtime and full authoring validation
+cargo test --test config_test
+cargo test --all-features --test config_test
 
 # Input binding and buffering integration tests
 cargo test --test gas_test ability_input_test
@@ -184,12 +194,20 @@ handle/spec、管理器和系统函数应从 `bevy_gas::gas::<domain>` 或 crate
 `examples/tag_registration.rs` 当前使用 crate-root 兼容导入，验证既有根路径；知识库示例优先
 使用精简 prelude，专项 API 则展示领域门面路径。
 
-## 可选配置模块验证
+## 配置运行时与 feature 验证
 
 项目只维护根 `bevy_gas` 包，配置功能位于 `src/config.rs` 和 `src/config/`，
-由默认关闭的 `luban-config` feature 启用。根目录的 `cargo test` 运行现有测试，
+生成代码、解码、加载、GAS 编译和授予接口始终参与编译。默认关闭的 `luban-config`
+启用包校验、完整业务校验和离线工具；`config_fireball` 示例在默认构建中可用，CLI 仍需该 feature。
+
+根目录执行 `cargo test` 和 `cargo test --all-features`，分别验证默认读取，
+以及启用 feature 的包校验与完整业务校验。
+配置测试通过 `tests/config_test.rs` 加载 `tests/config_test/runtime_test.rs`，自建表数据和临时包，
+不依赖 `config/bin/` 或本机 Luban 工具。测试应覆盖共有的 I/O 大小限制、解码、引用、数值和注册状态约束，
+以及关闭 feature 时直接读表、忽略缺失或无效清单，启用时要求有效清单与匹配 schema/摘要的差异。
+业务规则还需覆盖关闭 feature 时跳过、启用时拒绝的情况。
 GAS 核心任务测试仍归属 `tests/gas_test/`；
-`cargo clippy --all-targets --all-features -- -D warnings` 会包含配置模块、CLI 和示例。
+`cargo clippy --all-targets --all-features -- -D warnings` 同时检查运行时、完整校验、CLI 和示例。
 
 修改 Excel、schema 或模板后，执行 `pwsh -NoProfile -File config/export.ps1`。
 导表在临时单包项目中用候选生成模块编译启用 `luban-config` 的 CLI，校验真实 bytes、

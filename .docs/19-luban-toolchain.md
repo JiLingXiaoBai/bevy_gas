@@ -6,8 +6,9 @@
 日常通过 `config/export.ps1` 将配置导出为 Rust 代码和二进制数据；工具缓存与配置源文件分开存放。
 Codex 通过 Luban.Mcp 查询表结构、校验和生成配置；Luban.Agent 保留为 MCP 的查询与校验后端。
 当前配置包含七张 GAS 表，提供真实 Excel 火球配置包。
-Safe Rust 解码和 GAS 适配代码位于根 `bevy_gas` 包的 `config` 模块，通过默认关闭的
-`luban-config` feature 启用；加载后构造共享 GAS 定义，GAS 领域不反向依赖配置层。
+Safe Rust 解码、生成类型和 GAS 适配代码位于根 `bevy_gas` 包的 `config` 模块，始终参与编译；
+默认关闭的 `luban-config` feature 启用配置包校验、完整业务校验和离线工具。加载后构造共享 GAS 定义，
+GAS 领域不反向依赖配置层。
 仓库只维护根 `Cargo.toml`。业务结构与使用流程见
 [20 — Excel 技能配置与 GAS 接入](./20-gas-configuration.md)。
 
@@ -20,8 +21,9 @@ Safe Rust 解码和 GAS 适配代码位于根 `bevy_gas` 包的 `config` 模块�
 | `config/luban.conf` | 输入目录、定义文件和导出目标 | 提交 |
 | `config/export.ps1` | 项目导表入口，暂存生成、编译、玩法校验后发布 | 提交 |
 | `config/templates/rust-bin/` | 项目维护的 Rust Result 解码模板 | 提交 |
-| `src/config.rs`、`src/config/` | 可选配置模块：安全解码、配置包校验、GAS 编译与加载 | 提交 |
-| `src/bin/gas_config.rs`、`examples/config_fireball.rs` | 由 `luban-config` 启用的 CLI 与火球示例 | 提交 |
+| `src/config.rs`、`src/config/` | 默认提供二进制读取、解码和 GAS 编译；包校验、完整业务校验及离线工具由 feature 启用 | 提交 |
+| `src/bin/gas_config.rs` | 由 `luban-config` 启用的 CLI | 提交 |
+| `examples/config_fireball.rs` | 默认可用的火球示例 | 提交 |
 | `config/LICENSE.Luban` | 初始示例文件的上游 MIT 许可证 | 提交 |
 | `config/generated/` | 自动生成的 `mod.rs`、`gas.rs` 等 Rust 模块，无独立 Cargo 清单 | 提交，导表生成 |
 | `config/bin/` | 七张 GAS 表的二进制数据及 `manifest.json` | 忽略，导表生成 |
@@ -64,6 +66,8 @@ Cargo 的 `target/` 构建缓存、`config/bin/` 和工具 `.cache/` 均由 Git 
 
 本仓库是 GAS 库，二进制先输出到 `config/bin/`。具体游戏负责将需要的数据部署到自身的
 资源目录，例如 `assets/config/`；当前导表脚本不承担游戏资源部署。
+默认运行时只需 `.bytes`，不读取 `manifest.json`；启用 `luban-config` 时需一并部署匹配清单。
+导表入口始终启用该 feature，在发布前完成包校验与业务校验，生成协议和模板保持一致。
 
 ## 初始示例来源
 
@@ -250,8 +254,8 @@ Git blob，与工具链 v5.0.0 的提交 `52d329fb93be79810ed090f489ba4bf3821c4e
   使用 MCP `generate` 时仅写诊断缓存，正式发布走完整导表入口。生成产物规则见本页“配置路径与日常导表”。
 - 上游 Schema 的继承/多态建议只用于评估配置表达方式；运行时仍遵循 Bevy ECS、
   Component/Resource/System 与现有 GAS 架构，不据此改造为 OOP。`luban-runtime-load` 的
-  C#/Unity 示例只供概念参考，实际使用 Rust；解码和适配实现位于 `src/config/`，通过
-  `luban-config` feature 启用。当前模板不开放继承、多态和 flags 枚举。
+  C#/Unity 示例只供概念参考，实际使用 Rust；解码和适配实现位于 `src/config/`，默认可用。
+  `luban-config` 启用包校验、完整业务校验和离线工具。当前模板不开放继承、多态和 flags 枚举。
 - 安装或解释 skill 本身不需要修改表格或生成代码；实际任务涉及配置源文件变更时，
   按已有导表流程更新对应产物，不能通过削弱校验掩盖错误数据。
 
@@ -286,7 +290,7 @@ Luban.Mcp 5.0.0 已在本机 .NET `10.0.9` 下通过真实 stdio 握手、工具
 `tools/luban/.cache/smoke/code/` 和 `tools/luban/.cache/smoke/data/` 是此前工具验证的
 临时产物，清理缓存后不要求保留。日常项目产物统一使用 `config/generated/` 和 `config/bin/`。
 项目使用 `config/templates/rust-bin/` 与 `src/config/` 中的安全解码实现，解码返回 Result。
-生成 Rust 模块与配置适配代码通过 `luban-config` 编译进同一个包；真实 Excel 火球示例包含
+生成 Rust 模块与配置适配代码始终编译进同一个包；真实 Excel 火球示例包含
 消耗、冷却、目标过滤、按等级伤害及同 tick 动作结束。导表入口为每次候选产物建立临时
 单包项目，重新编译并执行完整校验后才发布。发布流程失败时恢复上一套代码和数据；
 检查回滚行为时必须使用隔离临时目录，不能以正式产物作为故障测试对象。

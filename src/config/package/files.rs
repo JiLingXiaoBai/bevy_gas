@@ -5,13 +5,40 @@ use std::{
 };
 
 use super::ConfigError;
+#[cfg(not(feature = "luban-config"))]
+use super::TABLE_FILES;
+#[cfg(not(feature = "luban-config"))]
+use std::collections::BTreeMap;
 
 /// Maximum byte size of one binary table file (64 MiB).
 pub const MAX_FILE_BYTES: u64 = 64 * 1024 * 1024;
 /// Maximum combined byte size of all binary tables in one package (256 MiB).
 pub const MAX_PACKAGE_BYTES: u64 = 256 * 1024 * 1024;
 /// Maximum byte size of the JSON package manifest (1 MiB).
+#[cfg(feature = "luban-config")]
 pub const MAX_MANIFEST_BYTES: u64 = 1024 * 1024;
+
+/// Reads the expected binary tables from `directory` without consulting a manifest.
+///
+/// The returned map uses generated table names without the `.bytes` suffix.
+/// Returns an error for missing files, I/O failures, or file/package size limits.
+/// This implementation is used without `luban-config`; the feature-enabled
+/// implementation additionally verifies the manifest, schema, and content hashes.
+#[cfg(not(feature = "luban-config"))]
+pub fn read_package(directory: impl AsRef<Path>) -> Result<BTreeMap<String, Vec<u8>>, ConfigError> {
+    let directory = directory.as_ref();
+    let mut loaded = BTreeMap::new();
+    let mut total = 0;
+    for &name in TABLE_FILES {
+        let bytes = read_limited(
+            &directory.join(format!("{name}.bytes")),
+            MAX_FILE_BYTES.min(MAX_PACKAGE_BYTES - total),
+        )?;
+        add_package_size(&mut total, bytes.len() as u64)?;
+        loaded.insert(name.to_owned(), bytes);
+    }
+    Ok(loaded)
+}
 
 pub(super) fn read_limited(path: &Path, limit: u64) -> Result<Vec<u8>, ConfigError> {
     let context = path.display().to_string();

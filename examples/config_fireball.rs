@@ -15,9 +15,9 @@ use std::io::{self, Write};
 use std::sync::Arc;
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let directory = env::args().nth(1).ok_or(
-        "usage: cargo run --features luban-config --example config_fireball -- <data-directory>",
-    )?;
+    let directory = env::args()
+        .nth(1)
+        .ok_or("usage: cargo run --example config_fireball -- <data-directory>")?;
     let tables = load_tables(directory)?;
     let mut app = App::new();
     app.add_plugins(MinimalPlugins)

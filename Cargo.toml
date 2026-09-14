@@ -21,4 +21,3 @@ required-features = ["luban-config"]
 [[example]]
 name = "config_fireball"
 path = "examples/config_fireball.rs"
-required-features = ["luban-config"]

@@ -65,7 +65,7 @@
 | [14 — 扩展系统](./14-extending-the-system.md) | 新增规则、任务、目标操作和请求生产系统的方法 |
 | [17 — 源码布局与维护边界](./17-source-layout-and-maintenance.md) | 真实文件布局、所有权、可见性、修改路由和文档约束 |
 | [19 — Luban 配置工程与工具链](./19-luban-toolchain.md) | 配置路径、导表入口、MCP 接入、AI skills、固定版本和升级约定 |
-| [20 — Excel 技能配置与 GAS 接入](./20-gas-configuration.md) | 可选 `luban-config` 模块、七张配置表、包校验、GAS 编译、预览与火球示例 |
+| [20 — Excel 技能配置与 GAS 接入](./20-gas-configuration.md) | 默认二进制配置运行时、`luban-config` 包校验与业务校验、工具边界、GAS 编译与火球示例 |
 
 ## 最小初始化
 
