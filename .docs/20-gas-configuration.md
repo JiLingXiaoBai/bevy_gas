@@ -27,6 +27,12 @@
 `src/config.rs` 通过外部路径加载 `config/generated/mod.rs`，公开为
 `bevy_gas::config::generated`；生成目录不维护独立 Cargo 包。
 
+加载与预览分属 `loading` 和 `inspection`：前者负责读包解码，后者仅在 `luban-config`
+启用时执行完整校验和文本报告。`ConfigError` 由配置领域共用的 `error` 模块拥有，
+编译器按注册、效果、目标、技能时间线拆分，并复用必要数值判断与幅度求值。
+这些私有职责边界不改变公共 API、feature 行为或配置协议；文件归属见
+[17 — 源码布局与维护边界](./17-source-layout-and-maintenance.md#配置模块内部职责)。
+
 ## Feature 边界
 
 `default = []` 保持不变。`luban-config` 不控制配置读取、编译和授予能力，也不控制生成模块的可见性。

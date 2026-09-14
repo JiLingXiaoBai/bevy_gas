@@ -14,6 +14,9 @@
 mod catalog;
 mod compiler;
 mod decoding;
+mod error;
+#[cfg(feature = "luban-config")]
+mod inspection;
 mod loading;
 mod package;
 
@@ -25,13 +28,14 @@ pub use catalog::{
     AbilityId, CompiledAbility, ConfiguredAbilities, EffectId, GameplayCatalog, grant_ability,
     revoke_ability,
 };
-pub use compiler::{ConfigError, compile_catalog};
+pub use compiler::compile_catalog;
+pub use error::ConfigError;
 pub use loading::load_tables;
 pub use package::{MAX_FILE_BYTES, MAX_PACKAGE_BYTES, read_package};
 
 #[cfg(feature = "luban-config")]
 pub use compiler::validate_tables;
 #[cfg(feature = "luban-config")]
-pub use loading::{describe_ability, describe_ability_at_level};
+pub use inspection::{describe_ability, describe_ability_at_level};
 #[cfg(feature = "luban-config")]
 pub use package::{MAX_MANIFEST_BYTES, package_schema_hash, write_package_manifest};

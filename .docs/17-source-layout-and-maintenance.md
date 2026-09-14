@@ -50,6 +50,41 @@ src/
 ├── unique_names.rs
 ├── unique_names/
 │   └── unique_name.rs
+├── config.rs
+├── config/
+│   ├── error.rs
+│   ├── error/
+│   │   └── definition.rs
+│   ├── catalog.rs
+│   ├── catalog/
+│   │   ├── definitions.rs
+│   │   └── grants.rs
+│   ├── compiler.rs
+│   ├── compiler/
+│   │   ├── build.rs
+│   │   ├── registration.rs
+│   │   ├── effects.rs
+│   │   ├── targeting.rs
+│   │   ├── abilities.rs
+│   │   ├── magnitude.rs
+│   │   ├── numeric.rs
+│   │   └── validation.rs
+│   ├── decoding.rs
+│   ├── decoding/
+│   │   ├── buffer.rs
+│   │   ├── error.rs
+│   │   └── values.rs
+│   ├── loading.rs
+│   ├── loading/
+│   │   └── files.rs
+│   ├── inspection.rs
+│   ├── inspection/
+│   │   └── report.rs
+│   ├── package.rs
+│   └── package/
+│       ├── files.rs
+│       ├── hashes.rs
+│       └── manifest.rs
 ├── gas.rs
 └── gas/
     ├── prelude.rs
@@ -175,13 +210,36 @@ src/
 仓库只维护根 `Cargo.toml`；`target/` 是 Git 忽略的构建缓存，删除后由 Cargo 重新创建。
 
 `src/lib.rs` 使用 `pub mod config;` 无条件暴露配置入口。
-`src/config.rs` 是门面，声明 `decoding`、`compiler`、`catalog`、`loading` 和 `package`，
-并通过外部路径加载 `config/generated/mod.rs` 为 `generated` 模块。
+`src/config.rs` 是门面，声明 `error`、`decoding`、`compiler`、`catalog`、`loading` 和 `package`，
+以及受 `luban-config` 控制的 `inspection`，并通过外部路径加载
+`config/generated/mod.rs` 为 `generated` 模块。
 默认关闭的 `luban-config` 控制包哈希、清单解析与校验、完整业务校验和离线工具。
 默认 `read_package` 只按生成表名单读取受大小限制的 `.bytes`，不要求或检查清单；
 解码和运行时必要构建约束仍保留，配置运行时与生成模块不受 feature 控制。
 配置层将表数据转换为共享 GAS 定义，`src/gas/` 不反向引用生成表类型。
 手写解码、GAS 适配和模板始终位于生成目录之外；游戏资源部署由使用本库的游戏负责。
+
+### 配置模块内部职责
+
+以下路径相对于 `src/config/`：
+
+| 文件 | 主要所有权 |
+| --- | --- |
+| `error.rs`、`error/definition.rs` | 配置领域共用的 `ConfigError`，加载、包读取、编译和授予直接依赖它 |
+| `loading/files.rs` | 调用 `read_package`，将同次读取的字节移交生成表解码器 |
+| `inspection.rs`、`inspection/report.rs` | feature 启用时的完整校验与技能文本预览，不承担文件读取 |
+| `compiler/build.rs` | 启动编译编排、注册资源借用与归还、最终 catalog 组装 |
+| `compiler/registration.rs` | 标签/属性的确定顺序登记、现有注册状态检查与标签引用解析 |
+| `compiler/effects.rs`、`compiler/targeting.rs` | 效果与修改器、目标管线的运行时定义构建，以及必要构建检查 |
+| `compiler/abilities.rs` | 技能定义、共享效果引用和有序任务时间线 |
+| `compiler/magnitude.rs`、`compiler/numeric.rs` | 线性幅度求值及运行时计算器、编译与校验共用的数值纯函数 |
+| `compiler/validation.rs` | 仅在 feature 启用时执行的完整制作规则校验 |
+
+编译器按登记、效果、目标、技能的顺序构建，不把 World 访问放入数值纯函数。
+共用数值判断不改变校验策略：运行时必要检查始终执行，制作限制和全等级预演仍由 feature 控制。
+`ConfigError` 属于配置领域公共错误，读取或授予代码无需通过 compiler 获取它。
+内部实现移动不改变 `bevy_gas::config::{ConfigError, load_tables, compile_catalog}`，
+以及 feature 启用时的 `describe_ability`、`describe_ability_at_level` 等公开路径。
 
 ## 顶层门面和公开路径
 

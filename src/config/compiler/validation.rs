@@ -2,6 +2,9 @@ use super::data::{
     ActionKind, AttributeRegion, DurationKind, MagnitudeKind, ModifierOperation, SelectionKind,
     SortOrder, TargetScope,
 };
+use super::numeric::{
+    formula_parameters_are_finite, is_within_f32_range, probability_is_valid, square_is_finite,
+};
 use super::{ConfigError, Tables, evaluate_linear};
 use crate::{COLD_ATTRIBUTE_SET_SIZE, HOT_ATTRIBUTE_SET_SIZE, MAX_TAG_COUNTS};
 use std::collections::BTreeSet;
@@ -153,7 +156,7 @@ fn validate_effects(tables: &Tables) -> Result<(), ConfigError> {
             "name must not be blank",
         )?;
         require(
-            row.probability.is_finite() && (0.0..=1.0).contains(&row.probability),
+            probability_is_valid(row.probability),
             format!("{context}.probability"),
             "probability must be finite and in 0..=1",
         )?;
@@ -231,7 +234,7 @@ fn validate_modifiers(tables: &Tables) -> Result<(), ConfigError> {
             "order must be nonnegative and unique within the effect",
         )?;
         require(
-            row.base.is_finite() && row.per_level.is_finite(),
+            formula_parameters_are_finite(row.base, Some(row.per_level)),
             format!("{context}.magnitude"),
             "formula parameters must be finite",
         )?;
@@ -263,7 +266,7 @@ fn validate_targeting(tables: &Tables) -> Result<(), ConfigError> {
         match row.selection {
             SelectionKind::Sphere | SelectionKind::Cone => require(
                 row.radius
-                    .is_some_and(|v| v.is_finite() && v >= 0.0 && (v * v).is_finite()),
+                    .is_some_and(|v| v.is_finite() && v >= 0.0 && square_is_finite(v)),
                 format!("{context}.radius"),
                 "sphere/cone radius must be finite, nonnegative, and have a finite square",
             )?,
@@ -289,7 +292,7 @@ fn validate_targeting(tables: &Tables) -> Result<(), ConfigError> {
         }
         if let Some(distance) = row.max_distance {
             require(
-                distance.is_finite() && distance >= 0.0 && (distance * distance).is_finite(),
+                distance.is_finite() && distance >= 0.0 && square_is_finite(distance),
                 format!("{context}.max_distance"),
                 "distance must be finite, nonnegative, and have a finite square",
             )?;
@@ -460,7 +463,7 @@ fn validate_abilities(tables: &Tables) -> Result<(), ConfigError> {
                 let maximum =
                     evaluate_linear(modifier.base, modifier.per_level, row.max_level as u32);
                 require(
-                    maximum.is_finite() && maximum.abs() <= f32::MAX as f64,
+                    is_within_f32_range(maximum),
                     format!("{context}.Effect[{effect_id}].Modifier[{}]", modifier.id),
                     "formula exceeds finite f32 range within supported levels",
                 )?;
