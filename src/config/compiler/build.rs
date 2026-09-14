@@ -4,7 +4,7 @@ use super::abilities::compile_abilities;
 use super::effects::compile_effects;
 use super::registration::{register_attributes, register_tags};
 use super::targeting::compile_targeting;
-#[cfg(feature = "luban-config")]
+#[cfg(feature = "config-validation")]
 use super::validate_tables;
 use super::{ConfigError, GameplayCatalog, Tables};
 use crate::{AttributeIdManager, GameplayTagManager, UniqueNamePool};
@@ -17,13 +17,13 @@ use std::sync::Arc;
 /// `world` must contain `UniqueNamePool`, `GameplayTagManager`, and
 /// `AttributeIdManager`, normally installed by `GameplayAbilitySystemPlugin`.
 /// Returns an unpublished catalog, or a contextual configuration/registration error.
-/// With `luban-config`, full authoring validation happens before mutation.
+/// With `config-validation`, full authoring validation happens before mutation.
 /// Without it, only required runtime construction checks are performed.
 /// Registration is append-only; any later construction or registration failure
 /// may leave successfully registered names, but never publishes a partial catalog.
 /// Call this during startup; replacing catalogs during combat is unsupported.
 pub fn compile_catalog(tables: &Tables, world: &mut World) -> Result<GameplayCatalog, ConfigError> {
-    #[cfg(feature = "luban-config")]
+    #[cfg(feature = "config-validation")]
     validate_tables(tables)?;
     if !world.contains_resource::<GameplayTagManager>()
         || !world.contains_resource::<AttributeIdManager>()

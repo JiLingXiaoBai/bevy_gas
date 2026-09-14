@@ -11,12 +11,12 @@ mod magnitude;
 mod numeric;
 mod registration;
 mod targeting;
-#[cfg(feature = "luban-config")]
+#[cfg(feature = "config-validation")]
 mod validation;
 
 pub use build::compile_catalog;
-#[cfg(feature = "luban-config")]
+#[cfg(feature = "config-validation")]
 pub use validation::validate_tables;
 
-#[cfg(feature = "luban-config")]
+#[cfg(feature = "config-validation")]
 pub(crate) use magnitude::evaluate_linear;

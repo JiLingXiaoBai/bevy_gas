@@ -6,28 +6,28 @@
 配置使用固定 Luban 5.0.0 的 `rust-bin + bin + --strict`，经安全读取和业务编译后形成
 `GameplayCatalog` Resource。配置接入位于同一个 `bevy_gas` 包的 `config` 模块，
 运行时接口和生成代码始终参与编译；GAS 领域代码不依赖生成的配置类型。
-默认关闭的 `luban-config` feature 启用配置包校验、完整业务校验和离线工具，仓库只维护根 `Cargo.toml`。
+默认关闭的 `config-validation` feature 启用配置包校验、完整业务校验和离线工具，仓库只维护根 `Cargo.toml`。
 
-| 路径 | 职责 |
-| --- | --- |
-| `config/tables/gas.*.xlsx` | 策划维护的数据、Luban 字段类型与说明 |
-| `config/defines/gas.xml` | 七张 GAS 表的登记与普通枚举定义 |
-| `config/defines/builtin.xml` | Luban 内置定义 |
-| `config/templates/rust-bin/` | 项目维护的安全 Rust 模板 |
-| `src/config.rs`、`src/config/` | 配置门面，以及解码、校验、GAS 编译、加载和包校验实现 |
-| `src/config/decoding/` | 仅使用标准库的 Safe Rust、Result 二进制解码实现 |
-| `config/generated/` | 自动生成的 `mod.rs`、`gas.rs` 等 Rust 模块，包含 DTO、表索引与结构描述 |
-| `config/bin/` | 导出配置包，包括七张 GAS 表的 bytes 与 manifest.json；Git 忽略 |
-| `src/bin/gas_config.rs` | 启用 `luban-config` 后可用的配置预览与导表校验 CLI |
-| `examples/config_fireball.rs` | 默认可编译运行的无窗口火球示例 |
-| `tools/luban/.cache/export/` | 每次导表的临时单包项目、验证产物与发布备份 |
+| 路径                           | 职责                                                                   |
+| ------------------------------ | ---------------------------------------------------------------------- |
+| `config/tables/gas.*.xlsx`     | 策划维护的数据、Luban 字段类型与说明                                   |
+| `config/defines/gas.xml`       | 七张 GAS 表的登记与普通枚举定义                                        |
+| `config/defines/builtin.xml`   | Luban 内置定义                                                         |
+| `config/templates/rust-bin/`   | 项目维护的安全 Rust 模板                                               |
+| `src/config.rs`、`src/config/` | 配置门面，以及解码、校验、GAS 编译、加载和包校验实现                   |
+| `src/config/decoding/`         | 仅使用标准库的 Safe Rust、Result 二进制解码实现                        |
+| `config/generated/`            | 自动生成的 `mod.rs`、`gas.rs` 等 Rust 模块，包含 DTO、表索引与结构描述 |
+| `config/bin/`                  | 导出配置包，包括七张 GAS 表的 bytes 与 manifest.json；Git 忽略         |
+| `src/bin/gas_config.rs`        | 启用 `config-validation` 后可用的配置预览与导表校验 CLI                |
+| `examples/config_fireball.rs`  | 默认可编译运行的无窗口火球示例                                         |
+| `tools/luban/.cache/export/`   | 每次导表的临时单包项目、验证产物与发布备份                             |
 
 导表产物包含上述七张 GAS 表的七个 `.bytes` 文件和 `manifest.json`。
-默认运行时只需部署七个 `.bytes` 文件；启用 `luban-config` 的加载器还要求匹配的清单。
+默认运行时只需部署七个 `.bytes` 文件；启用 `config-validation` 的加载器还要求匹配的清单。
 `src/config.rs` 通过外部路径加载 `config/generated/mod.rs`，公开为
 `bevy_gas::config::generated`；生成目录不维护独立 Cargo 包。
 
-加载与预览分属 `loading` 和 `inspection`：前者负责读包解码，后者仅在 `luban-config`
+加载与预览分属 `loading` 和 `inspection`：前者负责读包解码，后者仅在 `config-validation`
 启用时执行完整校验和文本报告。`ConfigError` 由配置领域共用的 `error` 模块拥有，
 编译器按注册、效果、目标、技能时间线拆分，并复用必要数值判断与幅度求值。
 这些私有职责边界不改变公共 API、feature 行为或配置协议；文件归属见
@@ -35,20 +35,20 @@
 
 ## Feature 边界
 
-`default = []` 保持不变。`luban-config` 不控制配置读取、编译和授予能力，也不控制生成模块的可见性。
+`default = []` 保持不变。`config-validation` 不控制配置读取、编译和授予能力，也不控制生成模块的可见性。
 
-| 能力 | 默认构建 | 启用 `luban-config` |
-| --- | --- | --- |
-| 生成 DTO、`load_tables`、`read_package`、`compile_catalog`、技能授予与撤销 | 可用 | 可用 |
-| manifest、schema、文件与整包摘要校验 | 不编译，不读取清单 | 必须通过校验 |
-| 文件与解码大小限制，非法枚举、重复主键及二进制合法性 | 始终检查 | 始终检查 |
-| 构建所需引用、运行时注册表容量与状态、基本数值合法性 | 始终检查 | 始终检查 |
-| 命名规范、未使用字段、跨表业务约束、时间线、成本与冷却策略 | 跳过完整业务校验 | `compile_catalog` 在注册前调用 `validate_tables` |
-| `package_schema_hash`、`MAX_MANIFEST_BYTES`、`validate_tables`、`describe_ability*`、`write_package_manifest`、`gas-config` CLI | 不编译 | 可用 |
-| `config_fireball` 示例 | 可用，直接读取表数据 | 可用，并执行包校验和完整业务校验 |
+| 能力                                                                                                                            | 默认构建             | 启用 `config-validation`                         |
+| ------------------------------------------------------------------------------------------------------------------------------- | -------------------- | ------------------------------------------------ |
+| 生成 DTO、`load_tables`、`read_package`、`compile_catalog`、技能授予与撤销                                                      | 可用                 | 可用                                             |
+| manifest、schema、文件与整包摘要校验                                                                                            | 不编译，不读取清单   | 必须通过校验                                     |
+| 文件与解码大小限制，非法枚举、重复主键及二进制合法性                                                                            | 始终检查             | 始终检查                                         |
+| 构建所需引用、运行时注册表容量与状态、基本数值合法性                                                                            | 始终检查             | 始终检查                                         |
+| 命名规范、未使用字段、跨表业务约束、时间线、成本与冷却策略                                                                      | 跳过完整业务校验     | `compile_catalog` 在注册前调用 `validate_tables` |
+| `package_schema_hash`、`MAX_MANIFEST_BYTES`、`validate_tables`、`describe_ability*`、`write_package_manifest`、`gas-config` CLI | 不编译               | 可用                                             |
+| `config_fireball` 示例                                                                                                          | 可用，直接读取表数据 | 可用，并执行包校验和完整业务校验                 |
 
 默认加载器按生成的 `TABLE_FILES` 直接读取 `.bytes`，不要求 `manifest.json`，已有清单即使无效也会忽略。
-I/O、分配边界、解码和必要构建错误仍返回 `Result`。发布前的导表流程始终启用 `luban-config`，
+I/O、分配边界、解码和必要构建错误仍返回 `Result`。发布前的导表流程始终启用 `config-validation`，
 完成清单、结构、摘要与业务校验后才发布；默认运行时加载这批已验证的表数据。
 
 基本数值检查包含正数最大等级、有限且位于 `[0, 1]` 的应用概率、实际使用的有限幅度参数，
@@ -57,7 +57,7 @@ I/O、分配边界、解码和必要构建错误仍返回 `Result`。发布前�
 
 在 Zed 中打开仓库根目录时，`src/config/` 和 `config/generated/` 已属于默认 Cargo 模块图，
 rust-analyzer 无需额外启用 feature 即可分析运行时接口的定义与引用。
-需要编辑或导航完整校验和离线工具代码时，仍需让 rust-analyzer 启用 `luban-config`。
+需要编辑或导航完整校验和离线工具代码时，仍需让 rust-analyzer 启用 `config-validation`。
 
 ## 日常使用
 
@@ -66,16 +66,16 @@ rust-analyzer 无需额外启用 feature 即可分析运行时接口的定义与
 ```powershell
 pwsh -NoProfile -File tools/luban/setup.ps1
 pwsh -NoProfile -File config/export.ps1
-cargo run --features luban-config --bin gas-config -- inspect config/bin 1001 3
+cargo run --features config-validation --bin gas-config -- inspect config/bin 1001 3
 cargo run --example config_fireball -- config/bin
 ```
 
 首次导表需要已安装的 Rust 工具链及依赖缓存。导表使用锁文件和离线构建；
-缺少依赖时先执行 `cargo build --features luban-config` 准备依赖，再重新导表。
+缺少依赖时先执行 `cargo build --features config-validation` 准备依赖，再重新导表。
 
 导表入口先在独立暂存目录生成代码和数据，仅提取 Rust 模块作为待发布代码。
 脚本复制根包的 `src/`、`examples/`、`Cargo.toml`、`Cargo.lock` 和候选生成模块，构建启用
-`luban-config` 的临时单包项目；新 CLI 生成配置包清单，再实际读取整个包并在
+`config-validation` 的临时单包项目；新 CLI 生成配置包清单，再实际读取整个包并在
 无窗口 Bevy App 中编译 GAS 定义。
 全部成功后才发布生成代码和数据目录；发布失败尝试恢复上一份目录。
 GAS 转换或 Rust 编译失败也会使导表返回非零退出码。
@@ -88,15 +88,15 @@ Luban 的结构校验和 Rust 的玩法校验是连续两层，不能互相替�
 
 ## Excel 表与引用
 
-| 表 | 主键 | 内容 |
-| --- | --- | --- |
-| gas.TbTag | name | 完整标签名及说明 |
-| gas.TbAttribute | name | 属性名、Hot/Cold 区域及说明 |
-| gas.TbEffect | id | 持续、周期、概率、asset/granted 标签 |
-| gas.TbModifier | id | effect_id、order、属性、操作、Flat/LinearLevel 参数 |
-| gas.TbAbility | id | 等级、标签、消耗、冷却、立即效果、目标规则、实例策略 |
-| gas.TbAbilityAction | id | ability_id、at_tick、order、动作、目标范围、effect_id |
-| gas.TbTargeting | id | 选择、标签/距离过滤、排序与数量上限 |
+| 表                  | 主键 | 内容                                                  |
+| ------------------- | ---- | ----------------------------------------------------- |
+| gas.TbTag           | name | 完整标签名及说明                                      |
+| gas.TbAttribute     | name | 属性名、Hot/Cold 区域及说明                           |
+| gas.TbEffect        | id   | 持续、周期、概率、asset/granted 标签                  |
+| gas.TbModifier      | id   | effect_id、order、属性、操作、Flat/LinearLevel 参数   |
+| gas.TbAbility       | id   | 等级、标签、消耗、冷却、立即效果、目标规则、实例策略  |
+| gas.TbAbilityAction | id   | ability_id、at_tick、order、动作、目标范围、effect_id |
+| gas.TbTargeting     | id   | 选择、标签/距离过滤、排序与数量上限                   |
 
 表名、主键、输入文件和枚举统一维护在 `config/defines/gas.xml`。
 表字段仍从数据 Excel 表头读取；因此修改技能数值只改数据表，新增字段修改相应表头，
@@ -138,7 +138,7 @@ AbilityTasks 推进后目标 Health=320，技能在同一 tick 结束；冷却�
 
 ## 数值、时间与动作
 
-以下规则描述配置制作约定，由启用 `luban-config` 的完整业务校验执行；
+以下规则描述配置制作约定，由启用 `config-validation` 的完整业务校验执行；
 默认构建仍检查构建定义所需的基本数值与引用合法性，但不重复执行全部策略检查。
 
 Flat 使用 base，per_level 必须为零。LinearLevel 使用
@@ -178,10 +178,10 @@ ApplyEffect 的 Primary/AllCaptured 分别使用激活时捕获的主目标/全�
 直接从 `bevy_gas::config` 导入运行时配置 API，无需启用 feature。
 `load_tables(directory)` 始终通过 `read_package` 读取表数据，再交给 `generated::Tables::new`。
 默认构建使用标准库按 `TABLE_FILES` 读取受大小限制的 `.bytes`，不解析清单、计算摘要或检查 schema。
-启用 `luban-config` 时，先检查 manifest、schema、大小和摘要，再将同一次读取并验证的 bytes
+启用 `config-validation` 时，先检查 manifest、schema、大小和摘要，再将同一次读取并验证的 bytes
 交给解码器，不在校验后重新读取文件。
 
-启用 `luban-config` 后，`validate_tables(&tables)` 检查名称、引用、未使用参数、
+启用 `config-validation` 后，`validate_tables(&tables)` 检查名称、引用、未使用参数、
 成本/冷却、动作顺序与公式；`compile_catalog(&tables, &mut world)` 在注册前调用它。
 默认构建跳过这次完整业务校验；两种构建均在名称注册与 Arc 定义构建过程中
 保留所需引用、数值及运行时注册状态检查。
@@ -219,16 +219,16 @@ app.world_mut().insert_resource(catalog);
 
 导表生成的 manifest.json 包含格式/模板版本、结构摘要、整包内容摘要与每个文件的大小及摘要。
 结构描述包含生成字段顺序、字段类型、普通枚举判别值、表主键及输出名称；
-启用 `luban-config` 的加载器据此拒绝结构不兼容的数据。默认加载器不执行这一兼容性检查，
+启用 `config-validation` 的加载器据此拒绝结构不兼容的数据。默认加载器不执行这一兼容性检查，
 部署时应配套使用同次导表生成的 Rust 模块和表数据。
 数据内容摘要标识具体配置版本，普通数值变动允许由兼容的同一份读取代码加载；包协议和模板不因 feature 改变。
 
-BLAKE3 与 serde_json 是由 `luban-config` 启用的可选直接依赖，分别负责摘要与清单 JSON。
+BLAKE3 与 serde_json 是由 `config-validation` 启用的可选直接依赖，分别负责摘要与清单 JSON。
 关闭 feature 时，本库不编译相关哈希、清单解析和校验代码；二进制读取与解码使用标准库。
 Bevy 的默认 feature 可能独立引入同名传递依赖，因此整个依赖树中仍可能出现这些 crate。
 
 两种构建均限制单文件 64 MiB、表数据合计 256 MiB；二进制集合和字符串另有上限。
-启用 `luban-config` 时，另限制清单 1 MiB，要求恰好包含全部预期表，
+启用 `config-validation` 时，另限制清单 1 MiB，要求恰好包含全部预期表，
 拒绝重复/未知路径、结构不兼容和摘要不一致。内容摘要用于一致性检查，不承担发布者签名认证。
 
 模板支持基础类型、Option、Vec、普通枚举和非继承 map 表。

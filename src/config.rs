@@ -1,7 +1,7 @@
 //! Luban configuration compiled into shared GAS runtime definitions.
 //!
 //! Runtime loading, decoding, compilation, and grants are always available.
-//! Enable `luban-config` for package integrity and authoring validation, manifest
+//! Enable `config-validation` for package integrity and authoring validation, manifest
 //! creation, and human-readable inspection. Without it, loading reads binary
 //! tables directly without reading a manifest or using BLAKE3 or JSON parsing.
 //! Decoding bounds and runtime construction errors are checked in both modes.
@@ -15,7 +15,7 @@ mod catalog;
 mod compiler;
 mod decoding;
 mod error;
-#[cfg(feature = "luban-config")]
+#[cfg(feature = "config-validation")]
 mod inspection;
 mod loading;
 mod package;
@@ -33,9 +33,9 @@ pub use error::ConfigError;
 pub use loading::load_tables;
 pub use package::{MAX_FILE_BYTES, MAX_PACKAGE_BYTES, read_package};
 
-#[cfg(feature = "luban-config")]
+#[cfg(feature = "config-validation")]
 pub use compiler::validate_tables;
-#[cfg(feature = "luban-config")]
+#[cfg(feature = "config-validation")]
 pub use inspection::{describe_ability, describe_ability_at_level};
-#[cfg(feature = "luban-config")]
+#[cfg(feature = "config-validation")]
 pub use package::{MAX_MANIFEST_BYTES, package_schema_hash, write_package_manifest};

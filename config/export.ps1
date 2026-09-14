@@ -347,7 +347,7 @@ try {
     Invoke-ExportProcess $cargo @('fmt', '--manifest-path', $stagedManifest) $stagedProject
     $buildOutput = Invoke-ExportProcess $cargo @(
         'build', '--manifest-path', $stagedManifest,
-        '--features', 'luban-config', '--bin', 'gas-config',
+        '--features', 'config-validation', '--bin', 'gas-config',
         '--offline', '--locked', '--target-dir', $targetDirectory,
         '--message-format=json-render-diagnostics'
     ) $stagedProject -CaptureOutput

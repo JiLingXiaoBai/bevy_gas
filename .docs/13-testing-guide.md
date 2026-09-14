@@ -197,7 +197,7 @@ handle/spec、管理器和系统函数应从 `bevy_gas::gas::<domain>` 或 crate
 ## 配置运行时与 feature 验证
 
 项目只维护根 `bevy_gas` 包，配置功能位于 `src/config.rs` 和 `src/config/`，
-生成代码、解码、加载、GAS 编译和授予接口始终参与编译。默认关闭的 `luban-config`
+生成代码、解码、加载、GAS 编译和授予接口始终参与编译。默认关闭的 `config-validation`
 启用包校验、完整业务校验和离线工具；`config_fireball` 示例在默认构建中可用，CLI 仍需该 feature。
 
 根目录执行 `cargo test` 和 `cargo test --all-features`，分别验证默认读取，
@@ -210,26 +210,26 @@ GAS 核心任务测试仍归属 `tests/gas_test/`；
 `cargo clippy --all-targets --all-features -- -D warnings` 同时检查运行时、完整校验、CLI 和示例。
 
 修改 Excel、schema 或模板后，执行 `pwsh -NoProfile -File config/export.ps1`。
-导表在临时单包项目中用候选生成模块编译启用 `luban-config` 的 CLI，校验真实 bytes、
+导表在临时单包项目中用候选生成模块编译启用 `config-validation` 的 CLI，校验真实 bytes、
 manifest 和 GAS 编译结果后才发布；随后可运行配置预览和 `config_fireball` 示例验证玩法。
 源表与生成 Rust 模块应同步提交，不能只更新清单来掩盖结构或数据变化。命令与包约定见
 [20 — 技能配置](./20-gas-configuration.md)。
 
 ## 关键测试领域
 
-| 领域 | 应验证的内容 |
-| --- | --- |
-| 标签注册 | 父标签自动注册、容量、无效句柄与冲突区分 |
-| 标签容器 | 引用计数、继承、`has_tag` / `has_all` / `has_any` |
-| 属性 | 冷热注册、初始化、dirty 位图、快照与延迟重算 |
-| 修饰器 | `Override → Add → PercentAdd → Multiply`、中立 Source ID、计算上下文 |
-| 即时效果 | Base 修改、post-execute、无需 Active Effect 存储 |
-| 持续/周期效果 | Modifier 生命周期、到期、Period 与 `execute_on_applied` |
-| 堆叠 | 来源/目标聚合、上限、幅度、Duration/Period 策略 |
-| Requirement/免疫 | 抑制、恢复、移除、固定点收敛与 fail-closed |
-| 技能 | 激活、Cost、Cooldown、阻止/取消标签与实例策略 |
-| 技能任务/链 | startup、WaitTicks、完成动作、深度与循环检测 |
-| Targeting | 管线校验、稳定排序、多目标 continuation |
-| 统一 FIFO | Ability/Effect 跨类型顺序、完整 drain、阶段边界 |
-| 组件组合 | Bundle 四组件齐全，Tag/Attribute 独立存在 |
-| 支撑设施 | RNG 同种子序列、名称复用、空名称与不同字符串区分 |
+| 领域             | 应验证的内容                                                         |
+| ---------------- | -------------------------------------------------------------------- |
+| 标签注册         | 父标签自动注册、容量、无效句柄与冲突区分                             |
+| 标签容器         | 引用计数、继承、`has_tag` / `has_all` / `has_any`                    |
+| 属性             | 冷热注册、初始化、dirty 位图、快照与延迟重算                         |
+| 修饰器           | `Override → Add → PercentAdd → Multiply`、中立 Source ID、计算上下文 |
+| 即时效果         | Base 修改、post-execute、无需 Active Effect 存储                     |
+| 持续/周期效果    | Modifier 生命周期、到期、Period 与 `execute_on_applied`              |
+| 堆叠             | 来源/目标聚合、上限、幅度、Duration/Period 策略                      |
+| Requirement/免疫 | 抑制、恢复、移除、固定点收敛与 fail-closed                           |
+| 技能             | 激活、Cost、Cooldown、阻止/取消标签与实例策略                        |
+| 技能任务/链      | startup、WaitTicks、完成动作、深度与循环检测                         |
+| Targeting        | 管线校验、稳定排序、多目标 continuation                              |
+| 统一 FIFO        | Ability/Effect 跨类型顺序、完整 drain、阶段边界                      |
+| 组件组合         | Bundle 四组件齐全，Tag/Attribute 独立存在                            |
+| 支撑设施         | RNG 同种子序列、名称复用、空名称与不同字符串区分                     |

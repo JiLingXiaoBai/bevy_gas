@@ -9,13 +9,13 @@ use bevy_gas::config::{
     AbilityId, ConfiguredAbilities, compile_catalog, grant_ability, load_tables, read_package,
     revoke_ability,
 };
-#[cfg(feature = "luban-config")]
+#[cfg(feature = "config-validation")]
 use bevy_gas::config::{
     ConfigError, describe_ability, describe_ability_at_level, package_schema_hash,
     write_package_manifest,
 };
 use bevy_gas::{AbilitySystemComponent, GameplayAbilitySystemPlugin};
-#[cfg(feature = "luban-config")]
+#[cfg(feature = "config-validation")]
 use serde_json::{Value, json};
 use std::{fs, path::PathBuf, sync::Arc, time::SystemTime};
 
@@ -89,7 +89,7 @@ fn runtime_catalog_grants_and_revokes_without_tooling_apis() {
 #[test]
 fn extra_authoring_validation_depends_on_luban_config_feature() {
     let result = compile_catalog(&tables(Some(1.0)), app().world_mut());
-    if cfg!(feature = "luban-config") {
+    if cfg!(feature = "config-validation") {
         assert!(result.err().unwrap().context().contains("radius"));
     } else {
         assert!(result.unwrap().ability(AbilityId(1)).is_some());
@@ -162,7 +162,7 @@ fn invalid_levels_and_unrepresentable_targeting_distances_are_always_rejected() 
 
 #[test]
 fn modifier_parameter_checks_respect_magnitude_kind_and_feature() {
-    let unused_slope_is_allowed = !cfg!(feature = "luban-config");
+    let unused_slope_is_allowed = !cfg!(feature = "config-validation");
     for (magnitude_kind, base, per_level, valid) in [
         (MagnitudeKind::LinearLevel, 1.0, 1.0, true),
         (MagnitudeKind::LinearLevel, f32::NAN, 1.0, false),
@@ -213,7 +213,7 @@ fn probability_endpoints_are_supported() {
     }
 }
 
-#[cfg(feature = "luban-config")]
+#[cfg(feature = "config-validation")]
 #[test]
 fn public_inspection_apis_preserve_default_level_and_errors() {
     let tables = tables(None);
@@ -251,7 +251,7 @@ impl Package {
         package
     }
 
-    #[cfg(feature = "luban-config")]
+    #[cfg(feature = "config-validation")]
     fn write_manifest(&self, manifest: &Value) {
         fs::write(
             self.0.join("manifest.json"),
@@ -270,7 +270,7 @@ impl Drop for Package {
 #[test]
 fn package_loading_and_required_table_checks_are_always_available() {
     let package = Package::new();
-    #[cfg(feature = "luban-config")]
+    #[cfg(feature = "config-validation")]
     write_package_manifest(&package.0).unwrap();
 
     assert_eq!(read_package(&package.0).unwrap().len(), TABLE_FILES.len());
@@ -280,7 +280,7 @@ fn package_loading_and_required_table_checks_are_always_available() {
 
     let table_path = package.0.join(format!("{}.bytes", TABLE_FILES[0]));
     fs::write(&table_path, []).unwrap();
-    #[cfg(feature = "luban-config")]
+    #[cfg(feature = "config-validation")]
     write_package_manifest(&package.0).unwrap();
     assert!(load_tables(&package.0).is_err());
 
@@ -289,7 +289,7 @@ fn package_loading_and_required_table_checks_are_always_available() {
     assert!(load_tables(&package.0).is_err());
 }
 
-#[cfg(not(feature = "luban-config"))]
+#[cfg(not(feature = "config-validation"))]
 #[test]
 fn runtime_package_loading_ignores_missing_and_invalid_manifests() {
     let package = Package::new();
@@ -302,7 +302,7 @@ fn runtime_package_loading_ignores_missing_and_invalid_manifests() {
     assert!(load_tables(&package.0).is_ok());
 }
 
-#[cfg(feature = "luban-config")]
+#[cfg(feature = "config-validation")]
 #[test]
 fn enabled_validation_checks_manifest_schema_and_hashes() {
     let package = Package::new();

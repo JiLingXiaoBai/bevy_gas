@@ -7,27 +7,27 @@
 Codex 通过 Luban.Mcp 查询表结构、校验和生成配置；Luban.Agent 保留为 MCP 的查询与校验后端。
 当前配置包含七张 GAS 表，提供真实 Excel 火球配置包。
 Safe Rust 解码、生成类型和 GAS 适配代码位于根 `bevy_gas` 包的 `config` 模块，始终参与编译；
-默认关闭的 `luban-config` feature 启用配置包校验、完整业务校验和离线工具。加载后构造共享 GAS 定义，
+默认关闭的 `config-validation` feature 启用配置包校验、完整业务校验和离线工具。加载后构造共享 GAS 定义，
 GAS 领域不反向依赖配置层。
 仓库只维护根 `Cargo.toml`。业务结构与使用流程见
 [20 — Excel 技能配置与 GAS 接入](./20-gas-configuration.md)。
 
 ## 配置路径与日常导表
 
-| 路径 | 职责 | Git 管理 |
-| --- | --- | --- |
-| `config/tables/` | 七张 `gas.*.xlsx` 数据表 | 提交 |
-| `config/defines/gas.xml`、`builtin.xml` | GAS 表登记、枚举及 Luban 内置定义 | 提交 |
-| `config/luban.conf` | 输入目录、定义文件和导出目标 | 提交 |
-| `config/export.ps1` | 项目导表入口，暂存生成、编译、玩法校验后发布 | 提交 |
-| `config/templates/rust-bin/` | 项目维护的 Rust Result 解码模板 | 提交 |
-| `src/config.rs`、`src/config/` | 默认提供二进制读取、解码和 GAS 编译；包校验、完整业务校验及离线工具由 feature 启用 | 提交 |
-| `src/bin/gas_config.rs` | 由 `luban-config` 启用的 CLI | 提交 |
-| `examples/config_fireball.rs` | 默认可用的火球示例 | 提交 |
-| `config/LICENSE.Luban` | 初始示例文件的上游 MIT 许可证 | 提交 |
-| `config/generated/` | 自动生成的 `mod.rs`、`gas.rs` 等 Rust 模块，无独立 Cargo 清单 | 提交，导表生成 |
-| `config/bin/` | 七张 GAS 表的二进制数据及 `manifest.json` | 忽略，导表生成 |
-| `tools/luban/.cache/` | 三种 Luban 工具的下载归档、已安装工具及临时验证产物 | 忽略 |
+| 路径                                    | 职责                                                                               | Git 管理       |
+| --------------------------------------- | ---------------------------------------------------------------------------------- | -------------- |
+| `config/tables/`                        | 七张 `gas.*.xlsx` 数据表                                                           | 提交           |
+| `config/defines/gas.xml`、`builtin.xml` | GAS 表登记、枚举及 Luban 内置定义                                                  | 提交           |
+| `config/luban.conf`                     | 输入目录、定义文件和导出目标                                                       | 提交           |
+| `config/export.ps1`                     | 项目导表入口，暂存生成、编译、玩法校验后发布                                       | 提交           |
+| `config/templates/rust-bin/`            | 项目维护的 Rust Result 解码模板                                                    | 提交           |
+| `src/config.rs`、`src/config/`          | 默认提供二进制读取、解码和 GAS 编译；包校验、完整业务校验及离线工具由 feature 启用 | 提交           |
+| `src/bin/gas_config.rs`                 | 由 `config-validation` 启用的 CLI                                                  | 提交           |
+| `examples/config_fireball.rs`           | 默认可用的火球示例                                                                 | 提交           |
+| `config/LICENSE.Luban`                  | 初始示例文件的上游 MIT 许可证                                                      | 提交           |
+| `config/generated/`                     | 自动生成的 `mod.rs`、`gas.rs` 等 Rust 模块，无独立 Cargo 清单                      | 提交，导表生成 |
+| `config/bin/`                           | 七张 GAS 表的二进制数据及 `manifest.json`                                          | 忽略，导表生成 |
+| `tools/luban/.cache/`                   | 三种 Luban 工具的下载归档、已安装工具及临时验证产物                                | 忽略           |
 
 首次使用先准备工具链，再导表。以下命令在仓库根目录执行：
 
@@ -41,10 +41,10 @@ pwsh -NoProfile -File config/export.ps1
 不会受到调用者当前工作目录影响；初始入口不提供路径或生成参数覆盖选项。
 生成参数固定为 `-t all -c rust-bin -d bin --strict`，并使用 `config/templates/` 自定义模板。
 脚本先暂存生成结果并提取 Rust 模块，再复制根包的 `src/`、`examples/`、`Cargo.toml`、
-`Cargo.lock` 和候选生成模块组成临时单包项目，格式化后以 `--features luban-config --offline --locked`
+`Cargo.lock` 和候选生成模块组成临时单包项目，格式化后以 `--features config-validation --offline --locked`
 编译真实配置 CLI。新 CLI 生成清单、读取真实二进制并构建 GAS 定义。全部成功后发布代码与数据，
 发布失败恢复原目录；并发导表由排他锁拒绝。原生进程失败保留非零退出码。
-首次导表前可运行 `cargo build --features luban-config` 准备依赖缓存。发布不保证两个目录对并发读取者瞬时切换，
+首次导表前可运行 `cargo build --features config-validation` 准备依赖缓存。发布不保证两个目录对并发读取者瞬时切换，
 导表期间不要启动加载；运行中热更新不在首版范围内。
 
 `luban.conf` 的路径相对于 `config/`：`dataDir` 指向 `tables`，`schemaFiles` 显式列出
@@ -66,7 +66,7 @@ Cargo 的 `target/` 构建缓存、`config/bin/` 和工具 `.cache/` 均由 Git 
 
 本仓库是 GAS 库，二进制先输出到 `config/bin/`。具体游戏负责将需要的数据部署到自身的
 资源目录，例如 `assets/config/`；当前导表脚本不承担游戏资源部署。
-默认运行时只需 `.bytes`，不读取 `manifest.json`；启用 `luban-config` 时需一并部署匹配清单。
+默认运行时只需 `.bytes`，不读取 `manifest.json`；启用 `config-validation` 时需一并部署匹配清单。
 导表入口始终启用该 feature，在发布前完成包校验与业务校验，生成协议和模板保持一致。
 
 ## 初始示例来源
@@ -88,11 +88,11 @@ Cargo 的 `target/` 构建缓存、`config/bin/` 和工具 `.cache/` 均由 Git 
 唯一的机器可读版本来源是
 [`toolchain.lock.json`](../tools/luban/toolchain.lock.json)：
 
-| 组件 | 固定值或要求 |
-| --- | --- |
-| Luban | `5.0.0`，源码提交 `52d329fb93be79810ed090f489ba4bf3821c4e4c` |
-| Luban.Agent | `5.0.0`，与 Luban 相同源码提交，独立发行包与 SHA-256 |
-| Luban.Mcp | 发行版本 `5.0.0`，与 Luban 相同源码提交，独立发行包与 SHA-256 |
+| 组件              | 固定值或要求                                                              |
+| ----------------- | ------------------------------------------------------------------------- |
+| Luban             | `5.0.0`，源码提交 `52d329fb93be79810ed090f489ba4bf3821c4e4c`              |
+| Luban.Agent       | `5.0.0`，与 Luban 相同源码提交，独立发行包与 SHA-256                      |
+| Luban.Mcp         | 发行版本 `5.0.0`，与 Luban 相同源码提交，独立发行包与 SHA-256             |
 | 本机 .NET Runtime | PATH 中第一个 `dotnet.exe` 可用的 `Microsoft.NETCore.App >= 8.0.0` 正式版 |
 
 锁文件的 `luban`、`agent` 和 `mcp` 分别记录三个发行包的固定 URL、安装路径及 GitHub 官方
@@ -110,13 +110,13 @@ Luban.Mcp 的上游 DLL 产品版本为 `1.0.0+52d329fb93be79810ed090f489ba4bf38
 
 ## 脚本职责
 
-| 文件 | 职责 | 使用时机 |
-| --- | --- | --- |
-| [`config/export.ps1`](../config/export.ps1) | 暂存生成、编译、完整校验和发布，并负责子进程退出码、受限路径操作和双目录回滚 | 日常导表 |
-| [`setup.ps1`](../tools/luban/setup.ps1) | 检查本机运行时，下载、校验并安装三种工具，验证版本与 Agent 能力查询 | 首次使用、清理缓存后或升级工具时 |
-| [`run.ps1`](../tools/luban/run.ps1) | 使用本机运行时启动 Luban，传递参数并保留退出码 | 由项目入口调用，也可手动查询帮助或诊断 |
-| [`mcp.ps1`](../tools/luban/mcp.ps1) | 启动固定版本的 Luban.Mcp stdio 服务，为其指定 Luban 与 Agent DLL | 由 Codex MCP 客户端启动 |
-| [`resolve-dotnet.ps1`](../tools/luban/resolve-dotnet.ps1) | 从 PATH 查找 dotnet，检查最低运行时版本，返回可执行文件路径 | 由工具脚本共用，通常无需手动执行 |
+| 文件                                                      | 职责                                                                         | 使用时机                               |
+| --------------------------------------------------------- | ---------------------------------------------------------------------------- | -------------------------------------- |
+| [`config/export.ps1`](../config/export.ps1)               | 暂存生成、编译、完整校验和发布，并负责子进程退出码、受限路径操作和双目录回滚 | 日常导表                               |
+| [`setup.ps1`](../tools/luban/setup.ps1)                   | 检查本机运行时，下载、校验并安装三种工具，验证版本与 Agent 能力查询          | 首次使用、清理缓存后或升级工具时       |
+| [`run.ps1`](../tools/luban/run.ps1)                       | 使用本机运行时启动 Luban，传递参数并保留退出码                               | 由项目入口调用，也可手动查询帮助或诊断 |
+| [`mcp.ps1`](../tools/luban/mcp.ps1)                       | 启动固定版本的 Luban.Mcp stdio 服务，为其指定 Luban 与 Agent DLL             | 由 Codex MCP 客户端启动                |
+| [`resolve-dotnet.ps1`](../tools/luban/resolve-dotnet.ps1) | 从 PATH 查找 dotnet，检查最低运行时版本，返回可执行文件路径                  | 由工具脚本共用，通常无需手动执行       |
 
 ## 准备工具链与缓存
 
@@ -181,13 +181,13 @@ Codex 加载该项目配置后，通过 `pwsh` 启动 [`mcp.ps1`](../tools/luban
 
 当前启用以下工具：
 
-| 工具 | 用途 |
-| --- | --- |
-| `list_tables` | 列出配置表 |
-| `get_schema` | 查询完整结构 |
-| `describe` | 查询指定表或类型 |
-| `validate` | 加载并校验配置 |
-| `generate` | 导出配置代码和二进制 |
+| 工具          | 用途                 |
+| ------------- | -------------------- |
+| `list_tables` | 列出配置表           |
+| `get_schema`  | 查询完整结构         |
+| `describe`    | 查询指定表或类型     |
+| `validate`    | 加载并校验配置       |
+| `generate`    | 导出配置代码和二进制 |
 
 启动器将服务的工作目录固定为仓库根目录，因此查询和校验可统一传入
 `conf: "config/luban.conf"`、`target: "all"`；查询技能表时，向 `describe`
@@ -217,14 +217,14 @@ MCP 的原始 `generate` 仅用于诊断，不能替代 Rust 编译、包清单�
 
 本项目在 `.agents/skills/` 安装六个 Luban 官方 skill，供 Codex 按任务选择使用：
 
-| Skill | 适用任务 |
-| --- | --- |
-| [`luban-excel-fill`](../.agents/skills/luban-excel-fill/SKILL.md) | 填写或修改 Excel，保留表头、类型、主键和分组语义 |
-| [`luban-add-table`](../.agents/skills/luban-add-table/SKILL.md) | 新增数据表、登记结构并导表 |
-| [`luban-schema-design`](../.agents/skills/luban-schema-design/SKILL.md) | 设计 Bean、枚举、集合和多态配置 |
-| [`luban-validator`](../.agents/skills/luban-validator/SKILL.md) | 添加引用、范围、大小等校验规则 |
-| [`luban-generate-debug`](../.agents/skills/luban-generate-debug/SKILL.md) | 根据结构化错误定位表格或生成问题 |
-| [`luban-runtime-load`](../.agents/skills/luban-runtime-load/SKILL.md) | 对接生成代码和配置读取端 |
+| Skill                                                                     | 适用任务                                         |
+| ------------------------------------------------------------------------- | ------------------------------------------------ |
+| [`luban-excel-fill`](../.agents/skills/luban-excel-fill/SKILL.md)         | 填写或修改 Excel，保留表头、类型、主键和分组语义 |
+| [`luban-add-table`](../.agents/skills/luban-add-table/SKILL.md)           | 新增数据表、登记结构并导表                       |
+| [`luban-schema-design`](../.agents/skills/luban-schema-design/SKILL.md)   | 设计 Bean、枚举、集合和多态配置                  |
+| [`luban-validator`](../.agents/skills/luban-validator/SKILL.md)           | 添加引用、范围、大小等校验规则                   |
+| [`luban-generate-debug`](../.agents/skills/luban-generate-debug/SKILL.md) | 根据结构化错误定位表格或生成问题                 |
+| [`luban-runtime-load`](../.agents/skills/luban-runtime-load/SKILL.md)     | 对接生成代码和配置读取端                         |
 
 来源为 [Luban 官方 ai/skills](https://github.com/focus-creative-games/luban/tree/3b6641410dcdfdbe4143b12313ff30c2e69d3d6a/ai/skills)，
 固定提交 `3b6641410dcdfdbe4143b12313ff30c2e69d3d6a`。已逐文件核对六个上游 `SKILL.md` 的
@@ -255,7 +255,7 @@ Git blob，与工具链 v5.0.0 的提交 `52d329fb93be79810ed090f489ba4bf3821c4e
 - 上游 Schema 的继承/多态建议只用于评估配置表达方式；运行时仍遵循 Bevy ECS、
   Component/Resource/System 与现有 GAS 架构，不据此改造为 OOP。`luban-runtime-load` 的
   C#/Unity 示例只供概念参考，实际使用 Rust；解码和适配实现位于 `src/config/`，默认可用。
-  `luban-config` 启用包校验、完整业务校验和离线工具。当前模板不开放继承、多态和 flags 枚举。
+  `config-validation` 启用包校验、完整业务校验和离线工具。当前模板不开放继承、多态和 flags 枚举。
 - 安装或解释 skill 本身不需要修改表格或生成代码；实际任务涉及配置源文件变更时，
   按已有导表流程更新对应产物，不能通过削弱校验掩盖错误数据。
 
@@ -272,7 +272,6 @@ Codex 会从项目 `.agents/skills/` 发现 skill 的名称和描述，在任务
 `.agents/` 不再被 Git 忽略；六个 skill、项目上下文说明和许可证应一起纳入版本管理。
 提交后，其他工作目录或电脑克隆仓库即可获得这些 skill，无需单独安装。
 升级时对比上游规则与固定工具链的兼容性，保留本地项目说明，并更新本节来源记录。
-
 
 ## 工具验证与运行时接入
 

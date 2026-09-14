@@ -192,16 +192,16 @@ src/
 `config/` 拥有配置输入和项目导表入口，`tools/luban/` 拥有 Luban、Luban.Agent 与 Luban.Mcp 的版本、准备和启动逻辑。
 详细路径、日常命令及示例来源见 [19 — Luban 配置工程与工具链](./19-luban-toolchain.md)。
 
-| 路径 | 维护边界 |
-| --- | --- |
-| `config/tables/`、`config/defines/` | 人工维护的 Excel 数据及结构定义，纳入 Git |
-| `config/luban.conf`、`config/export.ps1` | 项目输入和输出约定、严格导表入口，纳入 Git |
-| `config/templates/rust-bin/` | 手写 Rust 生成模板，纳入 Git；模板变更后重新导表 |
-| `config/generated/` | 自动生成的 `mod.rs`、`gas.rs` 等 Rust 模块，纳入 Git，不手动修改 |
-| `src/config.rs`、`src/config/` | 默认提供二进制读取、解码和 GAS 编译；feature 控制哈希、清单与包校验、完整业务校验和离线工具 |
-| `config/bin/` | 自动生成的二进制，Git 忽略，不放手写文件 |
-| `tools/luban/` | 工具链锁文件、Luban 生成器入口、MCP 服务入口和本机 .NET 环境检查脚本 |
-| `tools/luban/.cache/` | 可重新下载的三种 Luban 工具归档、已安装工具及临时验证产物，Git 忽略 |
+| 路径                                     | 维护边界                                                                                    |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `config/tables/`、`config/defines/`      | 人工维护的 Excel 数据及结构定义，纳入 Git                                                   |
+| `config/luban.conf`、`config/export.ps1` | 项目输入和输出约定、严格导表入口，纳入 Git                                                  |
+| `config/templates/rust-bin/`             | 手写 Rust 生成模板，纳入 Git；模板变更后重新导表                                            |
+| `config/generated/`                      | 自动生成的 `mod.rs`、`gas.rs` 等 Rust 模块，纳入 Git，不手动修改                            |
+| `src/config.rs`、`src/config/`           | 默认提供二进制读取、解码和 GAS 编译；feature 控制哈希、清单与包校验、完整业务校验和离线工具 |
+| `config/bin/`                            | 自动生成的二进制，Git 忽略，不放手写文件                                                    |
+| `tools/luban/`                           | 工具链锁文件、Luban 生成器入口、MCP 服务入口和本机 .NET 环境检查脚本                        |
+| `tools/luban/.cache/`                    | 可重新下载的三种 Luban 工具归档、已安装工具及临时验证产物，Git 忽略                         |
 
 `.codex/config.toml` 保存项目级 Luban MCP 注册与启用工具列表，纳入 Git；
 `tools/luban/mcp.ps1` 由 Codex 启动 stdio 服务，Agent 包作为该服务的查询和校验后端。
@@ -211,9 +211,9 @@ src/
 
 `src/lib.rs` 使用 `pub mod config;` 无条件暴露配置入口。
 `src/config.rs` 是门面，声明 `error`、`decoding`、`compiler`、`catalog`、`loading` 和 `package`，
-以及受 `luban-config` 控制的 `inspection`，并通过外部路径加载
+以及受 `config-validation` 控制的 `inspection`，并通过外部路径加载
 `config/generated/mod.rs` 为 `generated` 模块。
-默认关闭的 `luban-config` 控制包哈希、清单解析与校验、完整业务校验和离线工具。
+默认关闭的 `config-validation` 控制包哈希、清单解析与校验、完整业务校验和离线工具。
 默认 `read_package` 只按生成表名单读取受大小限制的 `.bytes`，不要求或检查清单；
 解码和运行时必要构建约束仍保留，配置运行时与生成模块不受 feature 控制。
 配置层将表数据转换为共享 GAS 定义，`src/gas/` 不反向引用生成表类型。
@@ -223,17 +223,17 @@ src/
 
 以下路径相对于 `src/config/`：
 
-| 文件 | 主要所有权 |
-| --- | --- |
-| `error.rs`、`error/definition.rs` | 配置领域共用的 `ConfigError`，加载、包读取、编译和授予直接依赖它 |
-| `loading/files.rs` | 调用 `read_package`，将同次读取的字节移交生成表解码器 |
-| `inspection.rs`、`inspection/report.rs` | feature 启用时的完整校验与技能文本预览，不承担文件读取 |
-| `compiler/build.rs` | 启动编译编排、注册资源借用与归还、最终 catalog 组装 |
-| `compiler/registration.rs` | 标签/属性的确定顺序登记、现有注册状态检查与标签引用解析 |
-| `compiler/effects.rs`、`compiler/targeting.rs` | 效果与修改器、目标管线的运行时定义构建，以及必要构建检查 |
-| `compiler/abilities.rs` | 技能定义、共享效果引用和有序任务时间线 |
-| `compiler/magnitude.rs`、`compiler/numeric.rs` | 线性幅度求值及运行时计算器、编译与校验共用的数值纯函数 |
-| `compiler/validation.rs` | 仅在 feature 启用时执行的完整制作规则校验 |
+| 文件                                           | 主要所有权                                                       |
+| ---------------------------------------------- | ---------------------------------------------------------------- |
+| `error.rs`、`error/definition.rs`              | 配置领域共用的 `ConfigError`，加载、包读取、编译和授予直接依赖它 |
+| `loading/files.rs`                             | 调用 `read_package`，将同次读取的字节移交生成表解码器            |
+| `inspection.rs`、`inspection/report.rs`        | feature 启用时的完整校验与技能文本预览，不承担文件读取           |
+| `compiler/build.rs`                            | 启动编译编排、注册资源借用与归还、最终 catalog 组装              |
+| `compiler/registration.rs`                     | 标签/属性的确定顺序登记、现有注册状态检查与标签引用解析          |
+| `compiler/effects.rs`、`compiler/targeting.rs` | 效果与修改器、目标管线的运行时定义构建，以及必要构建检查         |
+| `compiler/abilities.rs`                        | 技能定义、共享效果引用和有序任务时间线                           |
+| `compiler/magnitude.rs`、`compiler/numeric.rs` | 线性幅度求值及运行时计算器、编译与校验共用的数值纯函数           |
+| `compiler/validation.rs`                       | 仅在 feature 启用时执行的完整制作规则校验                        |
 
 编译器按登记、效果、目标、技能的顺序构建，不把 World 访问放入数值纯函数。
 共用数值判断不改变校验策略：运行时必要检查始终执行，制作限制和全等级预演仍由 feature 控制。
@@ -243,15 +243,15 @@ src/
 
 ## 顶层门面和公开路径
 
-| 文件 | 职责 |
-| --- | --- |
-| `src/lib.rs` | crate 文档、`gas` 与 `config` 命名空间、Random/UniqueName 和 crate-root 兼容重导出 |
-| `src/gas.rs` | 声明 GAS 领域模块并显式聚合公共 API |
-| `src/config.rs` | 配置门面，显式重导出编译、加载与授予接口，声明生成模块，按 feature 重导出摘要、完整校验和离线工具 |
-| `src/gas/<domain>.rs` | 声明私有实现子模块，显式维护该领域的 `pub use` / `pub(crate) use` |
-| `src/gas/prelude.rs` | 只重导出高频 Plugin、Component、定义和 SystemParam |
-| `src/gas/runtime_plugin.rs` | Plugin 组合、Resource 初始化和 `FixedUpdate` 阶段排序 |
-| `src/gas/settings.rs` | 编译期容量和递归安全上限 |
+| 文件                        | 职责                                                                                              |
+| --------------------------- | ------------------------------------------------------------------------------------------------- |
+| `src/lib.rs`                | crate 文档、`gas` 与 `config` 命名空间、Random/UniqueName 和 crate-root 兼容重导出                |
+| `src/gas.rs`                | 声明 GAS 领域模块并显式聚合公共 API                                                               |
+| `src/config.rs`             | 配置门面，显式重导出编译、加载与授予接口，声明生成模块，按 feature 重导出摘要、完整校验和离线工具 |
+| `src/gas/<domain>.rs`       | 声明私有实现子模块，显式维护该领域的 `pub use` / `pub(crate) use`                                 |
+| `src/gas/prelude.rs`        | 只重导出高频 Plugin、Component、定义和 SystemParam                                                |
+| `src/gas/runtime_plugin.rs` | Plugin 组合、Resource 初始化和 `FixedUpdate` 阶段排序                                             |
+| `src/gas/settings.rs`       | 编译期容量和递归安全上限                                                                          |
 
 公开路径分三层：
 
@@ -269,22 +269,22 @@ src/
 
 ### Tags、Attributes 与 Modifiers
 
-| 文件 | 主要所有权 |
-| --- | --- |
-| `gameplay_tags/tag.rs` | `GameplayTag` 值类型和注册错误 |
-| `gameplay_tags/bitset.rs` | 固定容量位集和继承位操作 |
-| `gameplay_tags/registry.rs` | 名称注册、父标签递归注册和 `SystemParam` 注册入口 |
-| `gameplay_tags/container.rs` | 每实体显式/汇总引用计数、容量预检与层级 Tag 位图 |
-| `gameplay_tags/requirements.rs` | required/blocked/ignored 条件匹配 |
-| `attributes/registry.rs` | Attribute ID、Region、Location 和注册表 |
-| `attributes/aggregation.rs` | `Aggregator` 与 AttributeSet 内部稀疏聚合器集合 |
-| `attributes/snapshot.rs` | 单属性与整套来源快照 |
-| `attributes/attribute_set/state.rs` | AttributeSet 存储、dirty 位图和错误 |
-| `attributes/attribute_set/mutation.rs` | 初始化、Instant/Duration 修改、成本数值预演和来源清理 |
-| `attributes/attribute_set/recalculation.rs` | 按需/批量重算与末尾系统 |
-| `modifiers/definition.rs` | Modifier 操作、幅度和自定义计算 trait |
-| `modifiers/context.rs` | 与具体 Effect runtime 无关的只读求值接口 |
-| `modifiers/spec.rs` | 求值后的 Spec、Applied 值和中立来源 ID |
+| 文件                                        | 主要所有权                                            |
+| ------------------------------------------- | ----------------------------------------------------- |
+| `gameplay_tags/tag.rs`                      | `GameplayTag` 值类型和注册错误                        |
+| `gameplay_tags/bitset.rs`                   | 固定容量位集和继承位操作                              |
+| `gameplay_tags/registry.rs`                 | 名称注册、父标签递归注册和 `SystemParam` 注册入口     |
+| `gameplay_tags/container.rs`                | 每实体显式/汇总引用计数、容量预检与层级 Tag 位图      |
+| `gameplay_tags/requirements.rs`             | required/blocked/ignored 条件匹配                     |
+| `attributes/registry.rs`                    | Attribute ID、Region、Location 和注册表               |
+| `attributes/aggregation.rs`                 | `Aggregator` 与 AttributeSet 内部稀疏聚合器集合       |
+| `attributes/snapshot.rs`                    | 单属性与整套来源快照                                  |
+| `attributes/attribute_set/state.rs`         | AttributeSet 存储、dirty 位图和错误                   |
+| `attributes/attribute_set/mutation.rs`      | 初始化、Instant/Duration 修改、成本数值预演和来源清理 |
+| `attributes/attribute_set/recalculation.rs` | 按需/批量重算与末尾系统                               |
+| `modifiers/definition.rs`                   | Modifier 操作、幅度和自定义计算 trait                 |
+| `modifiers/context.rs`                      | 与具体 Effect runtime 无关的只读求值接口              |
+| `modifiers/spec.rs`                         | 求值后的 Spec、Applied 值和中立来源 ID                |
 
 `modifiers` 可以引用 Attribute ID/快照和 Tag 容器作为求值契约，但不得依赖
 `EffectContext`、`ActiveEffectHandle` 或 Active Effect 存储。Attributes 只保存
@@ -292,23 +292,23 @@ src/
 
 ### Gameplay Effects
 
-| 文件 | 主要所有权 |
-| --- | --- |
-| `effect_system_params.rs` | Effect 准备、执行、移除和收敛需要的窄 ECS 访问集合 |
-| `gameplay_effect/definition.rs` | 不可变 Effect 定义、唯一 StackingPolicy 和 builder/getter |
-| `gameplay_effect/context.rs` | Effect payload 与 Modifier 求值上下文适配 |
-| `gameplay_effect/timing.rs` | Duration/Period 定义值 |
-| `gameplay_effect/stacking.rs` | StackingPolicy 及子策略 |
-| `gameplay_effect/effect_tags.rs` | Effect 标签、私有 source/target 条件对和公开链式 builder |
-| `gameplay_effect_spec.rs` | 保留 definition `Arc`，捕获 Modifier/Duration/Period 求值结果；不复制 StackingPolicy |
-| `active_gameplay_effect/state.rs` | Handle、稳定 slot、Active Effect 状态和目标 Component |
-| `active_gameplay_effect/planning.rs` | 应用错误、Plan、prepare、修饰器预演桥接和错误映射 |
-| `active_gameplay_effect/application.rs` | 同步应用入口、条件、概率、免疫和堆叠选择 |
-| `active_gameplay_effect/execution.rs` | Plan 重验证、Instant/Stack/Create 和回滚 |
-| `active_gameplay_effect/modifiers.rs` | 即时/持续属性修改，以及叠层和到期减层共用的修饰器刷新 |
-| `active_gameplay_effect/removal.rs` | 显式/按标签移除和 Effect 状态清理 |
-| `active_gameplay_effect/requirements.rs` | ongoing/removal 条件和固定点收敛 |
-| `active_gameplay_effect/ticking.rs` | Duration 与 Period fixed-tick 系统 |
+| 文件                                     | 主要所有权                                                                           |
+| ---------------------------------------- | ------------------------------------------------------------------------------------ |
+| `effect_system_params.rs`                | Effect 准备、执行、移除和收敛需要的窄 ECS 访问集合                                   |
+| `gameplay_effect/definition.rs`          | 不可变 Effect 定义、唯一 StackingPolicy 和 builder/getter                            |
+| `gameplay_effect/context.rs`             | Effect payload 与 Modifier 求值上下文适配                                            |
+| `gameplay_effect/timing.rs`              | Duration/Period 定义值                                                               |
+| `gameplay_effect/stacking.rs`            | StackingPolicy 及子策略                                                              |
+| `gameplay_effect/effect_tags.rs`         | Effect 标签、私有 source/target 条件对和公开链式 builder                             |
+| `gameplay_effect_spec.rs`                | 保留 definition `Arc`，捕获 Modifier/Duration/Period 求值结果；不复制 StackingPolicy |
+| `active_gameplay_effect/state.rs`        | Handle、稳定 slot、Active Effect 状态和目标 Component                                |
+| `active_gameplay_effect/planning.rs`     | 应用错误、Plan、prepare、修饰器预演桥接和错误映射                                    |
+| `active_gameplay_effect/application.rs`  | 同步应用入口、条件、概率、免疫和堆叠选择                                             |
+| `active_gameplay_effect/execution.rs`    | Plan 重验证、Instant/Stack/Create 和回滚                                             |
+| `active_gameplay_effect/modifiers.rs`    | 即时/持续属性修改，以及叠层和到期减层共用的修饰器刷新                                |
+| `active_gameplay_effect/removal.rs`      | 显式/按标签移除和 Effect 状态清理                                                    |
+| `active_gameplay_effect/requirements.rs` | ongoing/removal 条件和固定点收敛                                                     |
+| `active_gameplay_effect/ticking.rs`      | Duration 与 Period fixed-tick 系统                                                   |
 
 Effect 公开 mutation API 接收 `EffectSystemParams`。该参数不包含 ASC、Active Ability 或
 `Commands`；不要为了方便把 Effect API 再扩回完整 `AbilitySystemParams`。
@@ -318,24 +318,24 @@ Effect 公开 mutation API 接收 `EffectSystemParams`。该参数不包含 ASC�
 `gameplay_abilities` 拥有可共享定义和运行时数据类型；`ability_system` 拥有对这些类型执行激活、
 commit 和生命周期编排的流程：
 
-| 文件 | 主要所有权 |
-| --- | --- |
-| `gameplay_ability.rs` | AbilityTags、startup task、cost/cooldown/activation Effect 定义 |
-| `gameplay_ability_spec.rs` | 授予 Handle、level 和 active count |
-| `activation_data.rs` | 唯一组合 source、targets 与传播 context 的不可变激活值 |
-| `ability_chain.rs`、`activation_context.rs` | 请求与运行实例共用的链保护、传播上下文，以及 Ability → Effect payload 转换 |
-| `active_gameplay_ability/state.rs` | 只持有 spec handle、共享激活数据和状态的活跃实例 |
-| `ability_task/context.rs` | 公开的 Task 共享 source/spec handle/level 轻量执行上下文；目标由父活跃实例持有 |
-| `ability_task/definition.rs` | Instant/WaitTicks 定义和完成动作定义 |
-| `ability_task/state.rs` | 运行时 Task Component 与 action-only 完成枚举 |
-| `ability_task/completion.rs` | 使用轻量 context 与父 Active targets 向 Event/Effect/Ability 请求分派完成动作 |
-| `ability_task/ticking.rs` | Task 稳定推进与清理 |
-| `ability_system/component.rs` | ASC 规格存储和显式 `GameplayAbilitySystemBundle` |
-| `ability_system/params.rs` | `AbilitySystemParams` 和同 batch pending overlay |
-| `ability_system/activation/*` | 错误、预检、startup 创建和同步/batch 激活 |
-| `ability_system/commit.rs` | cost/cooldown prepare、逐笔支付条件检查和执行 |
-| `ability_system/lifecycle.rs` | end、cancel、回滚和 Cleanup system |
-| `ability_input/bindings.rs` | 游戏逻辑动作到同实体 ASC 的技能 Handle 映射、稳定遍历和绑定错误 |
+| 文件                                        | 主要所有权                                                                     |
+| ------------------------------------------- | ------------------------------------------------------------------------------ |
+| `gameplay_ability.rs`                       | AbilityTags、startup task、cost/cooldown/activation Effect 定义                |
+| `gameplay_ability_spec.rs`                  | 授予 Handle、level 和 active count                                             |
+| `activation_data.rs`                        | 唯一组合 source、targets 与传播 context 的不可变激活值                         |
+| `ability_chain.rs`、`activation_context.rs` | 请求与运行实例共用的链保护、传播上下文，以及 Ability → Effect payload 转换     |
+| `active_gameplay_ability/state.rs`          | 只持有 spec handle、共享激活数据和状态的活跃实例                               |
+| `ability_task/context.rs`                   | 公开的 Task 共享 source/spec handle/level 轻量执行上下文；目标由父活跃实例持有 |
+| `ability_task/definition.rs`                | Instant/WaitTicks 定义和完成动作定义                                           |
+| `ability_task/state.rs`                     | 运行时 Task Component 与 action-only 完成枚举                                  |
+| `ability_task/completion.rs`                | 使用轻量 context 与父 Active targets 向 Event/Effect/Ability 请求分派完成动作  |
+| `ability_task/ticking.rs`                   | Task 稳定推进与清理                                                            |
+| `ability_system/component.rs`               | ASC 规格存储和显式 `GameplayAbilitySystemBundle`                               |
+| `ability_system/params.rs`                  | `AbilitySystemParams` 和同 batch pending overlay                               |
+| `ability_system/activation/*`               | 错误、预检、startup 创建和同步/batch 激活                                      |
+| `ability_system/commit.rs`                  | cost/cooldown prepare、逐笔支付条件检查和执行                                  |
+| `ability_system/lifecycle.rs`               | end、cancel、回滚和 Cleanup system                                             |
+| `ability_input/bindings.rs`                 | 游戏逻辑动作到同实体 ASC 的技能 Handle 映射、稳定遍历和绑定错误                |
 
 `AbilitySystemParams` 内嵌 `EffectSystemParams`，再增加 `Commands`、ASC、来源快照、活跃 Ability
 查询和内部 pending overlay。Effect 实现不得反向导入 Ability System。
@@ -350,18 +350,18 @@ commit 和生命周期编排的流程：
 
 ### Targeting 与统一 Execution
 
-| 文件 | 主要所有权 |
-| --- | --- |
-| `ability_target_data.rs` | 稳定排序的 Hit 与多目标结果 |
-| `activation_targets.rs` | single/acquired 唯一激活目标值、空数据错误和统一目标遍历 |
-| `targeting_definition.rs` | Targetable、合法操作管线和定义错误 |
-| `acquisition.rs` | 同步候选查询、选择、过滤、排序和限制 |
-| `targeting_queue/request.rs` | 请求输入、continuation、ID 和结果 Event |
-| `targeting_queue/queue.rs` | FIFO Resource 与入队 API |
-| `targeting_queue/processing.rs` | 整批抓取、抓取目标转换、continuation 便捷入队和结果通知 |
-| `gameplay_execution/request.rs` | 只以 handle + activation data 保存 Ability 请求的具体请求类型、Effect 请求与统一枚举 |
-| `gameplay_execution/queue.rs` | 跨类型 FIFO、便捷参数到 `AbilityActivationData` 的组装和 Ability chain ID 分配 |
-| `gameplay_execution/resolver.rs` | 完整 drain、逐请求 Requirement 收敛和 System 包装 |
+| 文件                             | 主要所有权                                                                           |
+| -------------------------------- | ------------------------------------------------------------------------------------ |
+| `ability_target_data.rs`         | 稳定排序的 Hit 与多目标结果                                                          |
+| `activation_targets.rs`          | single/acquired 唯一激活目标值、空数据错误和统一目标遍历                             |
+| `targeting_definition.rs`        | Targetable、合法操作管线和定义错误                                                   |
+| `acquisition.rs`                 | 同步候选查询、选择、过滤、排序和限制                                                 |
+| `targeting_queue/request.rs`     | 请求输入、continuation、ID 和结果 Event                                              |
+| `targeting_queue/queue.rs`       | FIFO Resource 与入队 API                                                             |
+| `targeting_queue/processing.rs`  | 整批抓取、抓取目标转换、continuation 便捷入队和结果通知                              |
+| `gameplay_execution/request.rs`  | 只以 handle + activation data 保存 Ability 请求的具体请求类型、Effect 请求与统一枚举 |
+| `gameplay_execution/queue.rs`    | 跨类型 FIFO、便捷参数到 `AbilityActivationData` 的组装和 Ability chain ID 分配       |
+| `gameplay_execution/resolver.rs` | 完整 drain、逐请求 Requirement 收敛和 System 包装                                    |
 
 具体请求由 `gameplay_execution` 拥有。Ability System 和 Gameplay Effects 门面仅为兼容调用方
 重导出各自请求类型，不再保存重复请求文件。
@@ -447,18 +447,18 @@ tests/
 
 下表的源码路径相对于 `src/gas/`，测试路径相对于 `tests/gas_test/`；crate 根门面另行标明。
 
-| 修改目标 | 首选源码位置 | 首选测试 | 同步文档 |
-| --- | --- | --- | --- |
-| Tag 注册/匹配/引用计数 | `gameplay_tags/` | `gameplay_tags_test.rs` | 03 |
-| Attribute 注册/存储/重算 | `attributes/` | `attributes_test.rs` | 04 |
-| Modifier 求值/聚合顺序 | `modifiers/`、`attributes/aggregation.rs` | `attributes_test.rs`、`runtime_paths_test.rs` | 05 |
-| Effect 应用/堆叠/条件/tick | `gameplay_effects/` | `effects_test/*` | 06 |
-| Ability 定义/实例/task | `gameplay_abilities/` | `abilities_test/*` | 07、08 |
-| ASC 激活/commit/lifecycle | `ability_system/` | `abilities_test/*` | 09 |
-| 输入动作绑定、重绑和清理 | `ability_input/bindings.rs` | `ability_input_test.rs` | 18 |
-| 目标管线与队列 | `gameplay_targeting/` | `gameplay_targeting_test.rs` | 15 |
-| 统一 FIFO 与阶段可见性 | `gameplay_execution/`、`runtime_plugin.rs` | `queues_test.rs`、`runtime_paths_test.rs` | 02、16 |
-| 公共导出/prelude | 各门面、`src/gas.rs`、`src/lib.rs`、`prelude.rs` | 全目标编译/rustdoc | 11、17 |
+| 修改目标                   | 首选源码位置                                     | 首选测试                                      | 同步文档 |
+| -------------------------- | ------------------------------------------------ | --------------------------------------------- | -------- |
+| Tag 注册/匹配/引用计数     | `gameplay_tags/`                                 | `gameplay_tags_test.rs`                       | 03       |
+| Attribute 注册/存储/重算   | `attributes/`                                    | `attributes_test.rs`                          | 04       |
+| Modifier 求值/聚合顺序     | `modifiers/`、`attributes/aggregation.rs`        | `attributes_test.rs`、`runtime_paths_test.rs` | 05       |
+| Effect 应用/堆叠/条件/tick | `gameplay_effects/`                              | `effects_test/*`                              | 06       |
+| Ability 定义/实例/task     | `gameplay_abilities/`                            | `abilities_test/*`                            | 07、08   |
+| ASC 激活/commit/lifecycle  | `ability_system/`                                | `abilities_test/*`                            | 09       |
+| 输入动作绑定、重绑和清理   | `ability_input/bindings.rs`                      | `ability_input_test.rs`                       | 18       |
+| 目标管线与队列             | `gameplay_targeting/`                            | `gameplay_targeting_test.rs`                  | 15       |
+| 统一 FIFO 与阶段可见性     | `gameplay_execution/`、`runtime_plugin.rs`       | `queues_test.rs`、`runtime_paths_test.rs`     | 02、16   |
+| 公共导出/prelude           | 各门面、`src/gas.rs`、`src/lib.rs`、`prelude.rs` | 全目标编译/rustdoc                            | 11、17   |
 
 ## 何时继续拆文件
 

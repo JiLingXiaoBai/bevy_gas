@@ -1,22 +1,22 @@
 //! Bounded binary loading with optional package integrity validation.
 
 use super::ConfigError;
-#[cfg(feature = "luban-config")]
+#[cfg(feature = "config-validation")]
 use super::generated::SCHEMA_PARTS;
 use super::generated::TABLE_FILES;
 
 mod files;
-#[cfg(feature = "luban-config")]
+#[cfg(feature = "config-validation")]
 mod hashes;
-#[cfg(feature = "luban-config")]
+#[cfg(feature = "config-validation")]
 mod manifest;
 
-#[cfg(feature = "luban-config")]
+#[cfg(feature = "config-validation")]
 pub use files::MAX_MANIFEST_BYTES;
-#[cfg(not(feature = "luban-config"))]
+#[cfg(not(feature = "config-validation"))]
 pub use files::read_package;
 pub use files::{MAX_FILE_BYTES, MAX_PACKAGE_BYTES};
-#[cfg(feature = "luban-config")]
+#[cfg(feature = "config-validation")]
 pub use hashes::package_schema_hash;
-#[cfg(feature = "luban-config")]
+#[cfg(feature = "config-validation")]
 pub use manifest::{read_package, write_package_manifest};
