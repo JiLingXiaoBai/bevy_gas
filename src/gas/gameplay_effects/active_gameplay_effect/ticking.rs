@@ -1,8 +1,8 @@
 use super::super::gameplay_effect::StackExpirationPolicy;
 use super::super::gameplay_effect_spec::EffectDurationTicksSpec;
+use super::lifecycle::{EffectCleanupResources, cleanup_effect_state, force_remove_effect};
 use super::modifiers::{apply_instant_modifiers, refresh_duration_modifiers};
 use super::planning::GameplayEffectApplicationError;
-use super::removal::{EffectCleanupResources, cleanup_effect_state, force_remove_effect};
 use super::state::ActiveGameplayEffects;
 use crate::attributes::{AttributeIdManager, AttributeSet};
 use crate::gameplay_tags::{GameplayTagContainer, GameplayTagManager};

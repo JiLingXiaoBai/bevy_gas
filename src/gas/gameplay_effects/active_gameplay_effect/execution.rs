@@ -1,16 +1,16 @@
 use super::super::EffectSystemParams;
 use super::super::gameplay_effect::{StackDurationPolicy, StackPeriodPolicy};
 use super::super::gameplay_effect_spec::{EffectDurationTicksSpec, GameplayEffectSpec};
-use super::modifiers::{
-    apply_duration_modifiers, apply_instant_modifiers, refresh_duration_modifiers,
+use super::lifecycle::{
+    EffectCleanupResources, force_remove_effect, install_effect_contributions,
+    validate_effect_cleanup,
 };
+use super::modifiers::{apply_instant_modifiers, refresh_duration_modifiers};
 use super::planning::{
     GameplayEffectApplicationError, GameplayEffectApplicationKind, GameplayEffectApplicationPlan,
     map_attribute_set_error,
 };
-use super::removal::{
-    EffectCleanupResources, remove_collected_active_effects_for_params, validate_effect_cleanup,
-};
+use super::removal::remove_collected_active_effects_for_params;
 use super::requirements::resolve_active_effect_tag_requirements_if_dirty;
 use super::state::{ActiveEffectHandle, ActiveGameplayEffect, ActiveGameplayEffects};
 use crate::attributes::{AttributeIdManager, AttributeSet};
@@ -95,8 +95,11 @@ pub(super) fn validate_effect_execution_requirements(
     tag_query: &Query<&mut GameplayTagContainer>,
     active_effect_query: &Query<&ActiveGameplayEffects>,
 ) -> Result<(), GameplayEffectApplicationError> {
-    if !spec.get_duration_spec().is_instant() && active_effect_query.get(target).is_err() {
-        return Err(GameplayEffectApplicationError::MissingActiveGameplayEffects { target });
+    if !spec.get_duration_spec().is_instant() {
+        let active_effects = active_effect_query
+            .get(target)
+            .map_err(|_| GameplayEffectApplicationError::MissingActiveGameplayEffects { target })?;
+        active_effects.validate_storage(target)?;
     }
     if !spec.get_modifier_specs().is_empty() {
         let Ok(attr_set) = attr_query.get(target) else {
@@ -194,8 +197,6 @@ fn execute_new_active_effect(
     plan: &GameplayEffectApplicationPlan,
     params: &mut EffectSystemParams,
 ) -> Result<(), GameplayEffectApplicationError> {
-    let has_modifiers = !plan.spec.get_modifier_specs().is_empty();
-    let grants_tags = !plan.spec.get_def_tags().get_granted_tags().is_empty();
     let handle = {
         let Ok(mut active_effects) = params.active_effect_query.get_mut(plan.target) else {
             return Err(
@@ -209,106 +210,59 @@ fn execute_new_active_effect(
             ActiveGameplayEffect::new(plan.spec.clone(), plan.source, plan.target),
         )?
     };
-
-    if grants_tags {
-        let Ok(mut tags) = params.tag_container_query.get_mut(plan.target) else {
-            rollback_new_active_effect(plan, handle, false, params)?;
-            return Err(GameplayEffectApplicationError::MissingTagContainer {
-                target: plan.target,
-            });
-        };
-        if let Err(error) = tags.add_tags(
-            plan.spec.get_def_tags().get_granted_tags(),
-            &params.tag_manager,
-        ) {
-            rollback_new_active_effect(plan, handle, false, params)?;
-            return Err(error.into());
+    let resources = EffectCleanupResources {
+        attribute_id_manager: &params.attribute_id_manager,
+        tag_manager: &params.tag_manager,
+    };
+    let install_result = install_effect_contributions(
+        handle,
+        &plan.spec,
+        1,
+        resources,
+        &mut params.attr_set_query,
+        &mut params.tag_container_query,
+    );
+    if let Err(error) = install_result {
+        if let Ok(mut effects) = params.active_effect_query.get_mut(plan.target) {
+            effects.remove(handle);
         }
+        return Err(error);
     }
 
-    if let Some(period_spec) = plan.spec.get_period_spec() {
-        if period_spec.get_period_ticks() == 0 {
-            if has_modifiers {
-                let result = apply_new_duration_modifiers(plan, handle, params);
-                if let Err(error) = result {
-                    rollback_new_active_effect(plan, handle, grants_tags, params)?;
-                    return Err(error);
-                }
-            }
-        } else if period_spec.get_execute_on_applied() && has_modifiers {
-            let Ok(mut attributes) = params.attr_set_query.get_mut(plan.target) else {
-                rollback_new_active_effect(plan, handle, grants_tags, params)?;
-                return Err(GameplayEffectApplicationError::MissingAttributeSet {
-                    target: plan.target,
-                });
-            };
-            if let Err(error) = apply_instant_modifiers(
+    if plan
+        .spec
+        .get_period_spec()
+        .as_ref()
+        .is_some_and(|period| period.get_period_ticks() > 0 && period.get_execute_on_applied())
+        && !plan.spec.get_modifier_specs().is_empty()
+    {
+        let result = match params.attr_set_query.get_mut(plan.target) {
+            Ok(mut attributes) => apply_instant_modifiers(
                 plan.target,
                 &mut attributes,
                 &params.attribute_id_manager,
                 &plan.spec,
                 1,
-            ) {
-                rollback_new_active_effect(plan, handle, grants_tags, params)?;
-                return Err(error);
-            }
-        }
-    } else if has_modifiers {
-        let result = apply_new_duration_modifiers(plan, handle, params);
+            ),
+            Err(_) => Err(GameplayEffectApplicationError::MissingAttributeSet {
+                target: plan.target,
+            }),
+        };
         if let Err(error) = result {
-            rollback_new_active_effect(plan, handle, grants_tags, params)?;
+            if let Ok(mut effects) = params.active_effect_query.get_mut(plan.target)
+                && let Some(effect) = effects.get(handle).cloned()
+            {
+                force_remove_effect(
+                    handle,
+                    &effect,
+                    &mut effects,
+                    &mut params.attr_set_query,
+                    &mut params.tag_container_query,
+                    &params.tag_manager,
+                );
+            }
             return Err(error);
         }
     }
     Ok(())
-}
-
-fn apply_new_duration_modifiers(
-    plan: &GameplayEffectApplicationPlan,
-    handle: ActiveEffectHandle,
-    params: &mut EffectSystemParams,
-) -> Result<(), GameplayEffectApplicationError> {
-    let Ok(mut attributes) = params.attr_set_query.get_mut(plan.target) else {
-        return Err(GameplayEffectApplicationError::MissingAttributeSet {
-            target: plan.target,
-        });
-    };
-    apply_duration_modifiers(
-        plan.target,
-        &mut attributes,
-        &params.attribute_id_manager,
-        &plan.spec,
-        handle,
-        1,
-    )
-}
-
-fn rollback_new_active_effect(
-    plan: &GameplayEffectApplicationPlan,
-    handle: ActiveEffectHandle,
-    tags_applied: bool,
-    params: &mut EffectSystemParams,
-) -> Result<(), GameplayEffectApplicationError> {
-    if let Ok(mut attributes) = params.attr_set_query.get_mut(plan.target) {
-        attributes.remove_modifiers(handle);
-    }
-    let tag_result = if tags_applied {
-        match params.tag_container_query.get_mut(plan.target) {
-            Ok(mut tags) => tags
-                .remove_tags(
-                    plan.spec.get_def_tags().get_granted_tags(),
-                    &params.tag_manager,
-                )
-                .map_err(GameplayEffectApplicationError::from),
-            Err(_) => Err(GameplayEffectApplicationError::MissingTagContainer {
-                target: plan.target,
-            }),
-        }
-    } else {
-        Ok(())
-    };
-    if let Ok(mut active_effects) = params.active_effect_query.get_mut(plan.target) {
-        active_effects.remove(handle);
-    }
-    tag_result
 }

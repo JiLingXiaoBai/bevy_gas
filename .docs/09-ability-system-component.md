@@ -3,7 +3,7 @@
 ## 职责
 
 `AbilitySystemComponent`（ASC）是单个 Gameplay Actor 的技能目录和技能互斥状态。它拥有已授予
-规格、Handle 索引和活跃技能写入的阻止标签，但不拥有属性、实体 Gameplay Tags 或 Active
+规格、Handle 索引、活跃实例登记和技能写入的阻止标签，但不拥有属性、实体 Gameplay Tags 或 Active
 Effects。激活、Commit、结束与清理由同一领域中的函数和系统编排。
 
 ## 源码布局
@@ -21,7 +21,11 @@ src/gas/
     │   ├── startup.rs
     │   └── execution.rs
     ├── commit.rs
-    └── lifecycle.rs
+    ├── lifecycle.rs
+    └── lifecycle/
+        ├── instances.rs
+        ├── transitions.rs
+        └── cleanup.rs
 ```
 
 | 文件 | 职责 |
@@ -29,10 +33,10 @@ src/gas/
 | `component.rs` | ASC 公共存储 API 与显式 Actor Bundle |
 | `params.rs` | Ability SystemParam 与 deferred Active Ability overlay |
 | `activation/validation.rs` | 快速预检和完整激活要求检查 |
-| `activation/startup.rs` | 创建活跃实例和启动 startup tasks |
+| `activation/startup.rs` | 启动 startup tasks |
 | `activation/execution.rs` | 同步入口与 batch 内激活顺序 |
 | `commit.rs` | Cost/Cooldown Plan 的准备、验证和执行 |
-| `lifecycle.rs` | End、Cancel、标签取消和 Cleanup |
+| `lifecycle.rs`、`lifecycle/` | 实例登记/释放、状态迁移、Cleanup 与组件丢弃 Observer |
 
 这些文件的私有函数是实现细节；公共入口由 `ability_system.rs` 显式重导出。
 
@@ -237,7 +241,8 @@ pub fn cancel_ability(
 `active_count`，并通过 `Commands` 生成 `ActiveGameplayAbility`。队列与同步入口使用同一个
 请求类型；Request 只保存 handle 和 `AbilityActivationData`，Active Ability 只保存 spec handle、
 同类数据和状态，不再重复铺开 source、targets 与 context 字段。创建 Active runtime 时克隆
-整份激活数据，结束路径需要对称移除阻止标签和递减计数。
+整份激活数据。ASC 的私有实例登记保存 active handle 与 spec handle 的对应关系；
+结束、回滚和组件丢弃都通过同一个释放操作，只有仍在登记中的实例才移除阻止标签并递减计数。
 
 私有 `StartupAbilityTaskContext` 仅保存 active handle、`&AbilityActivationRequest` 和 level。
 source、targets 与 activation context 通过请求中的 `AbilityActivationData` 读取，spec handle
@@ -248,8 +253,8 @@ tick task 完成时从父 `ActiveGameplayAbility` 的激活数据读取同一值
 `cleanup_finished_abilities_system` 位于 `GameplayAbilitySystemSet::Cleanup`：
 
 1. 清空上一次 drain 留下的 pending overlay。
-2. 遍历状态为 `Ending` 或 `Cancelled` 的活跃实例。
-3. 来源 ASC 存在时移除阻止标签、递减 `active_count`。
+2. 按 Entity bits 的稳定顺序处理 `Ending` 或 `Cancelled` 实例。
+3. 来源 ASC 仍登记该实例时移除阻止标签、递减 `active_count` 并注销登记。
 4. 递归销毁活跃实例及其任务子实体。
 5. 来源 ASC 已不存在时仍销毁孤立活跃实例，但无法再修改原 ASC bookkeeping。
 
@@ -324,3 +329,23 @@ tick 重复激活。
 
 继续阅读：[07 — Gameplay 技能](./07-gameplay-abilities.md)、
 [16 — Gameplay 执行模块](./16-gameplay-execution.md)。
+
+
+## 组件结构生命周期与反馈
+
+Runtime Plugin 注册两个 Discard Observer：移除、替换 `ActiveGameplayAbility` 或销毁实例
+实体时释放旧实例；移除或替换 ASC 时终止其已登记实例。任务随实例在命令 flush 时销毁。
+替换活跃组件表示终止旧激活，应通过激活 API 创建新实例。状态更新和 pending 状态命令使用
+就地修改，避免触发替换清理。直接通过可变引用整体覆盖组件会绕过结构生命周期，不是重置入口。
+重复 Cleanup、随后发生的 Discard 都通过实例登记保证只释放一次共享阻止标签和计数。
+
+成功入队返回 `GameplayExecutionRequestId`，可与 `GameplayExecutionResult` 关联。
+在 `GameplayResolve` 后消费结果，消费者追加的请求在下一 fixed tick 结算。
+
+
+每次成功激活的 startup 命令末尾还会验证 ASC 是否仍登记该实例。若同一系统更早排队的
+ASC 移除/替换先执行，尚未生成的实例会在完成 spawn/task flush 后被回收，不会留下孤儿任务。
+同步 API 的结果描述调用当时的 World，不预知尚未应用的外部 Commands。
+
+AbilitySpecHandle 仍属于 owner-local 授予生命周期；替换 ASC 前应处理该 actor 的输入绑定和
+尚未消费的激活请求。实例清理使用完整 Entity 身份，旧实例不会递减新 ASC 的同数值授予计数。

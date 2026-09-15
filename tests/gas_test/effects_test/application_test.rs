@@ -1,6 +1,7 @@
 use super::*;
+use bevy_gas::GameplayTagManager;
 
-use bevy::prelude::{Entity, Res, ResMut, Resource};
+use bevy::prelude::{Entity, Query, Res, ResMut, Resource};
 
 #[derive(Resource)]
 struct EffectUnderTest(Arc<GameplayEffect>);
@@ -239,4 +240,52 @@ fn tag_granting_effect_without_tag_container_rolls_back_modifiers() {
     assert!(!apply_effect(&mut app, target, target, effect));
     assert_eq!(current_value(&mut app, target, power), 10.0);
     assert!(active_effect_handles(&app, target).is_empty());
+}
+
+#[test]
+fn failed_tag_installation_preserves_existing_references_and_attributes() {
+    let mut app = test_app();
+    let power = register_attribute(&mut app, "Power");
+    let granted_tag = register_tag(&mut app, "State.Full");
+    let target = spawn_attribute_set(&mut app, power, 100.0);
+    app.world_mut()
+        .entity_mut(target)
+        .insert(GameplayTagContainer::default());
+    app.world_mut()
+        .run_system_once(
+            move |mut tags: Query<&mut GameplayTagContainer>, manager: Res<GameplayTagManager>| {
+                let mut tags = tags.get_mut(target).unwrap();
+                for _ in 0..u16::MAX {
+                    tags.add_tag(&granted_tag, &manager).unwrap();
+                }
+            },
+        )
+        .unwrap();
+    let effect = Arc::new(GameplayEffect::new(
+        vec![add_modifier(power, 10.0)],
+        EffectDurationTicks::Infinite,
+        None,
+        1.0,
+        StackingPolicy::non_stacking(),
+        effect_tags(Vec::new(), vec![granted_tag]),
+    ));
+    assert!(matches!(
+        apply_effect_result(&mut app, target, target, effect),
+        Err(GameplayEffectApplicationError::GameplayTag(_))
+    ));
+    assert!(active_effect_handles(&app, target).is_empty());
+    assert_eq!(current_value(&mut app, target, power), 100.0);
+    app.world_mut()
+        .run_system_once(
+            move |mut tags: Query<&mut GameplayTagContainer>, manager: Res<GameplayTagManager>| {
+                let mut tags = tags.get_mut(target).unwrap();
+                for _ in 0..u16::MAX - 1 {
+                    tags.remove_tag(&granted_tag, &manager).unwrap();
+                }
+                assert!(tags.has_tag(&granted_tag));
+                tags.remove_tag(&granted_tag, &manager).unwrap();
+                assert!(!tags.has_tag(&granted_tag));
+            },
+        )
+        .unwrap();
 }

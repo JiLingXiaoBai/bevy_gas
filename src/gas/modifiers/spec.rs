@@ -5,25 +5,46 @@ use crate::attributes::AttributeId;
 ///
 /// `scope` identifies the owning storage, while `slot` and `generation`
 /// distinguish entries and prevent stale sources from removing newer values.
-/// The type is shared and does not depend on any particular effect container.
+/// Caller-defined and runtime-allocated sources occupy separate identity domains,
+/// even when all three numeric fields match. This type is independent of effect storage.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ModifierSourceId {
+    domain: ModifierSourceDomain,
     scope: u64,
     slot: u32,
     generation: u32,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum ModifierSourceDomain {
+    Caller,
+    Runtime,
+}
+
 impl ModifierSourceId {
-    /// Creates a source ID from an owning scope, slot, and generation.
+    /// Creates a caller-defined source ID from an owning scope, slot, and generation.
+    ///
+    /// Caller-defined IDs cannot collide with runtime-allocated IDs. Callers remain
+    /// responsible for coordinating numeric identities within the caller domain.
     pub const fn new(scope: u64, slot: u32, generation: u32) -> Self {
         Self {
+            domain: ModifierSourceDomain::Caller,
             scope,
             slot,
             generation,
         }
     }
 
-    /// Returns the caller-defined owning scope.
+    pub(crate) const fn new_runtime(scope: u64, slot: u32, generation: u32) -> Self {
+        Self {
+            domain: ModifierSourceDomain::Runtime,
+            scope,
+            slot,
+            generation,
+        }
+    }
+
+    /// Returns the owning scope within this source's identity domain.
     pub const fn get_scope(self) -> u64 {
         self.scope
     }

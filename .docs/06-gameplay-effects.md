@@ -6,8 +6,9 @@ Gameplay Effects 定义并执行 Buff、Debuff、即时数值变化、周期效�
 和堆叠。定义通过 `Arc<GameplayEffect>` 共享；有限和无限效果存放在目标实体的
 `ActiveGameplayEffects` 中。
 
-Effects 只依赖较窄的 `EffectSystemParams`，不要求调用者提供 ASC 或 Active Ability 查询。
-能力侧的系统参数通过 `effects` 字段组合并复用同一套 Effect API。
+Effects 的修改入口使用 `EffectSystemParams`，不要求调用者提供 ASC 或 Active Ability 查询。
+只读预检使用 `EffectReadOnlyParams`，只借用 Tag/Attribute registry 和三类只读 Component 查询，
+不获取随机源、执行队列或组件写访问。能力侧通过 `effects` 字段组合对应参数。
 
 ## 源码布局
 
@@ -30,6 +31,8 @@ src/gas/
         ├── application.rs      # Synchronous entry and stack lookup
         ├── execution.rs        # Plan execution and rollback
         ├── modifiers.rs        # Shared instant/duration modifier mutations
+        ├── lifecycle.rs        # Shared contributions and component lifecycle hooks
+        ├── diagnostics.rs      # Optional convergence measurements
         ├── state.rs            # Target-owned active storage
         ├── requirements.rs     # Ongoing/removal fixed point
         ├── removal.rs          # Cleanup and public removal/query API
@@ -40,7 +43,9 @@ src/gas/
 
 `active_gameplay_effect/modifiers.rs` 是私有实现模块，集中即时修改、持续修饰器安装，以及层数
 变化时的移除/重建操作。叠层与到期减层共用刷新函数，条件恢复也使用同一持续修饰器安装逻辑；
-各生命周期入口仍负责自己的执行条件、错误处理和失败清理，公共 API 与计时顺序不变。
+`lifecycle.rs` 进一步集中 retained modifier 与 granted tag 的安装、撤销和失败清理；新建、抑制、
+恢复、到期和手动移除共用这些操作。周期 pulse 仍属于执行行为，不参与 retained contribution 的
+安装。安装会先验证完整属性集合，再授予标签；失败不会留下部分持有效果。
 
 ## 公共 API
 
@@ -226,11 +231,20 @@ pub fn remove_active_effects_with_tags(
 
 `ActiveGameplayEffects` 公开 `len()`、`is_empty()`、`get(handle)` 和
 `handles(target)`。`ActiveGameplayEffect` 公开 spec、source、target、stack count、inhibited、
-duration 和 period getter。容器不公开 mutation；移除必须通过 Effects API 完成，才能同步
-清理属性和标签。
+duration 和 period getter。单条效果通过 Effects API 移除。整体容器通过 ECS `remove` 或
+`insert` 替换时，`on_discard` hook 在旧组件仍存在时同步撤销修饰器和标签，之后才安装替代组件。
+已抑制效果不会重复扣除标签引用。`despawn` 同样允许，已不存在的组件会安全跳过。
 
-`ActiveEffectHandle` 公开 `new()` 与 target/slot/generation getter。正常代码应保存 API 返回或
-遍历得到的 handle，而不是猜测槽位。
+每次 ECS 安装容器都会获得新的 `storage_id`，移动取出的容器不会迁移活跃效果。
+`ActiveEffectHandle::new(target, storage_id, slot, generation)` 及对应 getter 暴露句柄信息。
+替换前后的相同 slot/generation 具有不同 storage_id，旧句柄不会指向新效果。
+效果转换出的 ModifierSourceId 属于运行时域；调用方通过 ModifierSourceId::new 创建的来源
+位于独立域，数值字段相同也不会在移除或替换效果时被误删。
+整体替换 Tags 与 ActiveEffects 时，清理只影响旧标签值，不会扣除新标签组件自己的引用。正常代码应保存 API 返回或遍历得到的 handle，而不是猜测槽位。
+
+应先安装 GAS runtime，再创建效果容器；无法分配身份的容器返回
+`UninitializedActiveEffectStorage`。禁止通过可变 Query 直接赋值、`mem::replace` 或 `mem::take`
+替换整个容器，这些普通 Rust 操作不会触发 ECS hooks。
 
 ### 错误
 
@@ -242,6 +256,7 @@ pub enum GameplayEffectApplicationError {
     BlockedByImmunity,
     InvalidDuration,
     MissingActiveGameplayEffects { target: Entity },
+    UninitializedActiveEffectStorage { target: Entity },
     ActiveEffectCapacityExceeded { target: Entity },
     MissingAttributeSet { target: Entity },
     MissingAttribute { target: Entity, id: AttributeId },
@@ -356,7 +371,9 @@ fn queue_poison(
     request: Res<PoisonRequest>,
 ) {
     let payload = EffectPayload::new(request.source, request.causer, request.level);
-    queue.push_application(request.target, request.effect.clone(), payload);
+    if let Err(error) = queue.push_application(request.target, request.effect.clone(), payload) {
+        error!("failed to enqueue poison effect: {error}");
+    }
 }
 
 app.add_systems(
@@ -366,14 +383,16 @@ app.add_systems(
 ```
 
 队列会在同一 `GameplayResolve` drain 中消费期间追加的派生请求，并保持 Ability/Effect 的跨类型
-FIFO。Resolver 只记录错误；生产者若需要同步取得 `Result`，应在合适的独立 system 中调用
-`apply_gameplay_effect()`。
+FIFO。入队成功返回 `GameplayExecutionRequestId`；Resolver 按消费顺序发送
+`GameplayExecutionResult` Message，区分 `Succeeded`、`Rejected` 和 `Failed`，失败项保留具体
+`GameplayEffectApplicationError`。可在 `GameplayResolve` 之后按 request_id 关联结果。
+需要独立同步结果时使用 `apply_gameplay_effect()`。
 
 ## 边界与注意事项
 
 - 不要依赖 `GameplayEffect`、`EffectTags`、Plan 或 Active Effect 的私有字段布局。
-- 不要直接替换或修改 `ActiveGameplayEffects`；这会绕过 modifier/tag 清理。
-- Stale handle 返回 `None` 或 `Ok(false)`；槽位复用会增加 generation，达到 `u32::MAX` 后退休。
+- 整体移除或替换 `ActiveGameplayEffects` 使用 ECS remove/insert；不要通过可变引用直接赋值以绕过 hooks。
+- Stale handle 返回 `None` 或 `Ok(false)`；容器重装更换 storage_id，槽位复用增加 generation，达到 `u32::MAX` 后退休。
 - `EffectPayload::get_source()` 返回的实体才用于来源属性和标签查询；instigator 与 causer 是元数据，不能代替
   source 支付 cost 或读取来源状态。
 - 正周期执行失败、Requirement 转换失败或到期清理失败时，系统记录错误并强制移除效果，避免

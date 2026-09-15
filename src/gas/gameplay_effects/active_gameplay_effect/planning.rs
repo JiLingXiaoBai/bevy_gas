@@ -147,6 +147,8 @@ pub enum GameplayEffectApplicationError {
     InvalidDuration,
     /// The target cannot store active gameplay effects.
     MissingActiveGameplayEffects { target: Entity },
+    /// The target's container was installed without an available runtime storage identity.
+    UninitializedActiveEffectStorage { target: Entity },
     /// The target has exhausted the representable active-effect slot space.
     ActiveEffectCapacityExceeded { target: Entity },
     /// The target does not have the attribute storage required by the effect.
@@ -189,6 +191,10 @@ impl fmt::Display for GameplayEffectApplicationError {
             Self::MissingActiveGameplayEffects { target } => write!(
                 f,
                 "gameplay effect target {target:?} has no ActiveGameplayEffects"
+            ),
+            Self::UninitializedActiveEffectStorage { target } => write!(
+                f,
+                "gameplay effect target {target:?} has no initialized effect storage identity; install the GAS runtime before its component"
             ),
             Self::ActiveEffectCapacityExceeded { target } => write!(
                 f,
@@ -250,6 +256,9 @@ impl From<AttributeIdError> for GameplayEffectApplicationError {
 impl From<ActiveEffectStorageError> for GameplayEffectApplicationError {
     fn from(value: ActiveEffectStorageError) -> Self {
         match value {
+            ActiveEffectStorageError::Uninitialized { target } => {
+                Self::UninitializedActiveEffectStorage { target }
+            }
             ActiveEffectStorageError::CapacityExceeded { target } => {
                 Self::ActiveEffectCapacityExceeded { target }
             }

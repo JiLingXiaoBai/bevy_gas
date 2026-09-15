@@ -1,4 +1,5 @@
 use super::super::gameplay_effect_spec::{EffectDurationTicksSpec, GameplayEffectSpec};
+use super::lifecycle::{discard_effect_container, initialize_effect_container};
 use crate::modifiers::ModifierSourceId;
 use bevy::prelude::*;
 
@@ -6,15 +7,17 @@ use bevy::prelude::*;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ActiveEffectHandle {
     target: Entity,
+    storage_id: u64,
     slot: u32,
     generation: u32,
 }
 
 impl ActiveEffectHandle {
-    /// Creates a handle from its target, slot, and generation.
-    pub const fn new(target: Entity, slot: u32, generation: u32) -> Self {
+    /// Creates a handle from its target, container identity, slot, and generation.
+    pub const fn new(target: Entity, storage_id: u64, slot: u32, generation: u32) -> Self {
         Self {
             target,
+            storage_id,
             slot,
             generation,
         }
@@ -23,6 +26,11 @@ impl ActiveEffectHandle {
     /// Returns the entity that owns the active-effect container.
     pub const fn get_target(self) -> Entity {
         self.target
+    }
+
+    /// Returns the identity allocated when the target's effect container was installed.
+    pub const fn get_storage_id(self) -> u64 {
+        self.storage_id
     }
 
     /// Returns the stable slot index within the target container.
@@ -38,7 +46,7 @@ impl ActiveEffectHandle {
 
 impl From<ActiveEffectHandle> for ModifierSourceId {
     fn from(handle: ActiveEffectHandle) -> Self {
-        Self::new(handle.target.to_bits(), handle.slot, handle.generation)
+        Self::new_runtime(handle.storage_id, handle.slot, handle.generation)
     }
 }
 
@@ -49,17 +57,45 @@ struct ActiveEffectSlot {
 }
 
 pub(super) enum ActiveEffectStorageError {
+    Uninitialized { target: Entity },
     CapacityExceeded { target: Entity },
 }
 
 /// Target-owned, stable-order storage for active gameplay effects.
 #[derive(Component, Default)]
+#[component(on_insert = initialize_effect_container, on_discard = discard_effect_container)]
 pub struct ActiveGameplayEffects {
+    storage_id: u64,
     slots: Vec<ActiveEffectSlot>,
     free_slots: Vec<u32>,
 }
 
 impl ActiveGameplayEffects {
+    pub(super) fn initialize_storage(&mut self, storage_id: u64) {
+        self.storage_id = storage_id;
+        self.slots.clear();
+        self.free_slots.clear();
+    }
+
+    pub(super) fn take_effects(&mut self) -> Vec<(ActiveEffectHandle, ActiveGameplayEffect)> {
+        self.free_slots.clear();
+        self.slots
+            .iter_mut()
+            .enumerate()
+            .filter_map(|(slot_index, slot)| {
+                slot.effect.take().map(|effect| {
+                    let handle = ActiveEffectHandle::new(
+                        effect.get_target(),
+                        self.storage_id,
+                        slot_index as u32,
+                        slot.generation,
+                    );
+                    (handle, effect)
+                })
+            })
+            .collect()
+    }
+
     /// Returns the number of active effects.
     pub fn len(&self) -> usize {
         self.slots
@@ -75,6 +111,9 @@ impl ActiveGameplayEffects {
 
     /// Returns the active effect identified by `handle`.
     pub fn get(&self, handle: ActiveEffectHandle) -> Option<&ActiveGameplayEffect> {
+        if handle.storage_id != self.storage_id {
+            return None;
+        }
         let slot = self.slots.get(handle.slot as usize)?;
         let effect = slot.effect.as_ref()?;
         (slot.generation == handle.generation && effect.get_target() == handle.target)
@@ -86,6 +125,9 @@ impl ActiveGameplayEffects {
         &mut self,
         handle: ActiveEffectHandle,
     ) -> Option<&mut ActiveGameplayEffect> {
+        if handle.storage_id != self.storage_id {
+            return None;
+        }
         let slot = self.slots.get_mut(handle.slot as usize)?;
         let effect = slot.effect.as_mut()?;
         (slot.generation == handle.generation && effect.get_target() == handle.target)
@@ -101,7 +143,14 @@ impl ActiveGameplayEffects {
                 slot.effect
                     .as_ref()
                     .filter(|effect| effect.get_target() == target)
-                    .map(|_| ActiveEffectHandle::new(target, slot_index as u32, slot.generation))
+                    .map(|_| {
+                        ActiveEffectHandle::new(
+                            target,
+                            self.storage_id,
+                            slot_index as u32,
+                            slot.generation,
+                        )
+                    })
             })
     }
 
@@ -109,11 +158,23 @@ impl ActiveGameplayEffects {
         self.slots
             .iter()
             .enumerate()
-            .filter_map(|(slot_index, slot)| {
+            .filter_map(move |(slot_index, slot)| {
                 slot.effect.as_ref().map(|effect| {
-                    ActiveEffectHandle::new(effect.get_target(), slot_index as u32, slot.generation)
+                    ActiveEffectHandle::new(
+                        effect.get_target(),
+                        self.storage_id,
+                        slot_index as u32,
+                        slot.generation,
+                    )
                 })
             })
+    }
+
+    pub(super) fn validate_storage(&self, target: Entity) -> Result<(), ActiveEffectStorageError> {
+        if self.storage_id == 0 {
+            return Err(ActiveEffectStorageError::Uninitialized { target });
+        }
+        Ok(())
     }
 
     pub(super) fn insert(
@@ -121,11 +182,17 @@ impl ActiveGameplayEffects {
         target: Entity,
         effect: ActiveGameplayEffect,
     ) -> Result<ActiveEffectHandle, ActiveEffectStorageError> {
+        self.validate_storage(target)?;
         if let Some(slot_index) = self.free_slots.pop() {
             let slot = &mut self.slots[slot_index as usize];
             debug_assert!(slot.effect.is_none());
             slot.effect = Some(effect);
-            return Ok(ActiveEffectHandle::new(target, slot_index, slot.generation));
+            return Ok(ActiveEffectHandle::new(
+                target,
+                self.storage_id,
+                slot_index,
+                slot.generation,
+            ));
         }
 
         let slot_index = u32::try_from(self.slots.len())
@@ -135,10 +202,18 @@ impl ActiveGameplayEffects {
             generation,
             effect: Some(effect),
         });
-        Ok(ActiveEffectHandle::new(target, slot_index, generation))
+        Ok(ActiveEffectHandle::new(
+            target,
+            self.storage_id,
+            slot_index,
+            generation,
+        ))
     }
 
     pub(super) fn remove(&mut self, handle: ActiveEffectHandle) -> Option<ActiveGameplayEffect> {
+        if handle.storage_id != self.storage_id {
+            return None;
+        }
         let slot = self.slots.get_mut(handle.slot as usize)?;
         if slot.generation != handle.generation {
             return None;

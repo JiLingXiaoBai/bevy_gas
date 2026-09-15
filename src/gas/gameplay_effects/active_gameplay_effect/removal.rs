@@ -1,21 +1,14 @@
 use super::super::EffectSystemParams;
+use super::lifecycle::{EffectCleanupResources, cleanup_effect_state, validate_effect_cleanup};
 use super::planning::GameplayEffectApplicationError;
 use super::requirements::{
     resolve_active_effect_tag_requirements, resolve_active_effect_tag_requirements_if_dirty,
 };
 use super::state::{ActiveEffectHandle, ActiveGameplayEffect, ActiveGameplayEffects};
-use crate::attributes::{AttributeIdManager, AttributeSet};
 use crate::gameplay_tags::{
-    GameplayTag, GameplayTagContainer, GameplayTagError, GameplayTagManager,
-    tag_bits_from_tags_with_manager,
+    GameplayTag, GameplayTagError, GameplayTagManager, tag_bits_from_tags_with_manager,
 };
 use bevy::prelude::*;
-
-#[derive(Clone, Copy)]
-pub(super) struct EffectCleanupResources<'a, 'w> {
-    pub(super) attribute_id_manager: &'a AttributeIdManager,
-    pub(super) tag_manager: &'a Res<'w, GameplayTagManager>,
-}
 
 /// Removes an active effect and cleans up its modifiers and granted tags.
 ///
@@ -112,70 +105,6 @@ pub fn has_active_effect_with_tags(
         }
     }
     Ok(false)
-}
-
-pub(super) fn validate_effect_cleanup(
-    effect: &ActiveGameplayEffect,
-    resources: EffectCleanupResources,
-) -> Result<(), GameplayEffectApplicationError> {
-    for id in effect.get_spec().get_modified_attribute_ids() {
-        resources.attribute_id_manager.location(id)?;
-    }
-    tag_bits_from_tags_with_manager(
-        effect.get_spec().get_def_tags().get_granted_tags(),
-        resources.tag_manager,
-    )?;
-    Ok(())
-}
-
-pub(super) fn cleanup_effect_state(
-    handle: ActiveEffectHandle,
-    effect: &ActiveGameplayEffect,
-    resources: EffectCleanupResources,
-    attr_query: &mut Query<&mut AttributeSet>,
-    tag_query: &mut Query<&mut GameplayTagContainer>,
-) -> Result<(), GameplayEffectApplicationError> {
-    validate_effect_cleanup(effect, resources)?;
-    if effect.is_inhibited() {
-        return Ok(());
-    }
-    if let Ok(mut attributes) = attr_query.get_mut(effect.get_target()) {
-        attributes.remove_modifiers_for_attributes(
-            resources.attribute_id_manager,
-            handle,
-            effect.get_spec().get_modified_attribute_ids(),
-        )?;
-    }
-    if let Ok(mut tags) = tag_query.get_mut(effect.get_target()) {
-        tags.remove_tags(
-            effect.get_spec().get_def_tags().get_granted_tags(),
-            resources.tag_manager,
-        )?;
-    }
-    Ok(())
-}
-
-pub(super) fn force_remove_effect(
-    handle: ActiveEffectHandle,
-    effect: &ActiveGameplayEffect,
-    active_effects: &mut ActiveGameplayEffects,
-    attr_query: &mut Query<&mut AttributeSet>,
-    tag_query: &mut Query<&mut GameplayTagContainer>,
-    tag_manager: &Res<GameplayTagManager>,
-) {
-    if let Ok(mut attributes) = attr_query.get_mut(effect.get_target()) {
-        attributes.remove_modifiers(handle);
-    }
-    if !effect.is_inhibited()
-        && let Ok(mut tags) = tag_query.get_mut(effect.get_target())
-        && let Err(error) = tags.remove_tags(
-            effect.get_spec().get_def_tags().get_granted_tags(),
-            tag_manager,
-        )
-    {
-        error!("failed to force-remove gameplay effect tags: {error}");
-    }
-    active_effects.remove(handle);
 }
 
 pub(super) fn collect_active_effects_with_tags_for_params(

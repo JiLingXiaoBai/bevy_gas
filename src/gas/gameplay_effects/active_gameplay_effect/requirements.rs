@@ -1,7 +1,9 @@
 use super::super::EffectSystemParams;
-use super::modifiers::apply_duration_modifiers;
+use super::lifecycle::{
+    EffectCleanupResources, cleanup_effect_state, force_remove_effect,
+    install_effect_contributions, remove_effect_contributions,
+};
 use super::planning::GameplayEffectApplicationError;
-use super::removal::{EffectCleanupResources, cleanup_effect_state, force_remove_effect};
 use super::state::{ActiveEffectHandle, ActiveGameplayEffect, ActiveGameplayEffects};
 use crate::attributes::{AttributeIdManager, AttributeSet};
 use crate::gameplay_tags::{GameplayTagContainer, GameplayTagManager, TagRequirements};
@@ -331,20 +333,16 @@ fn inhibit_active_effect(
     tag_query: &mut Query<&mut GameplayTagContainer>,
     tag_manager: &Res<GameplayTagManager>,
 ) -> Result<(), GameplayEffectApplicationError> {
-    if let Ok(mut attributes) = attr_query.get_mut(effect.get_target()) {
-        attributes.remove_modifiers_for_attributes(
+    remove_effect_contributions(
+        handle,
+        effect.get_spec(),
+        EffectCleanupResources {
             attribute_id_manager,
-            handle,
-            effect.get_spec().get_modified_attribute_ids(),
-        )?;
-    }
-    if let Ok(mut tags) = tag_query.get_mut(effect.get_target()) {
-        tags.remove_tags(
-            effect.get_spec().get_def_tags().get_granted_tags(),
             tag_manager,
-        )?;
-    }
-    Ok(())
+        },
+        attr_query,
+        tag_query,
+    )
 }
 
 fn uninhibit_active_effect(
@@ -355,36 +353,15 @@ fn uninhibit_active_effect(
     tag_query: &mut Query<&mut GameplayTagContainer>,
     tag_manager: &Res<GameplayTagManager>,
 ) -> Result<(), GameplayEffectApplicationError> {
-    if effect.period.is_none() && !effect.get_spec().get_modifier_specs().is_empty() {
-        let Ok(mut attributes) = attr_query.get_mut(effect.get_target()) else {
-            return Err(GameplayEffectApplicationError::MissingAttributeSet {
-                target: effect.get_target(),
-            });
-        };
-        apply_duration_modifiers(
-            effect.get_target(),
-            &mut attributes,
+    install_effect_contributions(
+        handle,
+        effect.get_spec(),
+        effect.get_stack_count(),
+        EffectCleanupResources {
             attribute_id_manager,
-            effect.get_spec(),
-            handle,
-            effect.get_stack_count(),
-        )?;
-    }
-    if !effect
-        .get_spec()
-        .get_def_tags()
-        .get_granted_tags()
-        .is_empty()
-    {
-        let Ok(mut tags) = tag_query.get_mut(effect.get_target()) else {
-            return Err(GameplayEffectApplicationError::MissingTagContainer {
-                target: effect.get_target(),
-            });
-        };
-        tags.add_tags(
-            effect.get_spec().get_def_tags().get_granted_tags(),
             tag_manager,
-        )?;
-    }
-    Ok(())
+        },
+        attr_query,
+        tag_query,
+    )
 }

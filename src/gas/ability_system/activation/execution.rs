@@ -164,14 +164,13 @@ pub(crate) fn execute_ability_activation_in_batch(
 
     if let Err(error) = execute_ability_commit_plans(commit_plans, params) {
         if let Ok(mut asc) = params.asc_query.get_mut(source)
-            && let Err(rollback_error) = asc.rollback_started_ability(
+            && let Err(rollback_error) = asc.finish_active_ability(
                 active_handle,
-                handle,
                 &mut params.commands,
                 &params.effects.tag_manager,
             )
         {
-            asc.discard_started_ability(active_handle, handle, &mut params.commands);
+            asc.discard_active_ability(active_handle, &mut params.commands);
             params.pending_active_abilities.remove(active_handle);
             return ability_activation_failed(AbilityActivationError::StartFailed {
                 source,

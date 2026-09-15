@@ -221,7 +221,7 @@ chain ID。`next()` 拒绝重复 Handle，并限制深度不超过
 let chain = execution_queue.new_root_chain(handle);
 let context = AbilityActivationContext::direct(source, chain);
 let targets = AbilityActivationTargets::single(target);
-execution_queue.push_activation(source, targets, handle, context);
+let request_id = execution_queue.push_activation(source, targets, handle, context)?;
 ```
 
 请求会在当前 `FixedUpdate` 的 `GameplayResolve` 阶段与效果应用请求按跨类型 FIFO 结算。详细
@@ -327,3 +327,6 @@ Active ──► Ending ──► Cleanup/despawn
 继续阅读：[08 — 技能任务](./08-ability-tasks.md)、
 [09 — 技能系统组件](./09-ability-system-component.md)、
 [15 — Gameplay 目标抓取](./15-gameplay-targeting.md)。
+
+ASC 实例登记将创建、结束、回滚和组件丢弃连接到同一个幂等释放路径；状态更新就地修改，
+组件替换表示终止旧激活。详见 [09 — ASC](./09-ability-system-component.md)。

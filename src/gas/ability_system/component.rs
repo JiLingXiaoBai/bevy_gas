@@ -1,5 +1,7 @@
 use crate::attributes::AttributeSet;
-use crate::gameplay_abilities::{AbilitySpecHandle, GameplayAbility, GameplayAbilitySpec};
+use crate::gameplay_abilities::{
+    AbilitySpecHandle, ActiveAbilityHandle, GameplayAbility, GameplayAbilitySpec,
+};
 use crate::gameplay_effects::ActiveGameplayEffects;
 use crate::gameplay_tags::GameplayTagContainer;
 use bevy::platform::collections::HashMap;
@@ -13,6 +15,8 @@ pub struct AbilitySystemComponent {
     abilities: Vec<GameplayAbilitySpec>,
     ability_indices: HashMap<AbilitySpecHandle, usize>,
     blocked_ability_tags: GameplayTagContainer,
+    // Owns each activation's bookkeeping until it is released exactly once.
+    pub(super) active_instances: Vec<(ActiveAbilityHandle, AbilitySpecHandle)>,
 }
 
 /// Explicitly installs the ECS components required by the complete gameplay ability system.

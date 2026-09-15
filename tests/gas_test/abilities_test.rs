@@ -54,3 +54,6 @@ mod commit_test;
 mod lifecycle_test;
 #[path = "abilities_test/tasks_test.rs"]
 mod tasks_test;
+
+#[path = "abilities_test/deferred_lifecycle_test.rs"]
+mod deferred_lifecycle_test;

@@ -9,9 +9,13 @@ mod params;
 pub use crate::gameplay_execution::AbilityActivationRequest;
 pub(crate) use activation::execute_ability_activation_in_batch;
 pub use activation::{
-    AbilityActivationCheckError, AbilityActivationError, can_activate_ability, try_activate_ability_by_handle,
+    AbilityActivationCheckError, AbilityActivationError, can_activate_ability,
+    try_activate_ability_by_handle,
 };
 pub use commit::{AbilityCommitError, commit_ability};
 pub use component::{AbilitySystemComponent, GameplayAbilitySystemBundle};
 pub use lifecycle::{cancel_ability, cleanup_finished_abilities_system, end_ability};
-pub use params::{AbilityActivationCheckParams, AbilitySystemParams, PendingActiveGameplayAbilities};
+pub(crate) use lifecycle::{cleanup_discarded_ability_system, cleanup_discarded_active_ability};
+pub use params::{
+    AbilityActivationCheckParams, AbilitySystemParams, PendingActiveGameplayAbilities,
+};

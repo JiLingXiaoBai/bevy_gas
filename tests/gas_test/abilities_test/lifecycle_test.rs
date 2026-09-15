@@ -1,4 +1,5 @@
 use super::*;
+use bevy_gas::ActiveGameplayAbility;
 
 #[test]
 fn activating_ability_cancels_matching_active_abilities() {
@@ -140,7 +141,9 @@ fn repeated_same_batch_cancellation_cleans_live_ability_only_once() {
         let mut queue = app.world_mut().resource_mut::<GameplayExecutionQueue>();
         for handle in [canceller_handle, canceller_handle, blocked_handle] {
             let context = AbilityActivationContext::direct(source, queue.new_root_chain(handle));
-            queue.push_activation(source, source, handle, context).unwrap();
+            queue
+                .push_activation(source, source, handle, context)
+                .unwrap();
         }
     }
     run_gameplay_execution_queue(&mut app);
@@ -345,4 +348,127 @@ fn clear_ability_returns_false_while_spec_is_active() {
             .find_ability_spec(handle)
             .is_some()
     );
+}
+
+#[test]
+fn removing_active_components_releases_each_shared_block_only_once() {
+    let mut app = test_app();
+    let shared = register_tag(&mut app, "Block.Shared");
+    let owner = app
+        .world_mut()
+        .spawn(AbilitySystemComponent::default())
+        .id();
+    let definition = Arc::new(GameplayAbility::new(
+        AbilityTags::new(Vec::new(), Vec::new(), vec![shared], Vec::new(), Vec::new()),
+        Vec::new(),
+        None,
+        None,
+        Vec::new(),
+        false,
+        true,
+    ));
+    let first = give_ability(&mut app, owner, Arc::clone(&definition));
+    let second = give_ability(&mut app, owner, definition);
+    assert!(activate_ability(&mut app, owner, owner, first));
+    assert!(activate_ability(&mut app, owner, owner, second));
+    let first_entity = active_ability_entity_for_spec(&mut app, first).unwrap();
+    let second_entity = active_ability_entity_for_spec(&mut app, second).unwrap();
+
+    app.world_mut()
+        .entity_mut(first_entity)
+        .remove::<ActiveGameplayAbility>();
+    app.world_mut().flush();
+    run_finished_ability_cleanup(&mut app);
+    let asc = app.world().get::<AbilitySystemComponent>(owner).unwrap();
+    assert_eq!(asc.find_ability_spec(first).unwrap().get_active_count(), 0);
+    assert_eq!(asc.find_ability_spec(second).unwrap().get_active_count(), 1);
+    assert!(asc.get_blocked_ability_tags().has_tag(&shared));
+
+    app.world_mut().despawn(second_entity);
+    app.world_mut().flush();
+    let asc = app.world().get::<AbilitySystemComponent>(owner).unwrap();
+    assert_eq!(asc.find_ability_spec(second).unwrap().get_active_count(), 0);
+    assert!(!asc.get_blocked_ability_tags().has_tag(&shared));
+    assert!(activate_ability(&mut app, owner, owner, first));
+}
+
+#[test]
+fn replacing_an_active_component_terminates_its_old_activation_and_tasks() {
+    let mut app = test_app();
+    let owner = app
+        .world_mut()
+        .spawn(AbilitySystemComponent::default())
+        .id();
+    let definition = Arc::new(GameplayAbility::new(
+        AbilityTags::default(),
+        vec![AbilityTaskDef::wait_ticks(
+            10,
+            AbilityTaskOnFinishedDef::None,
+        )],
+        None,
+        None,
+        Vec::new(),
+        false,
+        false,
+    ));
+    let handle = give_ability(&mut app, owner, definition);
+    assert!(activate_ability(&mut app, owner, owner, handle));
+    let entity = active_ability_entity_for_spec(&mut app, handle).unwrap();
+    let replacement = app
+        .world()
+        .get::<ActiveGameplayAbility>(entity)
+        .unwrap()
+        .clone();
+    app.world_mut().entity_mut(entity).insert(replacement);
+    app.world_mut().flush();
+    assert_eq!(active_ability_count(&mut app), 0);
+    assert_eq!(ability_task_count(&mut app), 0);
+    assert_eq!(
+        app.world()
+            .get::<AbilitySystemComponent>(owner)
+            .unwrap()
+            .find_ability_spec(handle)
+            .unwrap()
+            .get_active_count(),
+        0
+    );
+    assert!(activate_ability(&mut app, owner, owner, handle));
+}
+
+#[test]
+fn replacing_an_asc_terminates_its_old_instances_without_touching_new_grants() {
+    let mut app = test_app();
+    let owner = app
+        .world_mut()
+        .spawn(AbilitySystemComponent::default())
+        .id();
+    let definition = Arc::new(GameplayAbility::new(
+        AbilityTags::default(),
+        vec![AbilityTaskDef::wait_ticks(
+            10,
+            AbilityTaskOnFinishedDef::None,
+        )],
+        None,
+        None,
+        Vec::new(),
+        false,
+        false,
+    ));
+    let old_handle = give_ability(&mut app, owner, Arc::clone(&definition));
+    assert!(activate_ability(&mut app, owner, owner, old_handle));
+    let mut replacement = AbilitySystemComponent::default();
+    let new_handle = replacement.give_ability(definition, 2);
+    app.world_mut().entity_mut(owner).insert(replacement);
+    app.world_mut().flush();
+    assert_eq!(active_ability_count(&mut app), 0);
+    assert_eq!(ability_task_count(&mut app), 0);
+    let spec = app
+        .world()
+        .get::<AbilitySystemComponent>(owner)
+        .unwrap()
+        .find_ability_spec(new_handle)
+        .unwrap();
+    assert_eq!(spec.get_level(), 2);
+    assert_eq!(spec.get_active_count(), 0);
+    assert!(activate_ability(&mut app, owner, owner, new_handle));
 }

@@ -1,50 +1,11 @@
-use super::super::component::AbilitySystemComponent;
-use super::super::params::{AbilitySystemParams, PendingActiveGameplayAbilities};
+use super::super::lifecycle::finish_ability_startup;
+use super::super::params::AbilitySystemParams;
 use crate::gameplay_abilities::{
-    AbilityActivationStatus, AbilityTaskCompletion, AbilityTaskDef, AbilityTaskExecutionContext,
-    ActiveAbilityHandle, ActiveGameplayAbility, dispatch_ability_task_completion,
+    AbilityTaskCompletion, AbilityTaskDef, AbilityTaskExecutionContext, ActiveAbilityHandle,
+    dispatch_ability_task_completion,
 };
 use crate::gameplay_execution::{AbilityActivationRequest, GameplayExecutionQueue};
-use crate::gameplay_tags::{GameplayTagError, GameplayTagManager};
 use bevy::prelude::*;
-
-impl AbilitySystemComponent {
-    pub(super) fn start_ability(
-        &mut self,
-        request: &AbilityActivationRequest,
-        commands: &mut Commands,
-        tag_manager: &Res<GameplayTagManager>,
-        pending_active_abilities: &mut PendingActiveGameplayAbilities,
-    ) -> Result<ActiveAbilityHandle, GameplayTagError> {
-        let blocked_tags = self
-            .find_ability_spec(request.get_handle())
-            .map(|spec| {
-                spec.get_ability()
-                    .get_tags()
-                    .get_block_abilities_with_tags()
-                    .to_vec()
-            })
-            .unwrap_or_default();
-        self.blocked_ability_tags_mut()
-            .add_tags(&blocked_tags, tag_manager)?;
-
-        if let Some(spec) = self.find_ability_spec_mut(request.get_handle()) {
-            spec.increment_active_count();
-        }
-
-        let active_ability = ActiveGameplayAbility::from_data(
-            request.get_handle(),
-            request.get_activation_data().clone(),
-            AbilityActivationStatus::Active,
-        );
-        let mut entity_commands = commands.spawn(active_ability.clone());
-        let active_handle = entity_commands.id();
-        entity_commands.set_parent_in_place(request.get_source());
-        pending_active_abilities.insert(active_handle, active_ability);
-
-        Ok(active_handle)
-    }
-}
 
 /// Borrows the canonical activation request needed to start sibling ability tasks.
 pub(super) struct StartupAbilityTaskContext<'a> {
@@ -90,5 +51,10 @@ pub(super) fn start_startup_ability_tasks(
             }
         }
     }
+    finish_ability_startup(
+        context.request.get_source(),
+        context.active_handle,
+        &mut params.commands,
+    );
     ends_ability
 }

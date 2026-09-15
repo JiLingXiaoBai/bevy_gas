@@ -119,7 +119,13 @@ impl AppliedModifier {
 ```
 
 `get_handle()` 是兼容命名，返回值已经是 `ModifierSourceId`，不是 `ActiveEffectHandle`。
-Gameplay Effects 在调用 Attributes 前通过 `From<ActiveEffectHandle>` 完成转换。
+Gameplay Effects 在调用 Attributes 前通过 `From<ActiveEffectHandle>` 完成转换。效果来源的
+`scope` 是容器安装时分配的 `storage_id`，同一 Entity 替换容器后身份不同，旧来源不会误指向新效果。
+
+来源 ID 内部区分调用方域和运行时域：公共 `ModifierSourceId::new` 创建调用方域 ID，
+Effects 的转换使用 crate-private 运行时构造。两个域的 scope/slot/generation 即使全部相同，
+ID 也不相等，效果移除或容器替换不会误删调用方的独立修饰器。Modifiers 不依赖 Effects；
+来源域是中性的身份区分。Getter 返回域内数值字段，不能仅凭这些字段重建一个运行时 ID。
 
 ### `Aggregator`
 
@@ -253,8 +259,7 @@ fn captured_current(
 - `ModifierMagnitudeCalculation::calculate()` 返回 `f32`，不能传播 `Result`。实现必须自行决定
   缺失快照、标签或属性时的安全值。
 - 不要在 calculator 中使用 `unwrap()`、`expect()` 或依赖隐藏全局状态。
-- `ModifierSourceId` 的 `scope` 语义由来源系统定义；只有同一来源命名空间内的三元组才有
-  唯一性保证。
+- 调用方域与运行时域互相隔离；多个自定义来源系统仍须协调调用方域内的 scope/slot/generation。
 - `AppliedModifier` 为兼容性保持公开，但正常玩法代码通常只需要 `ModifierSpec` 与
   `AttributeSet`。
 - `Aggregator` 的桶和 executor 标志都是私有实现，不应通过字段布局扩展。
