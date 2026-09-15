@@ -1,4 +1,7 @@
-use super::{GameplayExecutionQueue, GameplayExecutionRequest};
+use super::{
+    GameplayExecutionError, GameplayExecutionOutcome, GameplayExecutionQueue,
+    GameplayExecutionRequest, GameplayExecutionResult,
+};
 use crate::ability_system::{AbilitySystemParams, execute_ability_activation_in_batch};
 use crate::gameplay_effects::{
     apply_gameplay_effect_in_batch, resolve_active_effect_tag_requirements_if_dirty,
@@ -8,51 +11,67 @@ use bevy::prelude::*;
 pub(crate) fn drain_gameplay_execution_queue(
     execution_queue: &mut GameplayExecutionQueue,
     params: &mut AbilitySystemParams,
+    mut on_completed: impl FnMut(GameplayExecutionResult),
 ) {
     params
         .pending_active_abilities
         .retain_unapplied(&params.active_ability_query);
     resolve_active_effect_tag_requirements_if_dirty(params);
 
-    while let Some(request) = execution_queue.pop() {
-        match request {
+    while let Some((request_id, request)) = execution_queue.pop() {
+        let (source, target) = match &request {
             GameplayExecutionRequest::ActivateAbility(request) => {
-                if let Err(error) =
-                    execute_ability_activation_in_batch(request, execution_queue, params)
-                {
-                    if error.is_rejection() {
-                        debug!("queued ability activation was rejected: {error}");
-                    } else {
-                        error!("queued ability activation failed: {error}");
-                    }
-                }
+                (request.get_source(), request.get_target())
             }
             GameplayExecutionRequest::ApplyGameplayEffect(request) => {
-                if let Err(error) = apply_gameplay_effect_in_batch(
+                (request.get_payload().get_source(), request.get_target())
+            }
+        };
+        let result = match request {
+            GameplayExecutionRequest::ActivateAbility(request) => {
+                execute_ability_activation_in_batch(request, execution_queue, params)
+                    .map(|_| ())
+                    .map_err(GameplayExecutionError::AbilityActivation)
+            }
+            GameplayExecutionRequest::ApplyGameplayEffect(request) => {
+                apply_gameplay_effect_in_batch(
                     request.get_target(),
                     request.get_effect(),
                     params,
                     request.get_payload(),
-                ) {
-                    if error.is_rejection() {
-                        debug!("queued gameplay effect was rejected: {error}");
-                    } else {
-                        error!("queued gameplay effect application failed: {error}");
-                    }
-                }
+                )
+                .map(|_| ())
+                .map_err(GameplayExecutionError::EffectApplication)
+            }
+        };
+        if let Err(error) = &result {
+            if error.is_rejection() {
+                debug!("queued gameplay request was rejected: {error}");
+            } else {
+                error!("queued gameplay request failed: {error}");
             }
         }
-
         resolve_active_effect_tag_requirements_if_dirty(params);
+        on_completed(GameplayExecutionResult {
+            request_id,
+            source,
+            target,
+            outcome: GameplayExecutionOutcome::from_result(result),
+        });
     }
 }
 
-/// Drains gameplay mutations in strict cross-type FIFO order.
+/// Drains gameplay mutations in FIFO order and publishes one result per consumed request.
+///
+/// Result consumers run after this system. Any requests they enqueue run in the next fixed tick.
 pub fn process_gameplay_execution_queue_system(
     mut execution_queue: ResMut<GameplayExecutionQueue>,
     mut params: AbilitySystemParams,
+    mut results: MessageWriter<GameplayExecutionResult>,
 ) {
-    drain_gameplay_execution_queue(&mut execution_queue, &mut params);
+    drain_gameplay_execution_queue(&mut execution_queue, &mut params, |result| {
+        results.write(result);
+    });
 }
 
 /// Returns whether the gameplay mutation FIFO contains work.

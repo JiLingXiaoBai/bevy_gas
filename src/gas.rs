@@ -47,9 +47,10 @@ pub use gameplay_effects::{
     update_active_effect_tag_requirements_system,
 };
 pub use gameplay_execution::{
-    AbilityActivationRequest, GameplayEffectApplicationRequest, GameplayExecutionQueue,
-    GameplayExecutionRequest, gameplay_execution_queue_has_work,
-    process_gameplay_execution_queue_system,
+    AbilityActivationRequest, GameplayEffectApplicationRequest, GameplayExecutionError,
+    GameplayExecutionOutcome, GameplayExecutionQueue, GameplayExecutionQueueError,
+    GameplayExecutionRequest, GameplayExecutionRequestId, GameplayExecutionResult,
+    gameplay_execution_queue_has_work, process_gameplay_execution_queue_system,
 };
 pub use gameplay_tags::{
     BLOCK_SIZE_EXPONENT, GameplayTag, GameplayTagBits, GameplayTagContainer, GameplayTagError,

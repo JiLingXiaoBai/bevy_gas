@@ -125,7 +125,9 @@ fn enqueue_direct_activation(
     let targets = AbilityActivationTargets::single(target);
 
     let activation_data = AbilityActivationData::new(source, targets, context);
-    queue.push(AbilityActivationRequest::from_data(handle, activation_data));
+    if let Err(error) = queue.push(AbilityActivationRequest::from_data(handle, activation_data)) {
+        error!("failed to queue activation: {error}");
+    }
 }
 ```
 

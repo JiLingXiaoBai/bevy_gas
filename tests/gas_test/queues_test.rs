@@ -1,19 +1,21 @@
 use super::support_test::{
-    ability_task_count, attribute_set, current_value, empty_effect_tags, give_ability,
-    instant_add_effect, modifier, register_attribute, run_ability_tasks,
+    ability_task_count, activate_ability, attribute_set, current_value, empty_effect_tags,
+    give_ability, instant_add_effect, modifier, register_attribute, run_ability_tasks,
     run_gameplay_execution_queue, spawn_ability_task, spawn_active_ability, spawn_attribute_set,
     test_app,
 };
 use bevy::prelude::*;
 use bevy_gas::{
-    AbilityActivationContext, AbilityActivationData, AbilityActivationReason,
-    AbilityActivationRequest, AbilityActivationStatus, AbilityActivationTargets,
-    AbilityChainContext, AbilitySpecHandle, AbilitySystemComponent, AbilityTargetData,
-    AbilityTargetHit, AbilityTask, AbilityTaskDef, AbilityTaskEvent, AbilityTaskExecutionContext,
-    AbilityTaskOnFinished, AbilityTaskOnFinishedDef, ActiveGameplayAbility, AttributeId,
-    EffectDurationTicks, EffectPayload, GameplayAbility, GameplayEffect, GameplayExecutionQueue,
-    GameplayExecutionRequest, Modifier, ModifierEvaluationContext, ModifierMagnitude,
-    ModifierMagnitudeCalculation, ModifierOperation, StackingPolicy, UniqueName,
+    AbilityActivationContext, AbilityActivationData, AbilityActivationError,
+    AbilityActivationReason, AbilityActivationRequest, AbilityActivationStatus,
+    AbilityActivationTargets, AbilityChainContext, AbilitySpecHandle, AbilitySystemComponent,
+    AbilityTargetData, AbilityTargetHit, AbilityTask, AbilityTaskDef, AbilityTaskEvent,
+    AbilityTaskExecutionContext, AbilityTaskOnFinished, AbilityTaskOnFinishedDef,
+    ActiveGameplayAbility, AttributeId, EffectDurationTicks, EffectPayload, GameplayAbility,
+    GameplayAbilitySystemSet, GameplayEffect, GameplayEffectApplicationError,
+    GameplayExecutionError, GameplayExecutionOutcome, GameplayExecutionQueue,
+    GameplayExecutionRequest, GameplayExecutionResult, Modifier, ModifierEvaluationContext,
+    ModifierMagnitude, ModifierMagnitudeCalculation, ModifierOperation, StackingPolicy, UniqueName,
 };
 use std::sync::Arc;
 
@@ -76,7 +78,9 @@ fn gameplay_queue_processes_entire_effect_batch() {
     {
         let mut queue = app.world_mut().resource_mut::<GameplayExecutionQueue>();
         for _ in 0..REQUEST_COUNT {
-            queue.push_application(target, effect.clone(), EffectPayload::new(target, None, 1));
+            queue
+                .push_application(target, effect.clone(), EffectPayload::new(target, None, 1))
+                .unwrap();
         }
     }
 
@@ -112,7 +116,9 @@ fn gameplay_queue_processes_entire_activation_batch() {
         let mut queue = app.world_mut().resource_mut::<GameplayExecutionQueue>();
         for _ in 0..REQUEST_COUNT {
             let context = AbilityActivationContext::direct(source, queue.new_root_chain(handle));
-            queue.push_activation(source, source, handle, context);
+            queue
+                .push_activation(source, source, handle, context)
+                .unwrap();
         }
     }
 
@@ -191,7 +197,8 @@ fn ability_activation_request_is_preserved_through_startup() {
     let activation_data = AbilityActivationData::new(source, targets.clone(), context);
     app.world_mut()
         .resource_mut::<GameplayExecutionQueue>()
-        .push(AbilityActivationRequest::from_data(handle, activation_data));
+        .push(AbilityActivationRequest::from_data(handle, activation_data))
+        .unwrap();
     run_gameplay_execution_queue(&mut app);
 
     let world = app.world_mut();
@@ -256,7 +263,7 @@ fn chained_activation_preserves_the_parent_target_selection() {
         )
         .unwrap();
 
-    let Some(GameplayExecutionRequest::ActivateAbility(request)) = queue.pop() else {
+    let Some((_, GameplayExecutionRequest::ActivateAbility(request))) = queue.pop() else {
         panic!("expected a queued chained ability activation");
     };
     assert_eq!(request.get_targets(), &targets);
@@ -313,7 +320,9 @@ fn startup_task_context_preserves_ability_handle_and_level() {
             ],
         ))
         .unwrap();
-        queue.push_activation(source, targets, handle, context);
+        queue
+            .push_activation(source, targets, handle, context)
+            .unwrap();
     }
     run_gameplay_execution_queue(&mut app);
 
@@ -363,8 +372,12 @@ fn gameplay_queue_processes_effect_requests_fifo() {
 
     {
         let mut queue = app.world_mut().resource_mut::<GameplayExecutionQueue>();
-        queue.push_application(target, first, EffectPayload::new(target, None, 1));
-        queue.push_application(target, second, EffectPayload::new(target, None, 1));
+        queue
+            .push_application(target, first, EffectPayload::new(target, None, 1))
+            .unwrap();
+        queue
+            .push_application(target, second, EffectPayload::new(target, None, 1))
+            .unwrap();
     }
 
     run_gameplay_execution_queue(&mut app);
@@ -423,8 +436,12 @@ fn gameplay_queue_processes_activation_requests_fifo() {
             AbilityActivationContext::direct(source, queue.new_root_chain(first_handle));
         let second_context =
             AbilityActivationContext::direct(source, queue.new_root_chain(second_handle));
-        queue.push_activation(source, source, first_handle, first_context);
-        queue.push_activation(source, source, second_handle, second_context);
+        queue
+            .push_activation(source, source, first_handle, first_context)
+            .unwrap();
+        queue
+            .push_activation(source, source, second_handle, second_context)
+            .unwrap();
     }
 
     run_gameplay_execution_queue(&mut app);
@@ -470,8 +487,12 @@ fn gameplay_execution_queue_preserves_cross_type_fifo() {
     {
         let mut queue = app.world_mut().resource_mut::<GameplayExecutionQueue>();
         let context = AbilityActivationContext::direct(source, queue.new_root_chain(handle));
-        queue.push_activation(source, source, handle, context);
-        queue.push_application(source, queued_effect, EffectPayload::new(source, None, 1));
+        queue
+            .push_activation(source, source, handle, context)
+            .unwrap();
+        queue
+            .push_application(source, queued_effect, EffectPayload::new(source, None, 1))
+            .unwrap();
     }
 
     run_gameplay_execution_queue(&mut app);
@@ -645,4 +666,196 @@ fn task_emit_event_triggers_observer_with_full_payload() {
     assert_eq!(captured.spec_handle, Some(handle));
     assert_eq!(captured.event_id, Some(event_id));
     assert_eq!(captured.level, Some(9));
+}
+
+#[test]
+fn execution_results_identify_fifo_success_rejection_and_failure() {
+    let mut app = test_app();
+    let attribute = register_attribute(&mut app, "Result.Value");
+    let target = spawn_attribute_set(&mut app, attribute, 10.0);
+    let source = app
+        .world_mut()
+        .spawn(AbilitySystemComponent::default())
+        .id();
+    let ability = Arc::new(GameplayAbility::new(
+        Default::default(),
+        Vec::new(),
+        None,
+        None,
+        Vec::new(),
+        false,
+        false,
+    ));
+    let handle = give_ability(&mut app, source, ability);
+    let missing = AbilitySpecHandle::new(handle.get_value() + 1);
+    let effect = instant_add_effect(attribute, 1.0);
+    let ids = {
+        let mut queue = app.world_mut().resource_mut::<GameplayExecutionQueue>();
+        let first = queue
+            .push_application(target, effect.clone(), EffectPayload::new(source, None, 1))
+            .unwrap();
+        let context = AbilityActivationContext::direct(source, queue.new_root_chain(handle));
+        let second = queue
+            .push_activation(source, target, handle, context.clone())
+            .unwrap();
+        let third = queue
+            .push_activation(source, target, handle, context)
+            .unwrap();
+        let context = AbilityActivationContext::direct(source, queue.new_root_chain(missing));
+        let fourth = queue
+            .push_activation(source, target, missing, context)
+            .unwrap();
+        let fifth = queue
+            .push_application(source, effect.clone(), EffectPayload::new(source, None, 1))
+            .unwrap();
+        let sixth = queue
+            .push_application(target, effect, EffectPayload::new(source, None, 1))
+            .unwrap();
+        vec![first, second, third, fourth, fifth, sixth]
+    };
+    run_gameplay_execution_queue(&mut app);
+    let results: Vec<_> = app
+        .world_mut()
+        .resource_mut::<Messages<GameplayExecutionResult>>()
+        .drain()
+        .collect();
+    assert_eq!(
+        results
+            .iter()
+            .map(|result| result.request_id)
+            .collect::<Vec<_>>(),
+        ids
+    );
+    assert_eq!(results[0].source, source);
+    assert_eq!(results[0].target, target);
+    assert_eq!(results[1].target, target);
+    assert_eq!(results[0].outcome, GameplayExecutionOutcome::Succeeded);
+    assert_eq!(results[1].outcome, GameplayExecutionOutcome::Succeeded);
+    assert!(matches!(
+        results[2].outcome,
+        GameplayExecutionOutcome::Rejected(GameplayExecutionError::AbilityActivation(
+            AbilityActivationError::MultipleInstancesNotAllowed { .. }
+        ))
+    ));
+    assert!(matches!(
+        results[3].outcome,
+        GameplayExecutionOutcome::Failed(GameplayExecutionError::AbilityActivation(
+            AbilityActivationError::AbilityNotFound { .. }
+        ))
+    ));
+    assert!(matches!(
+        results[4].outcome,
+        GameplayExecutionOutcome::Failed(GameplayExecutionError::EffectApplication(
+            GameplayEffectApplicationError::MissingAttributeSet { .. }
+        ))
+    ));
+    assert_eq!(results[5].outcome, GameplayExecutionOutcome::Succeeded);
+    assert_eq!(current_value(&mut app, target, attribute), 12.0);
+}
+
+#[derive(Resource)]
+struct ResultFollowup {
+    target: Entity,
+    effect: Arc<GameplayEffect>,
+    submitted: bool,
+}
+
+fn queue_result_followup(
+    mut results: MessageReader<GameplayExecutionResult>,
+    mut followup: ResMut<ResultFollowup>,
+    mut queue: ResMut<GameplayExecutionQueue>,
+) {
+    for result in results.read() {
+        if !followup.submitted && matches!(result.outcome, GameplayExecutionOutcome::Succeeded) {
+            queue
+                .push_application(
+                    followup.target,
+                    followup.effect.clone(),
+                    EffectPayload::new(followup.target, None, 1),
+                )
+                .unwrap();
+            followup.submitted = true;
+        }
+    }
+}
+
+#[test]
+fn requests_from_result_consumers_execute_on_the_next_fixed_tick() {
+    let mut app = test_app();
+    let attribute = register_attribute(&mut app, "Result.Tick");
+    let target = spawn_attribute_set(&mut app, attribute, 0.0);
+    let effect = instant_add_effect(attribute, 1.0);
+    app.insert_resource(ResultFollowup {
+        target,
+        effect: effect.clone(),
+        submitted: false,
+    });
+    app.add_systems(
+        FixedUpdate,
+        queue_result_followup.after(GameplayAbilitySystemSet::GameplayResolve),
+    );
+    app.world_mut()
+        .resource_mut::<GameplayExecutionQueue>()
+        .push_application(target, effect, EffectPayload::new(target, None, 1))
+        .unwrap();
+
+    app.world_mut().run_schedule(FixedUpdate);
+    assert_eq!(current_value(&mut app, target, attribute), 1.0);
+    assert_eq!(app.world().resource::<GameplayExecutionQueue>().len(), 1);
+    app.world_mut().run_schedule(FixedUpdate);
+    assert_eq!(current_value(&mut app, target, attribute), 2.0);
+    assert!(app.world().resource::<GameplayExecutionQueue>().is_empty());
+}
+
+#[test]
+fn synchronous_activation_does_not_publish_local_queue_results() {
+    let mut app = test_app();
+    let attribute = register_attribute(&mut app, "Result.Local");
+    let attributes = attribute_set(&app, attribute, 0.0);
+    let source = app
+        .world_mut()
+        .spawn((AbilitySystemComponent::default(), attributes))
+        .id();
+    let effect = instant_add_effect(attribute, 1.0);
+    let ability = Arc::new(GameplayAbility::new(
+        Default::default(),
+        vec![AbilityTaskDef::Instant {
+            on_finished: AbilityTaskOnFinishedDef::ApplyGameplayEffectToTarget { effect },
+        }],
+        None,
+        None,
+        Vec::new(),
+        true,
+        false,
+    ));
+    let handle = give_ability(&mut app, source, ability);
+    assert!(activate_ability(&mut app, source, source, handle));
+    assert_eq!(current_value(&mut app, source, attribute), 1.0);
+    assert!(
+        app.world()
+            .resource::<Messages<GameplayExecutionResult>>()
+            .is_empty()
+    );
+}
+
+#[test]
+fn clearing_requests_does_not_reuse_their_result_identifiers() {
+    let mut queue = GameplayExecutionQueue::default();
+    let entity = Entity::PLACEHOLDER;
+    let effect = Arc::new(GameplayEffect::new(
+        Vec::new(),
+        EffectDurationTicks::Instant,
+        None,
+        1.0,
+        StackingPolicy::non_stacking(),
+        empty_effect_tags(),
+    ));
+    let first = queue
+        .push_application(entity, effect.clone(), EffectPayload::new(entity, None, 1))
+        .unwrap();
+    queue.clear();
+    let second = queue
+        .push_application(entity, effect, EffectPayload::new(entity, None, 1))
+        .unwrap();
+    assert!(second.get_value() > first.get_value());
 }

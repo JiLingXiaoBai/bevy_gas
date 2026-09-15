@@ -8,7 +8,7 @@ use crate::gameplay_effects::{
     update_active_effect_tag_requirements_system,
 };
 use crate::gameplay_execution::{
-    GameplayExecutionQueue, gameplay_execution_queue_has_work,
+    GameplayExecutionQueue, GameplayExecutionResult, gameplay_execution_queue_has_work,
     process_gameplay_execution_queue_system,
 };
 use crate::gameplay_tags::GameplayTagManager;
@@ -77,6 +77,7 @@ impl Plugin for GameplayAbilitySystemRuntimePlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<AttributeIdManager>()
             .init_resource::<GameplayExecutionQueue>()
+            .add_message::<GameplayExecutionResult>()
             .init_resource::<ActiveEffectRequirementSync>()
             .init_resource::<PendingActiveGameplayAbilities>()
             .init_resource::<TargetingRequestQueue>()

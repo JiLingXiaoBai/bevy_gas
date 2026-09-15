@@ -47,7 +47,7 @@ pub fn try_activate_ability_by_handle(
         &mut execution_queue,
         params,
     );
-    drain_gameplay_execution_queue(&mut execution_queue, params);
+    drain_gameplay_execution_queue(&mut execution_queue, params, |_| {});
     result
 }
 

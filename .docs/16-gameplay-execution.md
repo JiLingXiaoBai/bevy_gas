@@ -5,11 +5,12 @@
 `gameplay_execution` 是技能激活与效果应用的统一结算入口。它把两类 Gameplay mutation
 放入同一个跨类型 FIFO，并在 `FixedUpdate` 的 `GameplayResolve` 阶段完整消费。
 
-该模块解决三个问题：
+该模块解决四个问题：
 
 - 技能和效果之间存在唯一、可观察的先后顺序；
 - 同一批次较早请求产生的 Active Effect、Tag 和技能状态对后续请求可见；
-- 请求量不会改变 Gameplay 结算 tick，不会因为队列上限把伤害或 Tag 隐式推迟。
+- 请求量不会改变 Gameplay 结算 tick，不会因为队列上限把伤害或 Tag 隐式推迟；
+- 请求 ID 与结构化结果连接提交方和结算方，让 UI、AI 能观察实际成功或失败。
 
 `TargetingRequestQueue` 仍是独立的目标抓取队列。它先在 `Targeting` 阶段生成目标数据，
 需要继续激活技能时再向 `GameplayExecutionQueue` 写入激活请求。
@@ -22,16 +23,18 @@ src/gas/
 └── gameplay_execution/
     ├── request.rs
     ├── queue.rs
-    └── resolver.rs
+    ├── resolver.rs
+    └── result.rs
 ```
 
 - `gameplay_execution.rs`：私有子模块声明和公共重导出。
 - `request.rs`：两种具体请求、统一请求枚举及类型转换。
-- `queue.rs`：FIFO Resource、入队 API 和链 ID 分配。
-- `resolver.rs`：完整 drain、逐请求收敛和 Bevy System 包装。
+- `queue.rs`：FIFO Resource、入队 API、请求 ID 和链 ID 分配。
+- `resolver.rs`：完整 drain、逐请求收敛、结果发布和 Bevy System 包装。
+- `result.rs`：成功、玩法拒绝、运行错误，以及带请求 ID 的结果 Message。
 
-两种具体请求现在都由 Execution 领域拥有。Ability System 与 Gameplay Effects 的领域门面直接
-兼容重导出这两个类型，因此现有领域导入路径仍可使用，而不再保留重复的请求文件。
+两种具体请求由 Execution 领域拥有；Ability System 与 Gameplay Effects 的领域门面显式
+重导出对应类型。
 
 ## 请求类型
 
@@ -113,7 +116,8 @@ pub enum GameplayExecutionRequest {
 ```rust
 #[derive(Resource)]
 pub struct GameplayExecutionQueue {
-    requests: VecDeque<GameplayExecutionRequest>,
+    requests: VecDeque<(GameplayExecutionRequestId, GameplayExecutionRequest)>,
+    next_request_id: u64,
     next_chain_id: u64,
 }
 ```
@@ -122,18 +126,22 @@ pub struct GameplayExecutionQueue {
 
 | 方法 | 作用 |
 | ---- | ---- |
-| `push(request)` | 追加任意统一请求 |
+| `push(request)` | 追加任意统一请求，返回 `Result<RequestId, QueueError>` |
 | `push_activation(source, targets: impl Into<AbilityActivationTargets>, handle, context)` | 追加携带唯一目标值的技能激活 |
 | `push_chained_activation(source, targets: impl Into<...>, ...) -> Result` | 推进父链并携带同一目标值追加链式激活 |
 | `new_root_chain(handle)` | 分配队列局部 chain ID 并创建根链上下文 |
 | `push_application(target, effect, payload)` | 追加效果应用 |
-| `pop()` | 取出最早请求 |
+| `pop()` | 取出最早请求的 `(request_id, request)` |
 | `len()` / `is_empty()` | 查询待处理数量或空状态 |
-| `clear()` | 丢弃所有待处理请求 |
+| `clear()` | 丢弃待处理请求，不发布结果，不复用这些请求的 ID |
+
+所有入队方法都返回 `Result<GameplayExecutionRequestId, GameplayExecutionQueueError>`。ID 在队列
+局部按接受顺序单调递增；ID 空间耗尽返回 `RequestIdExhausted`，不会回绕或接收请求。链式入队
+还可能返回 `InvalidChain(AbilityChainError)`。入队错误不会产生结算结果，因为请求尚未被接受。
 
 已有 `AbilityActivationData` 时，使用
 `push(AbilityActivationRequest::from_data(handle, activation_data))` 转移所有权；
-`push_activation(...)` 是保留旧参数形态的便捷入口，会在内部构造同样的数据值。
+`push_activation(...)` 会将独立输入参数组装成同样的数据值，并返回请求 ID 或入队错误。
 
 Gameplay 系统通常只应生产请求。`pop()` 和 `clear()` 主要用于受控工具、测试或自定义调度；
 运行时存在多个消费者会破坏统一顺序。
@@ -144,6 +152,7 @@ Gameplay 系统通常只应生产请求。`pop()` 和 `clear()` 主要用于受�
 pub fn process_gameplay_execution_queue_system(
     mut execution_queue: ResMut<GameplayExecutionQueue>,
     mut params: AbilitySystemParams,
+    mut results: MessageWriter<GameplayExecutionResult>,
 ) {
     /* Drains the shared gameplay FIFO. */
 }
@@ -199,7 +208,9 @@ fn queue_attack(
     let chain = queue.new_root_chain(source.ability);
     let context = AbilityActivationContext::direct(source.entity, chain);
     let targets = AbilityActivationTargets::single(source.target);
-    queue.push_activation(source.entity, targets, source.ability, context);
+    if let Err(error) = queue.push_activation(source.entity, targets, source.ability, context) {
+        error!("failed to queue attack: {error}");
+    }
 }
 
 app.add_systems(
@@ -220,7 +231,8 @@ app.add_systems(
 3. 从 FIFO 头部取出一个请求；
 4. 执行技能激活或效果应用；
 5. 收敛该请求产生的 Tag Requirement 变化；
-6. 回到步骤 3，直到队列为空。
+6. 发布该请求的 `GameplayExecutionResult`；
+7. 回到步骤 3，直到队列为空。
 
 这里的“逐请求收敛”不是逐请求执行 `Commands` flush，也不是把 resolver 改成
 Exclusive World system。Active Effect、Tag 与属性修改直接写入现有 Component；尚未 flush 的
@@ -233,6 +245,44 @@ Active Ability 则由 pending overlay 补足同批次可见性。deferred ECS co
 
 Gameplay 拒绝（例如免疫、条件不满足）记录为 debug 日志；配置或运行时状态错误记录为
 error。单个请求失败不会中止后续 FIFO 请求。
+
+## 请求结果与消费时机
+
+默认 Runtime Plugin 注册 `GameplayExecutionResult` Message。全局 resolver 为每个已消费的请求
+按 FIFO 顺序发布一个结果：
+
+```rust
+pub struct GameplayExecutionResult {
+    pub request_id: GameplayExecutionRequestId,
+    pub source: Entity,
+    pub target: Entity,
+    pub outcome: GameplayExecutionOutcome,
+}
+
+pub enum GameplayExecutionOutcome {
+    Succeeded,
+    Rejected(GameplayExecutionError),
+    Failed(GameplayExecutionError),
+}
+```
+
+`target` 对效果是应用目标，对技能是捕获的主目标；完整多目标数据仍由提交方或 Active Ability
+持有。`GameplayExecutionError` 保留 `AbilityActivation(AbilityActivationError)` 或
+`EffectApplication(GameplayEffectApplicationError)`，无需从日志文本解析原因。
+
+- `Succeeded`：该请求的主操作成功。技能激活本身成功不表示每个 best-effort activation effect
+  都成功，也不表示后续派生请求成功；派生请求进入 FIFO 后有自己的 ID 和结果。
+- `Rejected`：预期的玩法拒绝，如实例限制、Cost、Cooldown 或免疫。
+- `Failed`：配置或运行时状态错误，如目标缺少必需组件。失败不阻断后续请求。
+
+消费系统使用 `MessageReader<GameplayExecutionResult>`，并显式安排在
+`.after(GameplayAbilitySystemSet::GameplayResolve)`。本次结果出现时，本 tick 的 drain 已结束；
+结果消费者追加的请求在下一次 FixedUpdate 执行。结果是 Bevy 缓冲 Message，须正常推进 reader，
+不是持久审计日志。
+
+同步 `try_activate_ability_by_handle()` 的局部 FIFO 不发布这个全局 Message，避免局部重号 ID
+与全局请求混淆。调用方直接读取同步函数的 `Result`；其派生请求依然在同步返回前执行。
+`clear()` 丢弃的请求和通过公共 `pop()` 交给自定义消费者的请求，不会自动生成 resolver 结果。
 
 ## 请求之间的可见性
 
@@ -273,6 +323,7 @@ Requirement 每一轮先基于同一快照收集决策，再按稳定的实体�
 | `GameplayResolve` 创建 startup `WaitTicks` | `AbilityTasks` 已结束，下一次 `FixedUpdate` 才开始推进 |
 | `GameplayResolve` 内 startup `Instant::EmitEvent` 的 Observer 写入 Gameplay FIFO | resolver 已结束，下一次 `FixedUpdate` |
 | `GameplayResolve` 之后的系统写入 Gameplay FIFO | 下一次 `FixedUpdate` |
+| `GameplayExecutionResult` 消费者写入 Gameplay FIFO | 消费者在 resolver 后运行，下一次 `FixedUpdate` |
 | `TargetingResultEvent` Observer 再写 Targeting FIFO | Targeting drain 已结束，下一次 `FixedUpdate` 抓取 |
 
 startup Event 项是 `GameplayResolve` 场景下的通知边界：`EmitEvent` 使用 `Commands::trigger`，Observer
@@ -354,7 +405,7 @@ API。运行时如果已经存在全局排队请求，不要在同一逻辑阶�
 
 相关集成测试位于：
 
-- `tests/gas_test/queues_test.rs`：完整 drain、同类型和跨类型 FIFO；
+- `tests/gas_test/queues_test.rs`：完整 drain、同类型和跨类型 FIFO、结果 ID/顺序/失败分类、结果驱动请求的下一 tick 边界，以及同步局部结果隔离；
 - `tests/gas_test/runtime_paths_test.rs`：阶段边界、当前 tick 与下一 tick；
 - `tests/gas_test/effects_test/requirements_test.rs` 与 `stacking_test.rs`：请求间 Requirement、免疫、堆叠和跨实体 Tag 可见性；
 - `tests/gas_test/abilities_test/chaining_test.rs` 与 `lifecycle_test.rs`：startup Instant、链式激活和 deferred cancellation。

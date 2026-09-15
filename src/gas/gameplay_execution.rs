@@ -6,10 +6,13 @@
 mod queue;
 mod request;
 mod resolver;
+mod result;
 
-pub use queue::GameplayExecutionQueue;
+pub use queue::{GameplayExecutionQueue, GameplayExecutionQueueError, GameplayExecutionRequestId};
 pub use request::{
     AbilityActivationRequest, GameplayEffectApplicationRequest, GameplayExecutionRequest,
 };
 pub(crate) use resolver::drain_gameplay_execution_queue;
 pub use resolver::{gameplay_execution_queue_has_work, process_gameplay_execution_queue_system};
+
+pub use result::{GameplayExecutionError, GameplayExecutionOutcome, GameplayExecutionResult};

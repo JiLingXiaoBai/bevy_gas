@@ -140,7 +140,7 @@ fn repeated_same_batch_cancellation_cleans_live_ability_only_once() {
         let mut queue = app.world_mut().resource_mut::<GameplayExecutionQueue>();
         for handle in [canceller_handle, canceller_handle, blocked_handle] {
             let context = AbilityActivationContext::direct(source, queue.new_root_chain(handle));
-            queue.push_activation(source, source, handle, context);
+            queue.push_activation(source, source, handle, context).unwrap();
         }
     }
     run_gameplay_execution_queue(&mut app);

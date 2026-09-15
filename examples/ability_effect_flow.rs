@@ -176,7 +176,11 @@ fn queue_fireball(
     }
     let chain = queue.new_root_chain(scenario.ability);
     let context = AbilityActivationContext::direct(scenario.caster, chain);
-    queue.push_activation(scenario.caster, scenario.target, scenario.ability, context);
+    if let Err(error) =
+        queue.push_activation(scenario.caster, scenario.target, scenario.ability, context)
+    {
+        error!("failed to queue fireball: {error}");
+    }
     scenario.submitted = true;
 }
 

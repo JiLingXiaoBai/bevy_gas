@@ -19,7 +19,11 @@ pub fn process_targeting_request_queue_system(
         {
             match AbilityActivationTargets::acquired(target_data.clone()) {
                 Ok(targets) => {
-                    execution_queue.push_activation(request.source, targets, handle, *context);
+                    if let Err(error) =
+                        execution_queue.push_activation(request.source, targets, handle, *context)
+                    {
+                        error!("failed to queue targeting continuation: {error}");
+                    }
                 }
                 Err(error) => {
                     error!("targeting produced invalid ability activation targets: {error}");

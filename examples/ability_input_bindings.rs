@@ -127,7 +127,9 @@ fn submit_buffered_activations(
         let context = AbilityActivationContext::input(source, queue.new_root_chain(handle));
         // This example self-targets. A game can capture a target with the input, or submit
         // a targeting request and let its continuation enqueue the ability activation.
-        queue.push_activation(source, source, handle, context);
+        if let Err(error) = queue.push_activation(source, source, handle, context) {
+            error!("failed to queue buffered activation: {error}");
+        }
     }
 }
 

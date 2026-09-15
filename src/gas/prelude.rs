@@ -15,7 +15,7 @@ pub use super::gameplay_effects::{
     ActiveGameplayEffects, EffectDurationTicks, EffectPayload, EffectSystemParams, EffectTags,
     GameplayEffect, StackingPolicy,
 };
-pub use super::gameplay_execution::GameplayExecutionQueue;
+pub use super::gameplay_execution::{GameplayExecutionQueue, GameplayExecutionResult};
 pub use super::gameplay_tags::{
     GameplayTag, GameplayTagContainer, GameplayTagRegister, TagRequirements,
 };

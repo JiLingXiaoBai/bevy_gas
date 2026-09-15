@@ -108,8 +108,8 @@ fn queued_effect_can_remove_effect_created_earlier_in_same_batch() {
     ));
     {
         let mut queue = app.world_mut().resource_mut::<GameplayExecutionQueue>();
-        queue.push_application(target, buff, EffectPayload::new(target, None, 1));
-        queue.push_application(target, cleanse, EffectPayload::new(target, None, 1));
+        queue.push_application(target, buff, EffectPayload::new(target, None, 1)).unwrap();
+        queue.push_application(target, cleanse, EffectPayload::new(target, None, 1)).unwrap();
     }
 
     run_fixed_update(&mut app);

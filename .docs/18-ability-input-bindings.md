@@ -103,8 +103,7 @@ fn spawn_player(mut commands: Commands) {
 `GameplayAbilitySystemSet::RequestProducers` 提交请求：
 
 ```rust
-use bevy::prelude::Entity;
-use bevy_gas::gas::ability_input::AbilityInputBindingError;
+use bevy::prelude::{Entity, error};
 use bevy_gas::prelude::*;
 
 fn enqueue_input<Action: Eq + Send + Sync + 'static>(
@@ -114,17 +113,24 @@ fn enqueue_input<Action: Eq + Send + Sync + 'static>(
     bindings: &AbilityInputBindings<Action>,
     ability_system: &AbilitySystemComponent,
     queue: &mut GameplayExecutionQueue,
-) -> Result<(), AbilityInputBindingError> {
-    let handle = bindings.resolve(action, ability_system)?;
+) {
+    let handle = match bindings.resolve(action, ability_system) {
+        Ok(handle) => handle,
+        Err(error) => {
+            error!("failed to resolve ability input: {error}");
+            return;
+        }
+    };
     let chain = queue.new_root_chain(handle);
     let context = AbilityActivationContext::input(source, chain);
-    queue.push_activation(
+    if let Err(error) = queue.push_activation(
         source,
         AbilityActivationTargets::single(target),
         handle,
         context,
-    );
-    Ok(())
+    ) {
+        error!("failed to queue ability input: {error}");
+    }
 }
 ```
 

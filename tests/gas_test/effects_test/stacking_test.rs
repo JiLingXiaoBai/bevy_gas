@@ -107,8 +107,8 @@ fn queued_applications_stack_against_same_batch_effect() {
     ));
     {
         let mut queue = app.world_mut().resource_mut::<GameplayExecutionQueue>();
-        queue.push_application(target, effect.clone(), EffectPayload::new(target, None, 1));
-        queue.push_application(target, effect, EffectPayload::new(target, None, 1));
+        queue.push_application(target, effect.clone(), EffectPayload::new(target, None, 1)).unwrap();
+        queue.push_application(target, effect, EffectPayload::new(target, None, 1)).unwrap();
     }
 
     run_fixed_update(&mut app);

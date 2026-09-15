@@ -30,7 +30,9 @@ fn submit_one_shot_effect_request(
         return;
     }
     let payload = EffectPayload::new(request.target, None, 1);
-    execution_queue.push_application(request.target, request.effect.clone(), payload);
+    execution_queue
+        .push_application(request.target, request.effect.clone(), payload)
+        .unwrap();
     request.submitted = true;
 }
 
@@ -123,7 +125,8 @@ fn fixed_update_processes_queued_effect_before_next_duration_tick() {
 
     app.world_mut()
         .resource_mut::<GameplayExecutionQueue>()
-        .push_application(target, effect, EffectPayload::new(target, None, 1));
+        .push_application(target, effect, EffectPayload::new(target, None, 1))
+        .unwrap();
 
     run_fixed_update(&mut app);
     assert_eq!(current_value(&mut app, target, health), 15.0);
@@ -158,7 +161,9 @@ fn fixed_update_activation_tasks_and_cleanup_run_in_plugin_order() {
     {
         let mut queue = app.world_mut().resource_mut::<GameplayExecutionQueue>();
         let context = AbilityActivationContext::direct(source, queue.new_root_chain(handle));
-        queue.push_activation(source, source, handle, context);
+        queue
+            .push_activation(source, source, handle, context)
+            .unwrap();
     }
 
     run_fixed_update(&mut app);
@@ -213,7 +218,9 @@ fn startup_instant_task_executes_during_activation_tick() {
     {
         let mut queue = app.world_mut().resource_mut::<GameplayExecutionQueue>();
         let context = AbilityActivationContext::direct(source, queue.new_root_chain(handle));
-        queue.push_activation(source, target, handle, context);
+        queue
+            .push_activation(source, target, handle, context)
+            .unwrap();
     }
 
     run_fixed_update(&mut app);

@@ -131,7 +131,11 @@ pub(crate) fn dispatch_ability_task_completion(
                 context.get_level(),
                 Some(active_context),
             );
-            execution_queue.push_application(targets.get_primary_target(), effect, payload);
+            if let Err(error) =
+                execution_queue.push_application(targets.get_primary_target(), effect, payload)
+            {
+                error!("failed to queue ability-task effect: {error}");
+            }
         }
         AbilityTaskOnFinished::ApplyGameplayEffectToTargets { effect } => {
             let payload = effect_payload_from_ability_context(
@@ -140,7 +144,11 @@ pub(crate) fn dispatch_ability_task_completion(
                 Some(active_context),
             );
             for target in targets.entities() {
-                execution_queue.push_application(target, effect.clone(), payload.clone());
+                if let Err(error) =
+                    execution_queue.push_application(target, effect.clone(), payload.clone())
+                {
+                    error!("failed to queue ability-task effect: {error}");
+                }
             }
         }
     }

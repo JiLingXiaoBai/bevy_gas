@@ -130,8 +130,8 @@ fn queued_immunity_is_visible_to_the_next_request() {
 
     {
         let mut queue = app.world_mut().resource_mut::<GameplayExecutionQueue>();
-        queue.push_application(target, immunity_effect, EffectPayload::new(source, None, 1));
-        queue.push_application(target, incoming, EffectPayload::new(source, None, 1));
+        queue.push_application(target, immunity_effect, EffectPayload::new(source, None, 1)).unwrap();
+        queue.push_application(target, incoming, EffectPayload::new(source, None, 1)).unwrap();
     }
 
     run_fixed_update(&mut app);
@@ -275,7 +275,7 @@ fn queued_granted_tag_converges_ongoing_requirements_in_same_tick() {
     assert_eq!(current_value(&mut app, target, power), 20.0);
     app.world_mut()
         .resource_mut::<GameplayExecutionQueue>()
-        .push_application(target, blocker, EffectPayload::new(target, None, 1));
+        .push_application(target, blocker, EffectPayload::new(target, None, 1)).unwrap();
 
     run_fixed_update(&mut app);
     assert_eq!(current_value(&mut app, target, power), 10.0);
@@ -378,8 +378,8 @@ fn requirement_converges_between_two_gameplay_requests() {
 
     {
         let mut queue = app.world_mut().resource_mut::<GameplayExecutionQueue>();
-        queue.push_application(target, disable_effect, EffectPayload::new(source, None, 1));
-        queue.push_application(target, incoming, EffectPayload::new(source, None, 1));
+        queue.push_application(target, disable_effect, EffectPayload::new(source, None, 1)).unwrap();
+        queue.push_application(target, incoming, EffectPayload::new(source, None, 1)).unwrap();
     }
     run_fixed_update(&mut app);
 
@@ -437,7 +437,7 @@ fn queued_tag_source_removal_restores_effect_in_same_tick() {
 
     app.world_mut()
         .resource_mut::<GameplayExecutionQueue>()
-        .push_application(target, cleanse, EffectPayload::new(target, None, 1));
+        .push_application(target, cleanse, EffectPayload::new(target, None, 1)).unwrap();
     run_fixed_update(&mut app);
     assert_eq!(current_value(&mut app, target, power), 15.0);
 }
@@ -480,7 +480,7 @@ fn queued_tag_triggers_removal_requirement_in_same_tick() {
     assert!(apply_effect(&mut app, target, target, removable));
     app.world_mut()
         .resource_mut::<GameplayExecutionQueue>()
-        .push_application(target, cleanse, EffectPayload::new(target, None, 1));
+        .push_application(target, cleanse, EffectPayload::new(target, None, 1)).unwrap();
     run_fixed_update(&mut app);
 
     assert_eq!(current_value(&mut app, target, power), 10.0);
@@ -567,7 +567,7 @@ fn queued_source_tag_restores_other_target_effect_in_same_tick() {
     assert_eq!(current_value(&mut app, target, power), 10.0);
     app.world_mut()
         .resource_mut::<GameplayExecutionQueue>()
-        .push_application(source, source_enabler, EffectPayload::new(source, None, 1));
+        .push_application(source, source_enabler, EffectPayload::new(source, None, 1)).unwrap();
 
     run_fixed_update(&mut app);
 

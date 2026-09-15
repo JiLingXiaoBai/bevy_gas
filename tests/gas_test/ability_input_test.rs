@@ -158,7 +158,9 @@ fn submit_buffered_input(
 ) {
     while let Some((source, handle)) = pending.0.pop_front() {
         let context = AbilityActivationContext::input(source, queue.new_root_chain(handle));
-        queue.push_activation(source, source, handle, context);
+        queue
+            .push_activation(source, source, handle, context)
+            .unwrap();
     }
 }
 
