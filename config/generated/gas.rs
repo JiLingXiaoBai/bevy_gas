@@ -377,10 +377,10 @@ impl Decode for Ability {
         })
     }
 }
-/// Stores one AbilityAction configuration record.
+/// Stores one AbilityTask configuration record.
 #[allow(non_camel_case_types)]
 #[derive(Debug, Clone)]
-pub struct AbilityAction {
+pub struct AbilityTask {
     /// Configures id.
     pub id: i32,
     /// Configures ability_id.
@@ -397,21 +397,20 @@ pub struct AbilityAction {
     pub effect_id: Option<i32>,
 }
 
-impl Decode for AbilityAction {
+impl Decode for AbilityTask {
     fn decode(buf: &mut ByteBuf) -> Result<Self, DecodeError> {
-        let id: i32 = Decode::decode(buf).map_err(|error| error.context("AbilityAction.id"))?;
+        let id: i32 = Decode::decode(buf).map_err(|error| error.context("AbilityTask.id"))?;
         let ability_id: i32 =
-            Decode::decode(buf).map_err(|error| error.context("AbilityAction.ability_id"))?;
+            Decode::decode(buf).map_err(|error| error.context("AbilityTask.ability_id"))?;
         let at_tick: i32 =
-            Decode::decode(buf).map_err(|error| error.context("AbilityAction.at_tick"))?;
-        let order: i32 =
-            Decode::decode(buf).map_err(|error| error.context("AbilityAction.order"))?;
+            Decode::decode(buf).map_err(|error| error.context("AbilityTask.at_tick"))?;
+        let order: i32 = Decode::decode(buf).map_err(|error| error.context("AbilityTask.order"))?;
         let kind: crate::config::generated::gas::ActionKind =
-            Decode::decode(buf).map_err(|error| error.context("AbilityAction.kind"))?;
+            Decode::decode(buf).map_err(|error| error.context("AbilityTask.kind"))?;
         let target_scope: crate::config::generated::gas::TargetScope =
-            Decode::decode(buf).map_err(|error| error.context("AbilityAction.target_scope"))?;
+            Decode::decode(buf).map_err(|error| error.context("AbilityTask.target_scope"))?;
         let effect_id: Option<i32> =
-            Decode::decode(buf).map_err(|error| error.context("AbilityAction.effect_id"))?;
+            Decode::decode(buf).map_err(|error| error.context("AbilityTask.effect_id"))?;
         Ok(Self {
             id,
             ability_id,
@@ -1019,36 +1018,36 @@ impl TbAbility {
         self.rows.is_empty()
     }
 }
-/// Stores gas.TbAbilityAction rows and a checked primary-key index.
+/// Stores gas.TbAbilityTask rows and a checked primary-key index.
 #[derive(Debug, Clone)]
-pub struct TbAbilityAction {
-    rows: Vec<Arc<crate::config::generated::gas::AbilityAction>>,
+pub struct TbAbilityTask {
+    rows: Vec<Arc<crate::config::generated::gas::AbilityTask>>,
     indices: std::collections::BTreeMap<i32, usize>,
 }
 
-impl TbAbilityAction {
+impl TbAbilityTask {
     /// Decodes a complete table file, rejecting malformed bytes or duplicate keys.
     pub fn new(buf: &mut ByteBuf) -> Result<Arc<Self>, LubanError> {
         let count = buf
             .read_size()
-            .map_err(|error| error.context("gas.TbAbilityAction.count"))?;
+            .map_err(|error| error.context("gas.TbAbilityTask.count"))?;
         let mut rows = Vec::new();
         rows.try_reserve_exact(count)
             .map_err(|error| LubanError::Table(error.to_string()))?;
         for index in 0..count {
             rows.push(
-                crate::config::generated::gas::AbilityAction::decode(buf)
-                    .map_err(|error| error.context(format!("gas.TbAbilityAction row {index}")))?,
+                crate::config::generated::gas::AbilityTask::decode(buf)
+                    .map_err(|error| error.context(format!("gas.TbAbilityTask row {index}")))?,
             );
         }
         buf.finish()
-            .map_err(|error| error.context("gas.TbAbilityAction"))?;
+            .map_err(|error| error.context("gas.TbAbilityTask"))?;
         Ok(Arc::new(Self::from_rows(rows)?))
     }
 
     /// Builds an indexed table from records, returning an error for duplicate keys.
     pub fn from_rows(
-        rows: Vec<crate::config::generated::gas::AbilityAction>,
+        rows: Vec<crate::config::generated::gas::AbilityTask>,
     ) -> Result<Self, LubanError> {
         let mut indices = std::collections::BTreeMap::new();
         let mut shared_rows = Vec::with_capacity(rows.len());
@@ -1056,7 +1055,7 @@ impl TbAbilityAction {
             let key = row.id;
             if indices.contains_key(&key) {
                 return Err(LubanError::Table(format!(
-                    "duplicate gas.TbAbilityAction key: {key:?}"
+                    "duplicate gas.TbAbilityTask key: {key:?}"
                 )));
             }
             indices.insert(key, shared_rows.len());
@@ -1069,7 +1068,7 @@ impl TbAbilityAction {
     }
 
     /// Returns the matching record, or `None` if the primary key is absent.
-    pub fn get<Q>(&self, key: &Q) -> Option<&Arc<crate::config::generated::gas::AbilityAction>>
+    pub fn get<Q>(&self, key: &Q) -> Option<&Arc<crate::config::generated::gas::AbilityTask>>
     where
         i32: std::borrow::Borrow<Q>,
         Q: Ord + ?Sized,
@@ -1082,7 +1081,7 @@ impl TbAbilityAction {
     /// Iterates through records in exported row order.
     pub fn iter(
         &self,
-    ) -> impl ExactSizeIterator<Item = &Arc<crate::config::generated::gas::AbilityAction>> {
+    ) -> impl ExactSizeIterator<Item = &Arc<crate::config::generated::gas::AbilityTask>> {
         self.rows.iter()
     }
 
@@ -1223,7 +1222,7 @@ pub const SCHEMA_DESCRIPTOR: &str = concat!(
     "targeting_id:i32;",
     "end_on_activation:bool;",
     "allow_multiple_instances:bool;",
-    "bean:AbilityAction;",
+    "bean:AbilityTask;",
     "id:i32;",
     "ability_id:i32;",
     "at_tick:i32;",
@@ -1275,6 +1274,6 @@ pub const SCHEMA_DESCRIPTOR: &str = concat!(
     "table:gas.TbEffect:crate::gas::Effect:id:gas_tbeffect;",
     "table:gas.TbModifier:crate::gas::Modifier:id:gas_tbmodifier;",
     "table:gas.TbAbility:crate::gas::Ability:id:gas_tbability;",
-    "table:gas.TbAbilityAction:crate::gas::AbilityAction:id:gas_tbabilityaction;",
+    "table:gas.TbAbilityTask:crate::gas::AbilityTask:id:gas_tbabilitytask;",
     "table:gas.TbTargeting:crate::gas::Targeting:id:gas_tbtargeting;",
 );

@@ -97,8 +97,12 @@ Luban 的结构校验和 Rust 的玩法校验是连续两层，不能互相替�
 | gas.TbEffect        | id   | 持续、周期、概率、asset/granted 标签                  |
 | gas.TbModifier      | id   | effect_id、order、属性、操作、Flat/LinearLevel 参数   |
 | gas.TbAbility       | id   | 等级、标签、消耗、冷却、立即效果、目标规则、实例策略  |
-| gas.TbAbilityAction | id   | ability_id、at_tick、order、动作、目标范围、effect_id |
+| gas.TbAbilityTask   | id   | ability_id、at_tick、order、动作、目标范围、effect_id |
 | gas.TbTargeting     | id   | 选择、标签/距离过滤、排序与数量上限                   |
+
+技能动作时间线的源文件为 `config/tables/gas.ability_task.xlsx`，在 XML 中登记为 `gas.TbAbilityTask`。
+生成的 `config::generated::gas::AbilityTask` 表示一行配置，每行描述一个动作，由编译器按 tick 分组并合并为任务定义。
+它与运行时的 `AbilityTask` Component 分属配置数据和 ECS 任务状态两个层次。
 
 表名、主键、输入文件和枚举统一维护在 `config/defines/gas.xml`。
 表字段仍从数据 Excel 表头读取；因此修改技能数值只改数据表，新增字段修改相应表头，

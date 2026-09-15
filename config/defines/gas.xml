@@ -6,7 +6,7 @@
     <table name="TbEffect" value="gas.Effect" readSchemaFromFile="true" input="gas.effect.xlsx" index="id" mode="map" comment="Gameplay effect definitions."/>
     <table name="TbModifier" value="gas.Modifier" readSchemaFromFile="true" input="gas.modifier.xlsx" index="id" mode="map" comment="Ordered attribute modifiers grouped by effect."/>
     <table name="TbAbility" value="gas.Ability" readSchemaFromFile="true" input="gas.ability.xlsx" index="id" mode="map" comment="Gameplay ability definitions and activation rules."/>
-    <table name="TbAbilityAction" value="gas.AbilityAction" readSchemaFromFile="true" input="gas.ability_action.xlsx" index="id" mode="map" comment="Ordered actions scheduled relative to ability activation."/>
+    <table name="TbAbilityTask" value="gas.AbilityTask" readSchemaFromFile="true" input="gas.ability_task.xlsx" index="id" mode="map" comment="Ordered actions scheduled relative to ability activation."/>
     <table name="TbTargeting" value="gas.Targeting" readSchemaFromFile="true" input="gas.targeting.xlsx" index="id" mode="map" comment="Target selection, filtering, ordering, and limits."/>
 
     <enum name="AttributeRegion" flags="false" unique="true" comment="Valid AttributeRegion values.">

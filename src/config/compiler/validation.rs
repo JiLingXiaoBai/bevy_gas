@@ -340,8 +340,8 @@ fn validate_targeting(tables: &Tables) -> Result<(), ConfigError> {
 fn validate_actions(tables: &Tables) -> Result<(), ConfigError> {
     let mut ids = BTreeSet::new();
     let mut positions = BTreeSet::new();
-    for row in tables.tb_ability_action.iter() {
-        let context = ConfigLocation::table("AbilityAction").row(row.id);
+    for row in tables.tb_ability_task.iter() {
+        let context = ConfigLocation::table("AbilityTask").row(row.id);
         require(
             row.id > 0 && ids.insert(row.id),
             &context,

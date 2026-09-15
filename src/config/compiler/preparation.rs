@@ -25,7 +25,7 @@ pub(crate) enum PreparedTargetScope {
 
 /// One authored action with its checked tick and resolved payload.
 pub(crate) struct PreparedAction<'a> {
-    pub(crate) row: &'a data::AbilityAction,
+    pub(crate) row: &'a data::AbilityTask,
     pub(crate) tick: u32,
     pub(crate) kind: PreparedActionKind,
 }
@@ -66,12 +66,12 @@ impl<'a> PreparedTables<'a> {
             actions: BTreeMap::new(),
             modifiers: BTreeMap::new(),
         };
-        for row in tables.tb_ability_action.iter() {
+        for row in tables.tb_ability_task.iter() {
             // Orphan rows remain authoring errors; trusted runtime tables ignore unused rows.
             if tables.tb_ability.get(&row.ability_id).is_none() {
                 continue;
             }
-            let location = ConfigLocation::table("AbilityAction").row(row.id);
+            let location = ConfigLocation::table("AbilityTask").row(row.id);
             let tick = u32::try_from(row.at_tick).map_err(|error| {
                 ConfigError::new(
                     ConfigErrorKind::InvalidValue,

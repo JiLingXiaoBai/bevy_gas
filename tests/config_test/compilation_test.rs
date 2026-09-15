@@ -1,7 +1,7 @@
 use bevy::prelude::{App, MinimalPlugins, World};
 use bevy_gas::config::generated::gas::{
-    Ability, AbilityAction, ActionKind, Attribute, AttributeRegion, DurationKind, Effect,
-    SelectionKind, SortOrder, Tag, TargetScope, Targeting, TbAbility, TbAbilityAction, TbAttribute,
+    Ability, AbilityTask, ActionKind, Attribute, AttributeRegion, DurationKind, Effect,
+    SelectionKind, SortOrder, Tag, TargetScope, Targeting, TbAbility, TbAbilityTask, TbAttribute,
     TbEffect, TbTag, TbTargeting,
 };
 use bevy_gas::config::generated::{ByteBuf, Tables};
@@ -223,7 +223,7 @@ fn timeline_tables(reverse: bool) -> Tables {
         .unwrap(),
     );
     let mut actions = vec![
-        AbilityAction {
+        AbilityTask {
             id: 4,
             ability_id: 1,
             at_tick: 2,
@@ -232,7 +232,7 @@ fn timeline_tables(reverse: bool) -> Tables {
             target_scope: TargetScope::None,
             effect_id: None,
         },
-        AbilityAction {
+        AbilityTask {
             id: 2,
             ability_id: 1,
             at_tick: 2,
@@ -241,7 +241,7 @@ fn timeline_tables(reverse: bool) -> Tables {
             target_scope: TargetScope::AllCaptured,
             effect_id: Some(2),
         },
-        AbilityAction {
+        AbilityTask {
             id: 1,
             ability_id: 1,
             at_tick: 0,
@@ -250,7 +250,7 @@ fn timeline_tables(reverse: bool) -> Tables {
             target_scope: TargetScope::Primary,
             effect_id: Some(1),
         },
-        AbilityAction {
+        AbilityTask {
             id: 3,
             ability_id: 1,
             at_tick: 2,
@@ -263,7 +263,7 @@ fn timeline_tables(reverse: bool) -> Tables {
     if reverse {
         actions.reverse();
     }
-    tables.tb_ability_action = Arc::new(TbAbilityAction::from_rows(actions).unwrap());
+    tables.tb_ability_task = Arc::new(TbAbilityTask::from_rows(actions).unwrap());
     tables
 }
 
