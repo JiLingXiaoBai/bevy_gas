@@ -1,6 +1,7 @@
 //! Active gameplay-effect state, application, execution, cleanup, and ticking.
 
 mod application;
+mod diagnostics;
 mod execution;
 mod lifecycle;
 mod modifiers;
@@ -12,6 +13,7 @@ mod ticking;
 
 pub use application::apply_gameplay_effect;
 pub(crate) use application::apply_gameplay_effect_in_batch;
+pub use diagnostics::{EffectRequirementDiagnostics, EffectRequirementMetrics};
 pub use execution::execute_gameplay_effect_plan;
 pub(crate) use execution::{execute_gameplay_effect_plan_in_batch, validate_gameplay_effect_plan};
 pub(crate) use lifecycle::ActiveEffectStorageRegistry;

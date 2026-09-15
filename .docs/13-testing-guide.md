@@ -6,7 +6,8 @@
 tests/
 ├── config_test.rs                      # 配置领域集成测试门面
 ├── config_test/
-│   └── runtime_test.rs                 # 默认读取、包校验和业务校验的 feature 边界
+│   ├── runtime_test.rs                 # 默认读取、包校验和业务校验的 feature 边界
+│   └── compilation_test.rs             # 编译原子性、重试和准备结果一致性
 ├── gas_test.rs                         # GAS 集成测试 crate 门面
 ├── gas_test/
 │   ├── ability_input_test.rs            # Logical input bindings and fixed-tick buffering
@@ -23,6 +24,7 @@ tests/
 │   │   ├── activation_test.rs                # 激活条件与实例策略
 │   │   ├── commit_test.rs                    # Cost 与 Cooldown
 │   │   ├── lifecycle_test.rs                 # 取消、结束与清理
+│   │   ├── deferred_lifecycle_test.rs        # 延迟ASC移除/替换与startup命令交错
 │   │   ├── tasks_test.rs                     # WaitTicks 与任务结束
 │   │   └── chaining_test.rs                  # 链上下文、深度与循环限制
 │   ├── attributes_test.rs               # 属性注册、冷热槽位、重算与聚合
@@ -233,3 +235,22 @@ manifest 和 GAS 编译结果后才发布；随后可运行配置预览和 `conf
 | 统一 FIFO        | Ability/Effect 跨类型顺序、完整 drain、阶段边界                      |
 | 组件组合         | Bundle 四组件齐全，Tag/Attribute 独立存在                            |
 | 支撑设施         | RNG 同种子序列、名称复用、空名称与不同字符串区分                     |
+
+
+## 架构边界回归与收敛测量
+
+- `queues_test.rs`：请求 ID、结果 FIFO、错误分类与结果消费者下一 tick 入队。
+- `abilities_test/activation_test.rs`、`commit_test.rs`：只读预检可从 `&World` 获取参数，
+  不要求随机数资源，返回具体原因且不修改 Gameplay 状态。
+- `abilities_test/lifecycle_test.rs`：Active Ability/ASC 移除和替换时的计数、共享阻止标签、任务清理。
+- `effects_test/removal_test.rs`：容器移除/替换撤销旧标签和修饰器，旧句柄不会复活。
+- `config_test/compilation_test.rs`：失败编译保留资源和编号，重试及乱序输入的时间线一致性。
+
+测量 fixture 默认忽略，不以耗时阈值判定普通测试成败：
+
+```bash
+cargo test --test gas_test effects_test::requirements_test::measure_requirement_convergence -- --ignored --nocapture --test-threads=1
+```
+
+比较相同构建配置、场景和机器下的扫描次数、完整快照次数与时间；观测结果不参与结算。
+实测结论见 [06 — 效果](./06-gameplay-effects.md)。

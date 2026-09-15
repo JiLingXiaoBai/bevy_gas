@@ -63,6 +63,7 @@ src/
 │   ├── compiler/
 │   │   ├── build.rs
 │   │   ├── registration.rs
+│   │   ├── preparation.rs
 │   │   ├── effects.rs
 │   │   ├── targeting.rs
 │   │   ├── abilities.rs
@@ -132,6 +133,8 @@ src/
     │       ├── modifiers.rs
     │       ├── removal.rs
     │       ├── requirements.rs
+    │       ├── lifecycle.rs
+    │       ├── diagnostics.rs
     │       └── ticking.rs
     ├── gameplay_abilities.rs
     ├── gameplay_abilities/
@@ -159,6 +162,10 @@ src/
     │   ├── params.rs
     │   ├── commit.rs
     │   ├── lifecycle.rs
+    │   ├── lifecycle/
+    │   │   ├── instances.rs
+    │   │   ├── transitions.rs
+    │   │   └── cleanup.rs
     │   ├── activation.rs
     │   └── activation/
     │       ├── error.rs
@@ -180,7 +187,8 @@ src/
     └── gameplay_execution/
         ├── request.rs
         ├── queue.rs
-        └── resolver.rs
+        ├── resolver.rs
+        └── result.rs
 ```
 
 完整技能与效果时间线示例位于 `examples/ability_effect_flow.rs`；标签注册示例位于
@@ -228,14 +236,15 @@ src/
 | `error.rs`、`error/definition.rs`              | 配置领域共用的 `ConfigError`，加载、包读取、编译和授予直接依赖它 |
 | `loading/files.rs`                             | 调用 `read_package`，将同次读取的字节移交生成表解码器            |
 | `inspection.rs`、`inspection/report.rs`        | feature 启用时的完整校验与技能文本预览，不承担文件读取           |
-| `compiler/build.rs`                            | 启动编译编排、注册资源借用与归还、最终 catalog 组装              |
+| `compiler/build.rs`                            | 注册表快照上的编译编排，成功提交注册表并返回完整 catalog              |
 | `compiler/registration.rs`                     | 标签/属性的确定顺序登记、现有注册状态检查与标签引用解析          |
 | `compiler/effects.rs`、`compiler/targeting.rs` | 效果与修改器、目标管线的运行时定义构建，以及必要构建检查         |
 | `compiler/abilities.rs`                        | 技能定义、共享效果引用和有序任务时间线                           |
 | `compiler/magnitude.rs`、`compiler/numeric.rs` | 线性幅度求值及运行时计算器、编译与校验共用的数值纯函数           |
 | `compiler/validation.rs`                       | 仅在 feature 启用时执行的完整制作规则校验                        |
 
-编译器按登记、效果、目标、技能的顺序构建，不把 World 访问放入数值纯函数。
+`compiler/preparation.rs` 借用原始行，集中解析动作、幅度和关系排序，校验、编译和报告共用。
+编译器在三个注册表的私有快照上构建；返回 Err 保留原 World，成功才提交完整快照。
 共用数值判断不改变校验策略：运行时必要检查始终执行，制作限制和全等级预演仍由 feature 控制。
 `ConfigError` 属于配置领域公共错误，读取或授予代码无需通过 compiler 获取它。
 内部实现移动不改变 `bevy_gas::config::{ConfigError, load_tables, compile_catalog}`，
@@ -332,9 +341,9 @@ commit 和生命周期编排的流程：
 | `ability_task/ticking.rs`                   | Task 稳定推进与清理                                                            |
 | `ability_system/component.rs`               | ASC 规格存储和显式 `GameplayAbilitySystemBundle`                               |
 | `ability_system/params.rs`                  | `AbilitySystemParams` 和同 batch pending overlay                               |
-| `ability_system/activation/*`               | 错误、预检、startup 创建和同步/batch 激活                                      |
+| `ability_system/activation/*`               | 错误、只读预检、startup task 和同步/batch 激活                                      |
 | `ability_system/commit.rs`                  | cost/cooldown prepare、逐笔支付条件检查和执行                                  |
-| `ability_system/lifecycle.rs`               | end、cancel、回滚和 Cleanup system                                             |
+| `ability_system/lifecycle.rs`、`lifecycle/` | 实例登记与幂等释放、状态迁移、Cleanup 和 Discard Observer |
 | `ability_input/bindings.rs`                 | 游戏逻辑动作到同实体 ASC 的技能 Handle 映射、稳定遍历和绑定错误                |
 
 `AbilitySystemParams` 内嵌 `EffectSystemParams`，再增加 `Commands`、ASC、来源快照、活跃 Ability
@@ -492,3 +501,13 @@ cargo test
 cargo build
 cargo doc --no-deps --all-features
 ```
+
+
+### 新增实现所有权
+
+- `gameplay_execution/result.rs` 拥有结果 Message 和分类；resolver 是全局结果的唯一发布者。
+- `gameplay_effects/active_gameplay_effect/lifecycle.rs` 拥有副作用安装/撤销与容器结构生命周期。
+- `gameplay_effects/active_gameplay_effect/diagnostics.rs` 拥有默认关闭的收敛观测。
+- `ability_system/lifecycle/instances.rs` 拥有实例登记与释放；`transitions.rs` 隔离 live/pending
+  状态更新；`cleanup.rs` 拥有 Cleanup 和组件丢弃 Observer。
+- `compiler/preparation.rs` 拥有借用表数据的规范化视图；配置错误结构化类别和位置属于 `config/error`。

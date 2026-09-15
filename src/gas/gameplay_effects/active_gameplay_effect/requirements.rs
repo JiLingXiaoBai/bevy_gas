@@ -1,4 +1,5 @@
 use super::super::EffectSystemParams;
+use super::diagnostics::EffectRequirementMetrics;
 use super::lifecycle::{
     EffectCleanupResources, cleanup_effect_state, force_remove_effect,
     install_effect_contributions, remove_effect_contributions,
@@ -8,6 +9,7 @@ use super::state::{ActiveEffectHandle, ActiveGameplayEffect, ActiveGameplayEffec
 use crate::attributes::{AttributeIdManager, AttributeSet};
 use crate::gameplay_tags::{GameplayTagContainer, GameplayTagManager, TagRequirements};
 use bevy::prelude::*;
+use std::time::Instant;
 
 #[derive(Resource, Default)]
 pub(crate) struct ActiveEffectRequirementSync {
@@ -31,6 +33,12 @@ impl ActiveEffectRequirementSync {
 /// Resolves removal and ongoing tag requirements to a deterministic fixed point.
 pub fn resolve_active_effect_tag_requirements(params: &mut EffectSystemParams) {
     params.active_effect_requirement_sync.clear();
+    let measuring = params
+        .requirement_diagnostics
+        .as_ref()
+        .is_some_and(|diagnostics| diagnostics.is_enabled());
+    let started = measuring.then(Instant::now);
+    let mut metrics = EffectRequirementMetrics::default();
     let mut seen_states = Vec::new();
     let mut transitions = Vec::new();
     loop {
@@ -38,11 +46,17 @@ pub fn resolve_active_effect_tag_requirements(params: &mut EffectSystemParams) {
             &mut params.active_effect_query,
             &params.tag_container_query,
         );
+        if measuring {
+            metrics.signature_effect_visits += state.len() as u64;
+        }
         if let Some((_, transition_start)) = seen_states
             .iter()
             .find(|(seen_state, _)| seen_state == &state)
         {
             let cycle_handles = transitions[*transition_start..].to_vec();
+            if measuring {
+                metrics.cycles += 1;
+            }
             error!(
                 "gameplay effect tag requirements entered a non-converging cycle; removing {} participating effects",
                 cycle_handles.len()
@@ -60,11 +74,23 @@ pub fn resolve_active_effect_tag_requirements(params: &mut EffectSystemParams) {
             &params.attribute_id_manager,
             &mut params.tag_container_query,
             &params.tag_manager,
+            measuring.then_some(&mut metrics),
         );
+        if measuring {
+            metrics.decision_passes += 1;
+            metrics.transitions += changed_handles.len() as u64;
+        }
         if changed_handles.is_empty() {
-            return;
+            break;
         }
         transitions.extend(changed_handles);
+    }
+    if let Some(started) = started
+        && let Some(diagnostics) = params.requirement_diagnostics.as_mut()
+    {
+        metrics.convergence_calls = 1;
+        metrics.elapsed = started.elapsed();
+        diagnostics.record(metrics);
     }
 }
 
@@ -169,6 +195,7 @@ fn resolve_tag_requirement_pass(
     attribute_id_manager: &AttributeIdManager,
     tag_query: &mut Query<&mut GameplayTagContainer>,
     tag_manager: &Res<GameplayTagManager>,
+    mut metrics: Option<&mut EffectRequirementMetrics>,
 ) -> Vec<ActiveEffectHandle> {
     let mut targets: Vec<Entity> = active_effect_query
         .iter_mut()
@@ -188,16 +215,19 @@ fn resolve_tag_requirement_pass(
             continue;
         };
         let handles: Vec<_> = active_effects.handles(target).collect();
+        if let Some(metrics) = metrics.as_deref_mut() {
+            metrics.decision_effect_visits += handles.len() as u64;
+        }
         for handle in handles {
-            let Some(snapshot) = active_effects.get(handle).cloned() else {
+            let Some(effect) = active_effects.get(handle) else {
                 continue;
             };
-            let decision = if should_remove_active_effect(&snapshot, tag_query) {
+            let decision = if should_remove_active_effect(effect, tag_query) {
                 Some(ActiveEffectRequirementDecision::Remove)
             } else {
                 match (
-                    passes_ongoing_requirements(&snapshot, tag_query),
-                    snapshot.is_inhibited(),
+                    passes_ongoing_requirements(effect, tag_query),
+                    effect.is_inhibited(),
                 ) {
                     (false, false) => Some(ActiveEffectRequirementDecision::Inhibit),
                     (true, true) => Some(ActiveEffectRequirementDecision::Uninhibit),
@@ -205,7 +235,11 @@ fn resolve_tag_requirement_pass(
                 }
             };
             if let Some(decision) = decision {
-                decisions.push((handle, snapshot, decision));
+                // Only transitions need an owned snapshot for the later mutation pass.
+                if let Some(metrics) = metrics.as_deref_mut() {
+                    metrics.effect_snapshots += 1;
+                }
+                decisions.push((handle, effect.clone(), decision));
             }
         }
     }

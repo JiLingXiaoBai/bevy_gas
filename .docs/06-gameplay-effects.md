@@ -388,6 +388,33 @@ FIFO。入队成功返回 `GameplayExecutionRequestId`；Resolver 按消费顺�
 `GameplayEffectApplicationError`。可在 `GameplayResolve` 之后按 request_id 关联结果。
 需要独立同步结果时使用 `apply_gameplay_effect()`。
 
+## Requirement 收敛测量
+
+`EffectRequirementDiagnostics` 由 Runtime Plugin 注册，默认关闭。使用 `set_enabled(true)`
+开启后，`metrics()` 返回累计收敛调用次数、决策轮次、签名/决策访问量、完整效果快照数量、
+状态转换数量、循环数量及耗时；`reset()` 清空数据，不改变开关。关闭时不读取时钟。
+计时仅供观测，不参与 gameplay 判断或确定性顺序。
+
+显式运行代表性测量：
+
+```bash
+cargo test --test gas_test effects_test::requirements_test::measure_requirement_convergence -- --ignored --nocapture --test-threads=1
+```
+
+2026-09-15 在同一机器、debug/unoptimized 测试 profile 下，各场景进行 64 次无标签变化的收敛，
+每个活跃效果携带 4 个 modifier。优化只把决策阶段的完整效果复制延后至确实发生
+Remove/Inhibit/Uninhibit 时；全局双扫描、稳定排序、source 跨实体依赖和循环处理保持原算法。
+
+| 活跃效果数 | 签名/决策访问量（各自） | 优化前快照 | 优化后快照 | 优化前耗时 | 优化后耗时 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 0 | 0 | 0 | 0 | 0.095 ms | 0.072 ms |
+| 128 | 8192 | 8192 | 0 | 9.252 ms | 8.599 ms |
+| 2048 | 131072 | 131072 | 0 | 162.781 ms | 149.183 ms |
+
+上述时间是单次观测，不代表发布构建吞吐或稳定加速比例。确定的工作量收益是：没有状态转换时，
+决策阶段不再复制 effect/spec 及其 modifier Vec；2048 效果场景减少 131072 次完整快照。
+当前没有据此引入标签反向依赖索引；后续仍应根据实际项目的标签变化频率和收敛轮数决定是否增量化。
+
 ## 边界与注意事项
 
 - 不要依赖 `GameplayEffect`、`EffectTags`、Plan 或 Active Effect 的私有字段布局。

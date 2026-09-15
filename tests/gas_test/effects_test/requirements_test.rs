@@ -1,4 +1,5 @@
 use super::*;
+use bevy_gas::gameplay_effects::EffectRequirementDiagnostics;
 
 #[test]
 fn application_requirements_builder_checks_source_and_target_tags() {
@@ -814,4 +815,126 @@ fn source_removal_requirement_builder_cleans_up_effect_on_another_target() {
 
     assert_eq!(current_value(&mut app, target, power), 10.0);
     assert!(active_effect_handles(&app, target).is_empty());
+}
+
+/// Run explicitly to compare convergence workloads before and after an implementation change.
+#[test]
+#[ignore = "manual requirement-convergence measurement"]
+fn measure_requirement_convergence() {
+    const ITERATIONS: u64 = 64;
+
+    for (actors, effects_per_actor) in [(0, 0), (32, 4), (512, 4)] {
+        let mut app = test_app();
+        let power = register_attribute(&mut app, "MeasuredPower");
+        app.world_mut()
+            .init_resource::<EffectRequirementDiagnostics>();
+        let effect = Arc::new(GameplayEffect::new(
+            (0..4).map(|_| add_modifier(power, 1.0)).collect(),
+            EffectDurationTicks::Infinite,
+            None,
+            1.0,
+            StackingPolicy::non_stacking(),
+            empty_effect_tags(),
+        ));
+        for _ in 0..actors {
+            let target = spawn_attribute_set(&mut app, power, 100.0);
+            for _ in 0..effects_per_actor {
+                assert!(apply_effect(&mut app, target, target, Arc::clone(&effect)));
+            }
+        }
+        app.world_mut()
+            .resource_mut::<EffectRequirementDiagnostics>()
+            .set_enabled(true);
+        for _ in 0..ITERATIONS {
+            run_effect_tag_requirements_update(&mut app);
+        }
+        let metrics = *app
+            .world()
+            .resource::<EffectRequirementDiagnostics>()
+            .metrics();
+        let effects = actors * effects_per_actor;
+        assert_eq!(metrics.convergence_calls, ITERATIONS);
+        assert_eq!(metrics.decision_passes, ITERATIONS);
+        assert_eq!(metrics.signature_effect_visits, effects * ITERATIONS);
+        assert_eq!(metrics.decision_effect_visits, effects * ITERATIONS);
+        assert_eq!(metrics.transitions, 0);
+        assert_eq!(metrics.effect_snapshots, 0);
+        eprintln!(
+            "requirement_convergence effects={effects} calls={} signature_visits={} decision_visits={} snapshots={} elapsed_ms={:.3}",
+            metrics.convergence_calls,
+            metrics.signature_effect_visits,
+            metrics.decision_effect_visits,
+            metrics.effect_snapshots,
+            metrics.elapsed.as_secs_f64() * 1000.0,
+        );
+    }
+}
+
+#[test]
+fn convergence_diagnostics_are_optional_and_count_real_transitions() {
+    let mut app = test_app();
+    let power = register_attribute(&mut app, "Power");
+    let enabled = register_tag(&mut app, "State.Enabled");
+    let target = spawn_attribute_set(&mut app, power, 100.0);
+    app.world_mut()
+        .entity_mut(target)
+        .insert(GameplayTagContainer::default());
+    add_tag_to_entity(&mut app, target, enabled);
+    let effect = Arc::new(GameplayEffect::new(
+        vec![add_modifier(power, 10.0)],
+        EffectDurationTicks::Infinite,
+        None,
+        1.0,
+        StackingPolicy::non_stacking(),
+        tags_with_requirements(
+            Vec::new(),
+            TagRequirements::new(vec![enabled], Vec::new()).unwrap(),
+            TagRequirements::default(),
+        ),
+    ));
+    assert!(apply_effect(&mut app, target, target, effect));
+    assert_eq!(
+        app.world()
+            .resource::<EffectRequirementDiagnostics>()
+            .metrics()
+            .convergence_calls,
+        0,
+    );
+    app.world_mut()
+        .resource_mut::<EffectRequirementDiagnostics>()
+        .set_enabled(true);
+    remove_tag_from_entity(&mut app, target, enabled);
+    run_effect_tag_requirements_update(&mut app);
+    let metrics = *app
+        .world()
+        .resource::<EffectRequirementDiagnostics>()
+        .metrics();
+    assert_eq!(metrics.convergence_calls, 1);
+    assert_eq!(metrics.transitions, 1);
+    assert_eq!(metrics.effect_snapshots, 1);
+    assert_eq!(current_value(&mut app, target, power), 100.0);
+
+    app.world_mut()
+        .resource_mut::<EffectRequirementDiagnostics>()
+        .set_enabled(false);
+    add_tag_to_entity(&mut app, target, enabled);
+    run_effect_tag_requirements_update(&mut app);
+    assert_eq!(current_value(&mut app, target, power), 110.0);
+    assert_eq!(
+        app.world()
+            .resource::<EffectRequirementDiagnostics>()
+            .metrics()
+            .convergence_calls,
+        1,
+    );
+    app.world_mut()
+        .resource_mut::<EffectRequirementDiagnostics>()
+        .reset();
+    assert_eq!(
+        app.world()
+            .resource::<EffectRequirementDiagnostics>()
+            .metrics()
+            .convergence_calls,
+        0,
+    );
 }

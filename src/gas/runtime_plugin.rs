@@ -7,8 +7,9 @@ use super::ability_system::{
 use crate::attributes::{AttributeIdManager, recalculate_attribute_sets_system};
 use crate::gameplay_abilities::tick_ability_tasks_system;
 use crate::gameplay_effects::{
-    ActiveEffectRequirementSync, ActiveEffectStorageRegistry, tick_effect_duration_system,
-    tick_effect_period_system, update_active_effect_tag_requirements_system,
+    ActiveEffectRequirementSync, ActiveEffectStorageRegistry, EffectRequirementDiagnostics,
+    tick_effect_duration_system, tick_effect_period_system,
+    update_active_effect_tag_requirements_system,
 };
 use crate::gameplay_execution::{
     GameplayExecutionQueue, GameplayExecutionResult, gameplay_execution_queue_has_work,
@@ -83,6 +84,7 @@ impl Plugin for GameplayAbilitySystemRuntimePlugin {
             .add_message::<GameplayExecutionResult>()
             .init_resource::<ActiveEffectRequirementSync>()
             .init_resource::<ActiveEffectStorageRegistry>()
+            .init_resource::<EffectRequirementDiagnostics>()
             .init_resource::<PendingActiveGameplayAbilities>()
             .init_resource::<TargetingRequestQueue>()
             .add_observer(cleanup_discarded_active_ability)

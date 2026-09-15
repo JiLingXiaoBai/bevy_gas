@@ -1,4 +1,4 @@
-use super::{ActiveEffectRequirementSync, ActiveGameplayEffects};
+use super::{ActiveEffectRequirementSync, ActiveGameplayEffects, EffectRequirementDiagnostics};
 use crate::attributes::{AttributeIdManager, AttributeSet};
 use crate::gameplay_tags::{GameplayTagContainer, GameplayTagManager};
 use crate::randoms::Random;
@@ -23,6 +23,7 @@ pub struct EffectSystemParams<'w, 's> {
     pub tag_container_query: Query<'w, 's, &'static mut GameplayTagContainer>,
     /// Active duration and infinite effects owned by target entities.
     pub active_effect_query: Query<'w, 's, &'static mut ActiveGameplayEffects>,
+    pub(crate) requirement_diagnostics: Option<ResMut<'w, EffectRequirementDiagnostics>>,
     pub(crate) active_effect_requirement_sync: ResMut<'w, ActiveEffectRequirementSync>,
 }
 

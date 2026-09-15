@@ -5,7 +5,8 @@
 
 pub use super::ability_input::AbilityInputBindings;
 pub use super::ability_system::{
-    AbilityActivationCheckParams, AbilitySystemComponent, AbilitySystemParams, GameplayAbilitySystemBundle,
+    AbilityActivationCheckParams, AbilitySystemComponent, AbilitySystemParams,
+    GameplayAbilitySystemBundle,
 };
 pub use super::attributes::{AttributeId, AttributeIdRegister, AttributeRegion, AttributeSet};
 pub use super::gameplay_abilities::{

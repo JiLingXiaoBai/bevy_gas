@@ -11,11 +11,11 @@ mod gameplay_effect_spec;
 pub use crate::gameplay_execution::GameplayEffectApplicationRequest;
 pub use active_gameplay_effect::{
     ActiveEffectDurationTicks, ActiveEffectHandle, ActiveEffectPeriodTicks, ActiveGameplayEffect,
-    ActiveGameplayEffects, GameplayEffectApplicationError, GameplayEffectApplicationPlan,
-    apply_gameplay_effect, execute_gameplay_effect_plan, get_active_effects_on_target,
-    has_active_effect_with_tags, prepare_gameplay_effect, remove_active_effect,
-    remove_active_effects_with_tags, resolve_active_effect_tag_requirements,
-    tick_effect_duration_system, tick_effect_period_system,
+    ActiveGameplayEffects, EffectRequirementDiagnostics, EffectRequirementMetrics,
+    GameplayEffectApplicationError, GameplayEffectApplicationPlan, apply_gameplay_effect,
+    execute_gameplay_effect_plan, get_active_effects_on_target, has_active_effect_with_tags,
+    prepare_gameplay_effect, remove_active_effect, remove_active_effects_with_tags,
+    resolve_active_effect_tag_requirements, tick_effect_duration_system, tick_effect_period_system,
     update_active_effect_tag_requirements_system,
 };
 pub(crate) use active_gameplay_effect::{

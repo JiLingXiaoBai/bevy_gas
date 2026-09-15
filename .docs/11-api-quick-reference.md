@@ -128,7 +128,7 @@
 | `EffectSystemParams`                               | `SystemParam`| Effect 专用查询与资源边界                    |
 | `ActiveGameplayEffects`                            | `Component`  | 目标持有的稳定槽位效果容器                   |
 | `ActiveGameplayEffect`                             | `struct`     | 容器中的运行时效果                           |
-| `ActiveEffectHandle`                               | `struct`     | target + slot + generation 稳定句柄          |
+| `ActiveEffectHandle`                               | `struct`     | target + storage_id + slot + generation 稳定句柄          |
 | `ActiveEffectDurationTicks`                        | `struct`     | 容器内的剩余持续时间 tick                    |
 | `ActiveEffectPeriodTicks`                          | `struct`     | 容器内的周期 tick 状态                       |
 | `GameplayEffectApplicationPlan`                    | `struct`     | 准备好的效果应用计划                         |
@@ -243,7 +243,9 @@ ASC、Active Ability 或 `Commands`。`AbilitySystemParams` 内嵌它并实现 `
 | `GameplayAbilitySystemBundle`             | `Bundle`      | 显式组合完整 GAS Actor 组件 |
 | `AbilitySystemParams`                     | `SystemParam` | Effect 参数 + Ability 编排状态 |
 | `try_activate_ability_by_handle`          | `fn`          | 独立的同步激活调用路径        |
-| `can_activate_ability`                    | `fn`          | 检查而不激活           |
+| `can_activate_ability` | `fn` | 只读预检，返回具体不可用原因 |
+| `AbilityActivationCheckParams` | `SystemParam` | 只读 ASC 与 Effect 数据 |
+| `AbilityActivationCheckError` | `enum` | 互斥、标签、冷却和成本预检错误 |
 | `commit_ability`                          | `fn`          | 执行消耗 + 冷却        |
 | `end_ability`                             | `fn`          | 将状态设为 Ending      |
 | `cancel_ability`                          | `fn`          | 将状态设为 Cancelled   |
@@ -268,3 +270,20 @@ ASC、Active Ability 或 `Commands`。`AbilitySystemParams` 内嵌它并实现 `
 `gas` 与 crate root 显式重导出；其常量为 `ATTRIBUTE_SET_SIZE`、
 `HOT_ATTRIBUTE_SET_SIZE`、`COLD_ATTRIBUTE_SET_SIZE`、`GAMEPLAY_TAG_SIZE` 与
 `ABILITY_CHAIN_MAX_DEPTH`。
+
+
+## 执行反馈与诊断
+
+| 项 | 类型 | 说明 |
+| --- | --- | --- |
+| `GameplayExecutionRequestId` | struct | 成功入队的队列局部 ID，clear 不复用 |
+| `GameplayExecutionQueueError` | enum | ID 耗尽或非法技能链 |
+| `GameplayExecutionResult` | Message | ID、来源/主目标和主操作结算结果 |
+| `GameplayExecutionOutcome` | enum | Succeeded / Rejected / Failed |
+| `GameplayExecutionError` | enum | 保留 Ability 或 Effect 的具体错误 |
+| `EffectReadOnlyParams` | SystemParam | 不含随机数和写查询的效果读取参数 |
+| `EffectRequirementDiagnostics` | Resource | 默认关闭的收敛观测开关与累计指标 |
+| `EffectRequirementMetrics` | struct | 扫描、快照、转换、循环和耗时计数 |
+
+配置错误从 `bevy_gas::config` 导入：`ConfigError`、`ConfigErrorKind`、`ConfigLocation`。
+使用 `kind()`、`location()` 判断类别和位置；`message()` / Display 用于展示。

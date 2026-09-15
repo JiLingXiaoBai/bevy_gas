@@ -113,8 +113,10 @@ RecalculateAttributes
 | Runtime Plugin | `AttributeIdManager` | 属性 ID 与冷热槽位注册表 |
 | Runtime Plugin | `GameplayExecutionQueue` | Ability/Effect 共用的跨类型 FIFO |
 | Runtime Plugin | `TargetingRequestQueue` | 目标抓取 FIFO |
+| Runtime Plugin | `Messages<GameplayExecutionResult>` | 按请求 ID 反馈主操作的结算结果 |
+| Runtime Plugin | `EffectRequirementDiagnostics` | 默认关闭的条件收敛计数和耗时测量 |
 
-Runtime Plugin 还初始化 `ActiveEffectRequirementSync` 与
+Runtime Plugin 还初始化效果容器身份分配器 `ActiveEffectStorageRegistry`、`ActiveEffectRequirementSync` 与
 `PendingActiveGameplayAbilities`。前者是私有的 Requirement dirty 状态；后者因出现在公共 Bevy
 system 签名中保持可见但标记为 `#[doc(hidden)]`。它们都是运行时管线设施，不应作为游戏层
 状态直接读写。
@@ -124,6 +126,7 @@ system 签名中保持可见但标记为 `#[doc(hidden)]`。它们都是运行�
 - Effect 的准备、应用、移除和 Requirement 收敛使用较窄的 `EffectSystemParams`；
 - Ability 激活、commit 和生命周期编排使用 `AbilitySystemParams`，其内部包含
   `EffectSystemParams`，并额外访问 `Commands`、ASC 与 Active Ability；
+- 预检使用只读 `AbilityActivationCheckParams`，效果读取使用 `EffectReadOnlyParams`；
 - 请求生产系统通常只需要 `ResMut<GameplayExecutionQueue>`，不应无故声明完整参数集。
 
 ## 请求生产约定
@@ -153,3 +156,6 @@ resolver 会完整 drain 当前 FIFO，消费期间追加的派生请求也在�
 
 设置、随机数与唯一名称的具体契约见
 [10 — 支撑基础设施](./10-supporting-infrastructure.md)。
+
+Runtime Plugin 同时安装 Active Ability 与 ASC 的 Discard Observer，处理结构移除/替换时的
+实例释放、计数和阻止标签清理。
