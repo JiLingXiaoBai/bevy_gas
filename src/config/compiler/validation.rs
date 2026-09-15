@@ -5,7 +5,7 @@ use super::data::{
 use super::numeric::{
     formula_parameters_are_finite, is_within_f32_range, probability_is_valid, square_is_finite,
 };
-use super::{ConfigError, Tables, evaluate_linear};
+use super::{ConfigError, ConfigErrorKind, ConfigLocation, Tables, evaluate_linear};
 use crate::{COLD_ATTRIBUTE_SET_SIZE, HOT_ATTRIBUTE_SET_SIZE, MAX_TAG_COUNTS};
 use std::collections::BTreeSet;
 
@@ -28,13 +28,17 @@ pub fn validate_tables(tables: &Tables) -> Result<(), ConfigError> {
 
 fn require(
     condition: bool,
-    context: impl Into<String>,
+    context: impl Into<ConfigLocation>,
     message: impl Into<String>,
 ) -> Result<(), ConfigError> {
     if condition {
         Ok(())
     } else {
-        Err(ConfigError::new(context, message))
+        Err(ConfigError::new(
+            ConfigErrorKind::Validation,
+            context,
+            message,
+        ))
     }
 }
 
@@ -52,7 +56,7 @@ fn validate_names(tables: &Tables) -> Result<(), ConfigError> {
     let mut names = BTreeSet::new();
     let mut expanded_tags = BTreeSet::new();
     for row in tables.tb_tag.iter() {
-        let context = format!("Tag[{}].name", row.name);
+        let context = ConfigLocation::table("Tag").row(&row.name).field("name");
         require(
             valid_name(&row.name),
             &context,
@@ -70,14 +74,16 @@ fn validate_names(tables: &Tables) -> Result<(), ConfigError> {
     }
     require(
         expanded_tags.len() <= MAX_TAG_COUNTS,
-        "Tag",
+        ConfigLocation::table("Tag"),
         "tag capacity exceeded including implicit parent tags",
     )?;
     let mut names = BTreeSet::new();
     let mut hot = 0;
     let mut cold = 0;
     for row in tables.tb_attribute.iter() {
-        let context = format!("Attribute[{}].name", row.name);
+        let context = ConfigLocation::table("Attribute")
+            .row(&row.name)
+            .field("name");
         require(
             valid_name(&row.name),
             &context,
@@ -95,17 +101,21 @@ fn validate_names(tables: &Tables) -> Result<(), ConfigError> {
     }
     require(
         hot <= HOT_ATTRIBUTE_SET_SIZE,
-        "Attribute.region",
+        ConfigLocation::table("Attribute").field("region"),
         "hot attribute capacity exceeded",
     )?;
     require(
         cold <= COLD_ATTRIBUTE_SET_SIZE,
-        "Attribute.region",
+        ConfigLocation::table("Attribute").field("region"),
         "cold attribute capacity exceeded",
     )
 }
 
-fn validate_tag_refs(tables: &Tables, tags: &[String], context: &str) -> Result<(), ConfigError> {
+fn validate_tag_refs(
+    tables: &Tables,
+    tags: &[String],
+    context: &ConfigLocation,
+) -> Result<(), ConfigError> {
     let mut seen = BTreeSet::new();
     for tag in tags {
         require(
@@ -122,10 +132,10 @@ fn validate_tag_requirements(
     tables: &Tables,
     required: &[String],
     blocked: &[String],
-    context: &str,
+    context: &ConfigLocation,
 ) -> Result<(), ConfigError> {
-    validate_tag_refs(tables, required, &format!("{context}.required_tags"))?;
-    validate_tag_refs(tables, blocked, &format!("{context}.blocked_tags"))?;
+    validate_tag_refs(tables, required, &context.field("required_tags"))?;
+    validate_tag_refs(tables, blocked, &context.field("blocked_tags"))?;
     for required in required {
         for blocked in blocked {
             require(
@@ -144,7 +154,7 @@ fn validate_tag_requirements(
 fn validate_effects(tables: &Tables) -> Result<(), ConfigError> {
     let mut ids = BTreeSet::new();
     for row in tables.tb_effect.iter() {
-        let context = format!("Effect[{}]", row.id);
+        let context = ConfigLocation::table("Effect").row(row.id);
         require(
             row.id > 0 && ids.insert(row.id),
             &context,
@@ -152,55 +162,51 @@ fn validate_effects(tables: &Tables) -> Result<(), ConfigError> {
         )?;
         require(
             !row.name.trim().is_empty(),
-            format!("{context}.name"),
+            context.field("name"),
             "name must not be blank",
         )?;
         require(
             probability_is_valid(row.probability),
-            format!("{context}.probability"),
+            context.field("probability"),
             "probability must be finite and in 0..=1",
         )?;
         match row.duration_kind {
             DurationKind::DurationTicks => require(
                 row.duration_ticks
                     .is_some_and(|ticks| (1..=MAX_CONFIG_TICKS).contains(&ticks)),
-                format!("{context}.duration_ticks"),
+                context.field("duration_ticks"),
                 "duration ticks must be an integer in 1..=1000000",
             )?,
             DurationKind::Instant | DurationKind::Infinite => require(
                 row.duration_ticks.is_none(),
-                format!("{context}.duration_ticks"),
+                context.field("duration_ticks"),
                 "unused duration must be empty",
             )?,
         }
         if let Some(period) = row.period_ticks {
             require(
                 row.duration_kind != DurationKind::Instant,
-                format!("{context}.period_ticks"),
+                context.field("period_ticks"),
                 "instant effects cannot be periodic",
             )?;
             require(
                 (1..=MAX_CONFIG_TICKS).contains(&period),
-                format!("{context}.period_ticks"),
+                context.field("period_ticks"),
                 "period ticks must be in 1..=1000000; empty disables periodic execution",
             )?;
         } else {
             require(
                 !row.execute_on_applied,
-                format!("{context}.execute_on_applied"),
+                context.field("execute_on_applied"),
                 "execute_on_applied requires a period",
             )?;
         }
-        validate_tag_refs(tables, &row.asset_tags, &format!("{context}.asset_tags"))?;
-        validate_tag_refs(
-            tables,
-            &row.granted_tags,
-            &format!("{context}.granted_tags"),
-        )?;
+        validate_tag_refs(tables, &row.asset_tags, &context.field("asset_tags"))?;
+        validate_tag_refs(tables, &row.granted_tags, &context.field("granted_tags"))?;
         if row.duration_kind == DurationKind::Instant {
             require(
                 row.granted_tags.is_empty(),
-                format!("{context}.granted_tags"),
+                context.field("granted_tags"),
                 "instant effects cannot retain granted tags",
             )?;
         }
@@ -212,7 +218,7 @@ fn validate_modifiers(tables: &Tables) -> Result<(), ConfigError> {
     let mut ids = BTreeSet::new();
     let mut positions = BTreeSet::new();
     for row in tables.tb_modifier.iter() {
-        let context = format!("Modifier[{}]", row.id);
+        let context = ConfigLocation::table("Modifier").row(row.id);
         require(
             row.id > 0 && ids.insert(row.id),
             &context,
@@ -220,28 +226,28 @@ fn validate_modifiers(tables: &Tables) -> Result<(), ConfigError> {
         )?;
         require(
             tables.tb_effect.get(&row.effect_id).is_some(),
-            format!("{context}.effect_id"),
+            context.field("effect_id"),
             "unknown effect",
         )?;
         require(
             tables.tb_attribute.get(&row.attribute).is_some(),
-            format!("{context}.attribute"),
+            context.field("attribute"),
             "unknown attribute",
         )?;
         require(
             row.order >= 0 && positions.insert((row.effect_id, row.order)),
-            format!("{context}.order"),
+            context.field("order"),
             "order must be nonnegative and unique within the effect",
         )?;
         require(
             formula_parameters_are_finite(row.base, Some(row.per_level)),
-            format!("{context}.magnitude"),
+            context.field("magnitude"),
             "formula parameters must be finite",
         )?;
         if row.magnitude_kind == MagnitudeKind::Flat {
             require(
                 row.per_level == 0.0,
-                format!("{context}.per_level"),
+                context.field("per_level"),
                 "Flat magnitude requires unused per_level to be zero",
             )?;
         }
@@ -252,7 +258,7 @@ fn validate_modifiers(tables: &Tables) -> Result<(), ConfigError> {
 fn validate_targeting(tables: &Tables) -> Result<(), ConfigError> {
     let mut ids = BTreeSet::new();
     for row in tables.tb_targeting.iter() {
-        let context = format!("Targeting[{}]", row.id);
+        let context = ConfigLocation::table("Targeting").row(row.id);
         require(
             row.id > 0 && ids.insert(row.id),
             &context,
@@ -260,19 +266,19 @@ fn validate_targeting(tables: &Tables) -> Result<(), ConfigError> {
         )?;
         require(
             !row.name.trim().is_empty(),
-            format!("{context}.name"),
+            context.field("name"),
             "name must not be blank",
         )?;
         match row.selection {
             SelectionKind::Sphere | SelectionKind::Cone => require(
                 row.radius
                     .is_some_and(|v| v.is_finite() && v >= 0.0 && square_is_finite(v)),
-                format!("{context}.radius"),
+                context.field("radius"),
                 "sphere/cone radius must be finite, nonnegative, and have a finite square",
             )?,
             SelectionKind::SelfTarget | SelectionKind::ExplicitEntity => require(
                 row.radius.is_none(),
-                format!("{context}.radius"),
+                context.field("radius"),
                 "unused radius must be empty",
             )?,
         }
@@ -280,27 +286,27 @@ fn validate_targeting(tables: &Tables) -> Result<(), ConfigError> {
             require(
                 row.half_angle_radians
                     .is_some_and(|v| v.is_finite() && (0.0..=std::f32::consts::PI).contains(&v)),
-                format!("{context}.half_angle_radians"),
+                context.field("half_angle_radians"),
                 "cone half angle must be finite and in 0..=PI",
             )?;
         } else {
             require(
                 row.half_angle_radians.is_none(),
-                format!("{context}.half_angle_radians"),
+                context.field("half_angle_radians"),
                 "unused cone angle must be empty",
             )?;
         }
         if let Some(distance) = row.max_distance {
             require(
                 distance.is_finite() && distance >= 0.0 && square_is_finite(distance),
-                format!("{context}.max_distance"),
+                context.field("max_distance"),
                 "distance must be finite, nonnegative, and have a finite square",
             )?;
         }
         if row.selection == SelectionKind::SelfTarget {
             require(
                 !row.exclude_source,
-                format!("{context}.exclude_source"),
+                context.field("exclude_source"),
                 "self selection cannot exclude its only target",
             )?;
         }
@@ -316,7 +322,7 @@ fn validate_targeting(tables: &Tables) -> Result<(), ConfigError> {
         }
         require(
             row.limit > 0,
-            format!("{context}.limit"),
+            context.field("limit"),
             "target limit must be positive",
         )?;
         validate_tag_requirements(tables, &row.required_tags, &row.blocked_tags, &context)?;
@@ -328,7 +334,7 @@ fn validate_actions(tables: &Tables) -> Result<(), ConfigError> {
     let mut ids = BTreeSet::new();
     let mut positions = BTreeSet::new();
     for row in tables.tb_ability_action.iter() {
-        let context = format!("AbilityAction[{}]", row.id);
+        let context = ConfigLocation::table("AbilityAction").row(row.id);
         require(
             row.id > 0 && ids.insert(row.id),
             &context,
@@ -336,17 +342,17 @@ fn validate_actions(tables: &Tables) -> Result<(), ConfigError> {
         )?;
         require(
             tables.tb_ability.get(&row.ability_id).is_some(),
-            format!("{context}.ability_id"),
+            context.field("ability_id"),
             "unknown ability",
         )?;
         require(
             (0..=MAX_CONFIG_TICKS).contains(&row.at_tick),
-            format!("{context}.at_tick"),
+            context.field("at_tick"),
             "at_tick must be in 0..=1000000; zero means activation startup",
         )?;
         require(
             row.order >= 0 && positions.insert((row.ability_id, row.at_tick, row.order)),
-            format!("{context}.order"),
+            context.field("order"),
             "(ability_id, at_tick, order) must be unique and order nonnegative",
         )?;
         match row.kind {
@@ -354,7 +360,7 @@ fn validate_actions(tables: &Tables) -> Result<(), ConfigError> {
                 require(
                     row.effect_id
                         .is_some_and(|id| tables.tb_effect.get(&id).is_some()),
-                    format!("{context}.effect_id"),
+                    context.field("effect_id"),
                     "ApplyEffect requires a valid effect reference",
                 )?;
                 require(
@@ -362,7 +368,7 @@ fn validate_actions(tables: &Tables) -> Result<(), ConfigError> {
                         row.target_scope,
                         TargetScope::Primary | TargetScope::AllCaptured
                     ),
-                    format!("{context}.target_scope"),
+                    context.field("target_scope"),
                     "ApplyEffect requires Primary or AllCaptured",
                 )?;
             }
@@ -379,7 +385,7 @@ fn validate_actions(tables: &Tables) -> Result<(), ConfigError> {
 fn validate_abilities(tables: &Tables) -> Result<(), ConfigError> {
     let mut ids = BTreeSet::new();
     for row in tables.tb_ability.iter() {
-        let context = format!("Ability[{}]", row.id);
+        let context = ConfigLocation::table("Ability").row(row.id);
         require(
             row.id > 0 && ids.insert(row.id),
             &context,
@@ -387,29 +393,29 @@ fn validate_abilities(tables: &Tables) -> Result<(), ConfigError> {
         )?;
         require(
             !row.name.trim().is_empty(),
-            format!("{context}.name"),
+            context.field("name"),
             "name must not be blank",
         )?;
         require(
             (1..=MAX_CONFIG_LEVEL).contains(&row.max_level),
-            format!("{context}.max_level"),
+            context.field("max_level"),
             "max_level must be in 1..=100",
         )?;
         require(
             tables.tb_targeting.get(&row.targeting_id).is_some(),
-            format!("{context}.targeting_id"),
+            context.field("targeting_id"),
             "unknown targeting definition",
         )?;
-        validate_tag_refs(tables, &row.asset_tags, &format!("{context}.asset_tags"))?;
+        validate_tag_refs(tables, &row.asset_tags, &context.field("asset_tags"))?;
         validate_tag_refs(
             tables,
             &row.cancel_ability_tags,
-            &format!("{context}.cancel_ability_tags"),
+            &context.field("cancel_ability_tags"),
         )?;
         validate_tag_refs(
             tables,
             &row.block_ability_tags,
-            &format!("{context}.block_ability_tags"),
+            &context.field("block_ability_tags"),
         )?;
         validate_tag_requirements(tables, &row.required_tags, &row.blocked_tags, &context)?;
         let mut effects: BTreeSet<i32> = row.activation_effect_ids.iter().copied().collect();
@@ -428,7 +434,7 @@ fn validate_abilities(tables: &Tables) -> Result<(), ConfigError> {
         if row.end_on_activation {
             require(
                 actions.iter().all(|action| action.at_tick == 0),
-                format!("{context}.end_on_activation"),
+                context.field("end_on_activation"),
                 "waiting actions cannot run after end_on_activation",
             )?;
             require(
@@ -464,7 +470,9 @@ fn validate_abilities(tables: &Tables) -> Result<(), ConfigError> {
                     evaluate_linear(modifier.base, modifier.per_level, row.max_level as u32);
                 require(
                     is_within_f32_range(maximum),
-                    format!("{context}.Effect[{effect_id}].Modifier[{}]", modifier.id),
+                    ConfigLocation::table("Modifier")
+                        .row(modifier.id)
+                        .field("magnitude"),
                     "formula exceeds finite f32 range within supported levels",
                 )?;
             }
@@ -483,13 +491,13 @@ fn validate_cost(
     tables: &Tables,
     id: i32,
     max_level: i32,
-    ability_context: &str,
+    ability_context: &ConfigLocation,
 ) -> Result<(), ConfigError> {
-    let context = format!("{ability_context}.cost_effect_id({id})");
+    let context = ability_context.field("cost_effect_id");
     let effect = tables
         .tb_effect
         .get(&id)
-        .ok_or_else(|| ConfigError::new(&context, "unknown effect"))?;
+        .ok_or_else(|| ConfigError::new(ConfigErrorKind::Validation, &context, "unknown effect"))?;
     require(
         effect.duration_kind == DurationKind::Instant
             && effect.period_ticks.is_none()
@@ -529,12 +537,16 @@ fn validate_cost(
     )
 }
 
-fn validate_cooldown(tables: &Tables, id: i32, ability_context: &str) -> Result<(), ConfigError> {
-    let context = format!("{ability_context}.cooldown_effect_id({id})");
+fn validate_cooldown(
+    tables: &Tables,
+    id: i32,
+    ability_context: &ConfigLocation,
+) -> Result<(), ConfigError> {
+    let context = ability_context.field("cooldown_effect_id");
     let effect = tables
         .tb_effect
         .get(&id)
-        .ok_or_else(|| ConfigError::new(&context, "unknown effect"))?;
+        .ok_or_else(|| ConfigError::new(ConfigErrorKind::Validation, &context, "unknown effect"))?;
     require(
         effect.duration_kind == DurationKind::DurationTicks
             && effect.period_ticks.is_none()

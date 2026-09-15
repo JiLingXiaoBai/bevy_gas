@@ -1,6 +1,6 @@
 //! Runtime catalog and owner-local bindings for configured abilities.
 
-use super::ConfigError;
+use super::{ConfigError, ConfigErrorKind, ConfigLocation};
 
 mod definitions;
 mod grants;

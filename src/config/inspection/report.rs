@@ -1,4 +1,7 @@
-use super::{AbilityId, ActionKind, ConfigError, Tables, evaluate_linear, validate_tables};
+use super::{
+    AbilityId, ActionKind, ConfigError, ConfigErrorKind, ConfigLocation, Tables, evaluate_linear,
+    validate_tables,
+};
 use std::fmt::{self, Write};
 
 /// Describes ability `id` at level one after validating the supplied `tables`.
@@ -19,13 +22,17 @@ pub fn describe_ability_at_level(
     level: u32,
 ) -> Result<String, ConfigError> {
     validate_tables(tables)?;
-    let ability = tables
-        .tb_ability
-        .get(&id.0)
-        .ok_or_else(|| ConfigError::new(format!("Ability[{}]", id.0), "unknown ability"))?;
+    let ability = tables.tb_ability.get(&id.0).ok_or_else(|| {
+        ConfigError::new(
+            ConfigErrorKind::UnknownAbility,
+            ConfigLocation::table("Ability").row(id.0),
+            "unknown ability",
+        )
+    })?;
     if level == 0 || level > ability.max_level as u32 {
         return Err(ConfigError::new(
-            format!("Ability[{}].level", id.0),
+            ConfigErrorKind::UnsupportedLevel,
+            ConfigLocation::table("Ability").row(id.0).field("level"),
             format!("level {level} is outside 1..={}", ability.max_level),
         ));
     }
@@ -34,7 +41,10 @@ pub fn describe_ability_at_level(
         .get(&ability.targeting_id)
         .ok_or_else(|| {
             ConfigError::new(
-                format!("Ability[{}].targeting_id", id.0),
+                ConfigErrorKind::Reference,
+                ConfigLocation::table("Ability")
+                    .row(id.0)
+                    .field("targeting_id"),
                 "unknown targeting",
             )
         })?;
@@ -110,7 +120,10 @@ pub fn describe_ability_at_level(
                 .map_err(report_error)?;
                 let effect_id = action.effect_id.ok_or_else(|| {
                     ConfigError::new(
-                        format!("AbilityAction[{}]", action.id),
+                        ConfigErrorKind::Reference,
+                        ConfigLocation::table("AbilityAction")
+                            .row(action.id)
+                            .field("effect_id"),
                         "missing effect reference",
                     )
                 })?;
@@ -133,10 +146,13 @@ fn append_effect(
     id: i32,
     level: u32,
 ) -> Result<(), ConfigError> {
-    let effect = tables
-        .tb_effect
-        .get(&id)
-        .ok_or_else(|| ConfigError::new(format!("Effect[{id}]"), "unknown effect"))?;
+    let effect = tables.tb_effect.get(&id).ok_or_else(|| {
+        ConfigError::new(
+            ConfigErrorKind::Reference,
+            ConfigLocation::table("Effect").row(id),
+            "unknown effect",
+        )
+    })?;
     writeln!(report, "  Effect {id}: {} | {:?}, duration_ticks={:?}, period_ticks={:?}, execute_on_applied={}, probability={}", effect.name, effect.duration_kind, effect.duration_ticks, effect.period_ticks, effect.execute_on_applied, effect.probability).map_err(report_error)?;
     writeln!(
         report,
@@ -167,5 +183,9 @@ fn append_effect(
 }
 
 fn report_error(error: fmt::Error) -> ConfigError {
-    ConfigError::new("ability report", error.to_string())
+    ConfigError::new(
+        ConfigErrorKind::Report,
+        ConfigLocation::Operation("ability report"),
+        error.to_string(),
+    )
 }

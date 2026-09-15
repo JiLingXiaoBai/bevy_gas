@@ -1,5 +1,5 @@
-use super::ConfigError;
 use super::{AbilityId, GameplayCatalog};
+use super::{ConfigError, ConfigErrorKind, ConfigLocation};
 use crate::{AbilitySpecHandle, AbilitySystemComponent};
 use bevy::prelude::Component;
 use std::collections::BTreeMap;
@@ -30,18 +30,24 @@ pub fn grant_ability(
     id: AbilityId,
     level: u32,
 ) -> Result<AbilitySpecHandle, ConfigError> {
-    let ability = catalog
-        .ability(id)
-        .ok_or_else(|| ConfigError::new(format!("Ability[{}]", id.0), "unknown ability"))?;
+    let ability = catalog.ability(id).ok_or_else(|| {
+        ConfigError::new(
+            ConfigErrorKind::UnknownAbility,
+            ConfigLocation::table("Ability").row(id.0),
+            "unknown ability",
+        )
+    })?;
     if !(1..=ability.max_level()).contains(&level) {
         return Err(ConfigError::new(
-            format!("Ability[{}].level", id.0),
+            ConfigErrorKind::UnsupportedLevel,
+            ConfigLocation::table("Ability").row(id.0).field("level"),
             format!("level {level} is outside 1..={}", ability.max_level()),
         ));
     }
     if bindings.bindings.contains_key(&id) {
         return Err(ConfigError::new(
-            format!("Ability[{}]", id.0),
+            ConfigErrorKind::AlreadyGranted,
+            ConfigLocation::table("Ability").row(id.0),
             "ability is already bound for this owner",
         ));
     }
@@ -65,7 +71,8 @@ pub fn revoke_ability(
     };
     if asc.find_ability_spec(handle).is_some() && !asc.clear_ability(handle) {
         return Err(ConfigError::new(
-            format!("Ability[{}]", id.0),
+            ConfigErrorKind::ActiveAbility,
+            ConfigLocation::table("Ability").row(id.0),
             "cannot revoke an active ability; end or cancel it first",
         ));
     }

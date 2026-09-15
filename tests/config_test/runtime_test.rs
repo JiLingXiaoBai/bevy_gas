@@ -6,8 +6,8 @@ use bevy_gas::config::generated::gas::{
 };
 use bevy_gas::config::generated::{ByteBuf, TABLE_FILES, Tables};
 use bevy_gas::config::{
-    AbilityId, ConfiguredAbilities, compile_catalog, grant_ability, load_tables, read_package,
-    revoke_ability,
+    AbilityId, ConfigErrorKind, ConfigLocation, ConfiguredAbilities, compile_catalog,
+    grant_ability, load_tables, read_package, revoke_ability,
 };
 #[cfg(feature = "config-validation")]
 use bevy_gas::config::{
@@ -90,7 +90,11 @@ fn runtime_catalog_grants_and_revokes_without_tooling_apis() {
 fn extra_authoring_validation_depends_on_luban_config_feature() {
     let result = compile_catalog(&tables(Some(1.0)), app().world_mut());
     if cfg!(feature = "config-validation") {
-        assert!(result.err().unwrap().context().contains("radius"));
+        let error = result.err().unwrap();
+        assert_eq!(error.kind(), ConfigErrorKind::Validation);
+        assert!(
+            matches!(error.location(), ConfigLocation::Table { table: "Targeting", row: Some(row), field: Some(field) } if row == "1" && field == "radius")
+        );
     } else {
         assert!(result.unwrap().ability(AbilityId(1)).is_some());
     }
@@ -229,7 +233,10 @@ fn public_inspection_apis_preserve_default_level_and_errors() {
             .contains("level 2/2")
     );
     let error: ConfigError = describe_ability_at_level(&tables, AbilityId(1), 3).unwrap_err();
-    assert_eq!(error.context(), "Ability[1].level");
+    assert_eq!(error.kind(), ConfigErrorKind::UnsupportedLevel);
+    assert!(
+        matches!(error.location(), ConfigLocation::Table { table: "Ability", row: Some(row), field: Some(field) } if row == "1" && field == "level")
+    );
     assert!(describe_ability(&tables, AbilityId(99)).is_err());
 }
 
@@ -282,10 +289,16 @@ fn package_loading_and_required_table_checks_are_always_available() {
     fs::write(&table_path, []).unwrap();
     #[cfg(feature = "config-validation")]
     write_package_manifest(&package.0).unwrap();
-    assert!(load_tables(&package.0).is_err());
+    let error = load_tables(&package.0).unwrap_err();
+    assert_eq!(error.kind(), ConfigErrorKind::Decode);
+    assert!(
+        matches!(error.location(), ConfigLocation::File { path, byte_offset: Some(0), .. } if path == &table_path)
+    );
 
     fs::remove_file(&table_path).unwrap();
-    assert!(read_package(&package.0).is_err());
+    let error = read_package(&package.0).unwrap_err();
+    assert_eq!(error.kind(), ConfigErrorKind::Io);
+    assert!(matches!(error.location(), ConfigLocation::File { path, .. } if path == &table_path));
     assert!(load_tables(&package.0).is_err());
 }
 
@@ -312,11 +325,10 @@ fn enabled_validation_checks_manifest_schema_and_hashes() {
 
     let table_path = package.0.join(format!("{}.bytes", TABLE_FILES[0]));
     fs::write(&table_path, [1_u8]).unwrap();
+    let error = load_tables(&package.0).unwrap_err();
+    assert_eq!(error.kind(), ConfigErrorKind::Package);
     assert!(
-        load_tables(&package.0)
-            .unwrap_err()
-            .message()
-            .contains("hash")
+        matches!(error.location(), ConfigLocation::File { path, field: Some(field), .. } if path == &table_path && field == "hash")
     );
     fs::write(&table_path, [0_u8]).unwrap();
 
@@ -324,11 +336,10 @@ fn enabled_validation_checks_manifest_schema_and_hashes() {
         serde_json::from_slice(&fs::read(package.0.join("manifest.json")).unwrap()).unwrap();
     manifest["schema_hash"] = json!("incompatible-schema");
     package.write_manifest(&manifest);
+    let error = load_tables(&package.0).unwrap_err();
+    assert_eq!(error.kind(), ConfigErrorKind::Package);
     assert!(
-        load_tables(&package.0)
-            .unwrap_err()
-            .message()
-            .contains("schema_hash")
+        matches!(error.location(), ConfigLocation::File { path, field: Some(field), .. } if path == &package.0.join("manifest.json") && field == "schema_hash")
     );
     manifest["schema_hash"] = json!(package_schema_hash());
     manifest["files"].as_array_mut().unwrap().pop();

@@ -1,8 +1,8 @@
 //! Startup compilation and optional authoring validation of generated table rows.
 
-use super::ConfigError;
 use super::catalog::{AbilityId, CompiledAbility, EffectId, GameplayCatalog};
 use super::generated::{Tables, gas as data};
+use super::{ConfigError, ConfigErrorKind, ConfigLocation};
 
 mod abilities;
 mod build;

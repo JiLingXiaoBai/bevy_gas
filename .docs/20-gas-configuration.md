@@ -215,6 +215,26 @@ app.world_mut().insert_resource(catalog);
 成本与冷却在激活时提交；技能结束不会自动移除已应用效果。取消后自动退款和延迟 Commit
 不属于本配置层的行为。
 
+## 结构化错误
+
+所有配置层失败使用 `ConfigError`：`kind()` 返回可匹配的 `ConfigErrorKind`，
+`location()` 返回 `ConfigLocation`，`message()` 和 `Display` 提供可读说明。
+旧的字符串 `context()` 已移除，调用方不应解析文案来决定恢复流程。
+
+| 类别 | 含义 |
+| --- | --- |
+| `Io`、`Capacity`、`Decode`、`Package` | 文件读写、边界限制、二进制解码、清单/schema/摘要或生成表契约 |
+| `Validation`、`Reference`、`InvalidValue` | 制作规则、构建所需引用、运行时不可表示的值 |
+| `MissingResource`、`Registration` | ECS 注册表缺失、名称/继承/区域注册失败 |
+| `UnknownAbility`、`UnsupportedLevel`、`AlreadyGranted`、`ActiveAbility` | 查询/授予/撤销时可分别处理的调用状态 |
+| `Report` | 文本报告格式化失败 |
+
+位置用枚举明确区分文件、表、Resource 和操作。表位置包含表名、可选的行 ID/稳定名、
+字段路径；文件位置包含完整读取路径、可选字段路径，以及解码失败的字节偏移。
+例如加载失败可匹配 `ConfigLocation::File` 并定位实际出错的 `gas_tb*.bytes`，
+不再只得到目录；校验等级可匹配 `ConfigLocation::Table` 的 Ability 行和 level 字段。
+完整校验仍可在编译前拒绝制作规则；运行时所需检查不会依赖 feature 是否启用。
+
 ## 包版本与生成模板
 
 导表生成的 manifest.json 包含格式/模板版本、结构摘要、整包内容摘要与每个文件的大小及摘要。

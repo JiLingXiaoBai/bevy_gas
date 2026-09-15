@@ -2,7 +2,7 @@
 
 use super::decoding::ByteBuf;
 use super::generated::{LubanError, Tables};
-use super::{ConfigError, read_package};
+use super::{ConfigError, ConfigErrorKind, ConfigLocation, read_package};
 
 mod files;
 

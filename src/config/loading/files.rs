@@ -1,4 +1,6 @@
-use super::{ByteBuf, ConfigError, LubanError, Tables, read_package};
+use super::{
+    ByteBuf, ConfigError, ConfigErrorKind, ConfigLocation, LubanError, Tables, read_package,
+};
 use std::path::Path;
 
 /// Loads and decodes the expected binary tables from `directory`.
@@ -12,11 +14,22 @@ use std::path::Path;
 pub fn load_tables(directory: impl AsRef<Path>) -> Result<Tables, ConfigError> {
     let directory = directory.as_ref();
     let mut files = read_package(directory)?;
+    let mut current_file = directory.to_owned();
     Tables::new(|name| {
+        current_file = directory.join(format!("{name}.bytes"));
         let bytes = files
             .remove(name)
             .ok_or_else(|| LubanError::Loader(format!("missing table '{name}'")))?;
         Ok(ByteBuf::new(bytes))
     })
-    .map_err(|error| ConfigError::new(directory.display().to_string(), error.to_string()))
+    .map_err(|error| {
+        let location = ConfigLocation::file(current_file);
+        let (kind, location) = match &error {
+            LubanError::Decode(error) => {
+                (ConfigErrorKind::Decode, location.at_byte(error.offset()))
+            }
+            LubanError::Loader(_) | LubanError::Table(_) => (ConfigErrorKind::Package, location),
+        };
+        ConfigError::new(kind, location, error.to_string())
+    })
 }

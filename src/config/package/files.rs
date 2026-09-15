@@ -4,9 +4,9 @@ use std::{
     path::Path,
 };
 
-use super::ConfigError;
 #[cfg(not(feature = "config-validation"))]
 use super::TABLE_FILES;
+use super::{ConfigError, ConfigErrorKind, ConfigLocation};
 #[cfg(not(feature = "config-validation"))]
 use std::collections::BTreeMap;
 
@@ -41,25 +41,31 @@ pub fn read_package(directory: impl AsRef<Path>) -> Result<BTreeMap<String, Vec<
 }
 
 pub(super) fn read_limited(path: &Path, limit: u64) -> Result<Vec<u8>, ConfigError> {
-    let context = path.display().to_string();
+    let context = ConfigLocation::file(path);
     let metadata = fs::symlink_metadata(path)
-        .map_err(|error| ConfigError::new(&context, error.to_string()))?;
+        .map_err(|error| ConfigError::new(ConfigErrorKind::Io, &context, error.to_string()))?;
     if !metadata.is_file() {
-        return Err(ConfigError::new(&context, "expected a regular file"));
+        return Err(ConfigError::new(
+            ConfigErrorKind::Package,
+            &context,
+            "expected a regular file",
+        ));
     }
     if metadata.len() > limit {
         return Err(ConfigError::new(
+            ConfigErrorKind::Capacity,
             &context,
             format!("file size {} exceeds limit {limit}", metadata.len()),
         ));
     }
-    let mut file =
-        File::open(path).map_err(|error| ConfigError::new(&context, error.to_string()))?;
+    let mut file = File::open(path)
+        .map_err(|error| ConfigError::new(ConfigErrorKind::Io, &context, error.to_string()))?;
     let opened_metadata = file
         .metadata()
-        .map_err(|error| ConfigError::new(&context, error.to_string()))?;
+        .map_err(|error| ConfigError::new(ConfigErrorKind::Io, &context, error.to_string()))?;
     if !opened_metadata.is_file() || opened_metadata.len() > limit {
         return Err(ConfigError::new(
+            ConfigErrorKind::Capacity,
             &context,
             "opened file exceeds its size or file-type limit",
         ));
@@ -70,26 +76,34 @@ pub(super) fn read_limited(path: &Path, limit: u64) -> Result<Vec<u8>, ConfigErr
     loop {
         let count = file
             .read(&mut chunk)
-            .map_err(|error| ConfigError::new(&context, error.to_string()))?;
+            .map_err(|error| ConfigError::new(ConfigErrorKind::Io, &context, error.to_string()))?;
         if count == 0 {
             break;
         }
         let next_length = (bytes.len() as u64)
             .checked_add(count as u64)
-            .ok_or_else(|| ConfigError::new(&context, "file length overflow"))?;
+            .ok_or_else(|| {
+                ConfigError::new(ConfigErrorKind::Capacity, &context, "file length overflow")
+            })?;
         if next_length > limit {
             return Err(ConfigError::new(
+                ConfigErrorKind::Capacity,
                 &context,
                 format!("file grew beyond limit {limit}"),
             ));
         }
         bytes.try_reserve(count).map_err(|error| {
-            ConfigError::new(&context, format!("file allocation failed: {error}"))
+            ConfigError::new(
+                ConfigErrorKind::Capacity,
+                &context,
+                format!("file allocation failed: {error}"),
+            )
         })?;
         bytes.extend_from_slice(&chunk[..count]);
     }
     if bytes.len() as u64 != opened_metadata.len() {
         return Err(ConfigError::new(
+            ConfigErrorKind::Capacity,
             &context,
             "file size changed during reading",
         ));
@@ -98,12 +112,17 @@ pub(super) fn read_limited(path: &Path, limit: u64) -> Result<Vec<u8>, ConfigErr
 }
 
 pub(super) fn add_package_size(total: &mut u64, size: u64) -> Result<(), ConfigError> {
-    *total = total
-        .checked_add(size)
-        .ok_or_else(|| ConfigError::new("configuration package", "combined file size overflow"))?;
+    *total = total.checked_add(size).ok_or_else(|| {
+        ConfigError::new(
+            ConfigErrorKind::Capacity,
+            ConfigLocation::Operation("configuration package"),
+            "combined file size overflow",
+        )
+    })?;
     if *total > MAX_PACKAGE_BYTES {
         return Err(ConfigError::new(
-            "configuration package",
+            ConfigErrorKind::Capacity,
+            ConfigLocation::Operation("configuration package"),
             format!("combined file size exceeds limit {MAX_PACKAGE_BYTES}"),
         ));
     }

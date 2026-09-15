@@ -6,7 +6,7 @@ use super::registration::{register_attributes, register_tags};
 use super::targeting::compile_targeting;
 #[cfg(feature = "config-validation")]
 use super::validate_tables;
-use super::{ConfigError, GameplayCatalog, Tables};
+use super::{ConfigError, ConfigErrorKind, ConfigLocation, GameplayCatalog, Tables};
 use crate::{AttributeIdManager, GameplayTagManager, UniqueNamePool};
 use bevy::prelude::World;
 use std::collections::BTreeMap;
@@ -29,13 +29,15 @@ pub fn compile_catalog(tables: &Tables, world: &mut World) -> Result<GameplayCat
         || !world.contains_resource::<AttributeIdManager>()
     {
         return Err(ConfigError::new(
-            "runtime registries",
+            ConfigErrorKind::MissingResource,
+            ConfigLocation::Resource("runtime registries"),
             "install GameplayAbilitySystemPlugin before compiling configuration",
         ));
     }
     let mut names = world.remove_resource::<UniqueNamePool>().ok_or_else(|| {
         ConfigError::new(
-            "UniqueNamePool",
+            ConfigErrorKind::MissingResource,
+            ConfigLocation::Resource("UniqueNamePool"),
             "install GameplayAbilitySystemPlugin before compiling configuration",
         )
     })?;
@@ -53,7 +55,11 @@ fn compile_with_names(
         let mut manager = world
             .get_resource_mut::<GameplayTagManager>()
             .ok_or_else(|| {
-                ConfigError::new("GameplayTagManager", "required registry is missing")
+                ConfigError::new(
+                    ConfigErrorKind::MissingResource,
+                    ConfigLocation::Resource("GameplayTagManager"),
+                    "required registry is missing",
+                )
             })?;
         register_tags(tables, names, &mut manager)?
     };
@@ -61,7 +67,11 @@ fn compile_with_names(
         let mut manager = world
             .get_resource_mut::<AttributeIdManager>()
             .ok_or_else(|| {
-                ConfigError::new("AttributeIdManager", "required registry is missing")
+                ConfigError::new(
+                    ConfigErrorKind::MissingResource,
+                    ConfigLocation::Resource("AttributeIdManager"),
+                    "required registry is missing",
+                )
             })?;
         register_attributes(tables, names, &mut manager)?
     };

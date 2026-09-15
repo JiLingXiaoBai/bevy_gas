@@ -3,7 +3,7 @@
 use super::magnitude::LinearLevelMagnitude;
 use super::numeric::{formula_parameters_are_finite, probability_is_valid};
 use super::registration::resolve_tags;
-use super::{ConfigError, EffectId, Tables, data};
+use super::{ConfigError, ConfigErrorKind, ConfigLocation, EffectId, Tables, data};
 use crate::{
     AttributeId, EffectDurationTicks, EffectPeriodTicks, EffectTags, GameplayEffect, GameplayTag,
     Modifier, ModifierMagnitude, ModifierOperation, StackingPolicy,
@@ -15,16 +15,20 @@ pub(super) fn resolve_effect(
     id: i32,
     effects: &BTreeMap<EffectId, Arc<GameplayEffect>>,
 ) -> Result<Arc<GameplayEffect>, ConfigError> {
-    effects
-        .get(&EffectId(id))
-        .map(Arc::clone)
-        .ok_or_else(|| ConfigError::new(format!("Effect[{id}]"), "unresolved effect reference"))
+    effects.get(&EffectId(id)).map(Arc::clone).ok_or_else(|| {
+        ConfigError::new(
+            ConfigErrorKind::Reference,
+            ConfigLocation::table("Effect").row(id),
+            "unresolved effect reference",
+        )
+    })
 }
 
-fn positive_effect_ticks(ticks: i32, context: String) -> Result<f32, ConfigError> {
+fn positive_effect_ticks(ticks: i32, context: ConfigLocation) -> Result<f32, ConfigError> {
     let value = ticks as f32;
     if ticks <= 0 || f64::from(value) != f64::from(ticks) {
         return Err(ConfigError::new(
+            ConfigErrorKind::InvalidValue,
             context,
             "ticks must be positive and exactly representable as f32",
         ));
@@ -41,7 +45,10 @@ pub(super) fn compile_effects(
     for row in tables.tb_effect.iter() {
         if !probability_is_valid(row.probability) {
             return Err(ConfigError::new(
-                format!("Effect[{}].probability", row.id),
+                ConfigErrorKind::InvalidValue,
+                ConfigLocation::table("Effect")
+                    .row(row.id)
+                    .field("probability"),
                 "probability must be finite and in 0..=1",
             ));
         }
@@ -58,7 +65,10 @@ pub(super) fn compile_effects(
                 .copied()
                 .ok_or_else(|| {
                     ConfigError::new(
-                        format!("Modifier[{}].attribute", modifier.id),
+                        ConfigErrorKind::Reference,
+                        ConfigLocation::table("Modifier")
+                            .row(modifier.id)
+                            .field("attribute"),
                         "unresolved attribute",
                     )
                 })?;
@@ -74,7 +84,10 @@ pub(super) fn compile_effects(
                     .then_some(modifier.per_level),
             ) {
                 return Err(ConfigError::new(
-                    format!("Modifier[{}].magnitude", modifier.id),
+                    ConfigErrorKind::InvalidValue,
+                    ConfigLocation::table("Modifier")
+                        .row(modifier.id)
+                        .field("magnitude"),
                     "used formula parameters must be finite",
                 ));
             }
@@ -93,10 +106,12 @@ pub(super) fn compile_effects(
             data::DurationKind::Instant => EffectDurationTicks::Instant,
             data::DurationKind::Infinite => EffectDurationTicks::Infinite,
             data::DurationKind::DurationTicks => {
-                let context = format!("Effect[{}].duration_ticks", row.id);
-                let ticks = row
-                    .duration_ticks
-                    .ok_or_else(|| ConfigError::new(&context, "missing duration"))?;
+                let context = ConfigLocation::table("Effect")
+                    .row(row.id)
+                    .field("duration_ticks");
+                let ticks = row.duration_ticks.ok_or_else(|| {
+                    ConfigError::new(ConfigErrorKind::InvalidValue, &context, "missing duration")
+                })?;
                 EffectDurationTicks::DurationTicks(ModifierMagnitude::Flat(positive_effect_ticks(
                     ticks, context,
                 )?))
@@ -105,8 +120,12 @@ pub(super) fn compile_effects(
         let period = row
             .period_ticks
             .map(|ticks| {
-                let ticks =
-                    positive_effect_ticks(ticks, format!("Effect[{}].period_ticks", row.id))?;
+                let ticks = positive_effect_ticks(
+                    ticks,
+                    ConfigLocation::table("Effect")
+                        .row(row.id)
+                        .field("period_ticks"),
+                )?;
                 Ok::<_, ConfigError>(EffectPeriodTicks::new(
                     ModifierMagnitude::Flat(ticks),
                     row.execute_on_applied,

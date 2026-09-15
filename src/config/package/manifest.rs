@@ -7,7 +7,7 @@ use std::{
 use super::TABLE_FILES;
 use serde_json::{Map, Value, json};
 
-use super::ConfigError;
+use super::{ConfigError, ConfigErrorKind, ConfigLocation};
 use super::{
     files::{
         MAX_FILE_BYTES, MAX_MANIFEST_BYTES, MAX_PACKAGE_BYTES, add_package_size, read_limited,
@@ -32,6 +32,7 @@ pub(super) struct FileRecord {
 /// and validate the package before publishing the directory.
 pub fn write_package_manifest(directory: impl AsRef<Path>) -> Result<(), ConfigError> {
     let directory = directory.as_ref();
+    let context = ConfigLocation::file(directory.join(MANIFEST_FILE));
     let expected = expected_files()?;
     let mut total = 0;
     let mut files = Vec::new();
@@ -61,15 +62,16 @@ pub fn write_package_manifest(directory: impl AsRef<Path>) -> Result<(), ConfigE
         "files": file_values,
     });
     let bytes = serde_json::to_vec_pretty(&manifest)
-        .map_err(|error| ConfigError::new(MANIFEST_FILE, error.to_string()))?;
+        .map_err(|error| ConfigError::new(ConfigErrorKind::Package, &context, error.to_string()))?;
     if bytes.len() as u64 > MAX_MANIFEST_BYTES {
         return Err(ConfigError::new(
-            MANIFEST_FILE,
+            ConfigErrorKind::Capacity,
+            &context,
             "manifest exceeds its size limit",
         ));
     }
     fs::write(directory.join(MANIFEST_FILE), bytes)
-        .map_err(|error| ConfigError::new(MANIFEST_FILE, error.to_string()))
+        .map_err(|error| ConfigError::new(ConfigErrorKind::Io, &context, error.to_string()))
 }
 
 /// Verifies and loads the package in `directory` into owned table byte buffers.
@@ -80,10 +82,11 @@ pub fn write_package_manifest(directory: impl AsRef<Path>) -> Result<(), ConfigE
 /// returned buffers instead of rereading files after verification.
 pub fn read_package(directory: impl AsRef<Path>) -> Result<BTreeMap<String, Vec<u8>>, ConfigError> {
     let directory = directory.as_ref();
+    let context = ConfigLocation::file(directory.join(MANIFEST_FILE));
     let manifest_bytes = read_limited(&directory.join(MANIFEST_FILE), MAX_MANIFEST_BYTES)?;
     let manifest: Value = serde_json::from_slice(&manifest_bytes)
-        .map_err(|error| ConfigError::new(MANIFEST_FILE, error.to_string()))?;
-    let root = object(&manifest, MANIFEST_FILE)?;
+        .map_err(|error| ConfigError::new(ConfigErrorKind::Package, &context, error.to_string()))?;
+    let root = object(&manifest, &context)?;
     require_fields(
         root,
         &[
@@ -93,48 +96,56 @@ pub fn read_package(directory: impl AsRef<Path>) -> Result<BTreeMap<String, Vec<
             "data_hash",
             "files",
         ],
-        MANIFEST_FILE,
+        &context,
     )?;
-    if integer(root, "format_version", MANIFEST_FILE)? != FORMAT_VERSION {
+    if integer(root, "format_version", &context)? != FORMAT_VERSION {
         return Err(ConfigError::new(
-            MANIFEST_FILE,
+            ConfigErrorKind::Package,
+            context.field("format_version"),
             "unsupported format_version",
         ));
     }
-    if integer(root, "template_version", MANIFEST_FILE)? != TEMPLATE_VERSION {
+    if integer(root, "template_version", &context)? != TEMPLATE_VERSION {
         return Err(ConfigError::new(
-            MANIFEST_FILE,
+            ConfigErrorKind::Package,
+            context.field("template_version"),
             "unsupported template_version",
         ));
     }
-    if string(root, "schema_hash", MANIFEST_FILE)? != package_schema_hash() {
+    if string(root, "schema_hash", &context)? != package_schema_hash() {
         return Err(ConfigError::new(
-            MANIFEST_FILE,
+            ConfigErrorKind::Package,
+            context.field("schema_hash"),
             "schema_hash does not match compiled schema",
         ));
     }
-    let expected_data_hash = string(root, "data_hash", MANIFEST_FILE)?;
-    let entries = root
-        .get("files")
-        .and_then(Value::as_array)
-        .ok_or_else(|| ConfigError::new(MANIFEST_FILE, "files must be an array"))?;
+    let expected_data_hash = string(root, "data_hash", &context)?;
+    let entries = root.get("files").and_then(Value::as_array).ok_or_else(|| {
+        ConfigError::new(
+            ConfigErrorKind::Package,
+            context.field("files"),
+            "files must be an array",
+        )
+    })?;
     let expected = expected_files()?;
     let mut seen = BTreeSet::new();
     let mut records = Vec::new();
     let mut declared_total = 0;
     for (index, entry) in entries.iter().enumerate() {
-        let context = format!("{MANIFEST_FILE}.files[{index}]");
+        let context = context.field(format!("files[{index}]"));
         let entry = object(entry, &context)?;
         require_fields(entry, &["name", "size", "hash"], &context)?;
         let name = string(entry, "name", &context)?;
         if !expected.contains_key(name) {
             return Err(ConfigError::new(
+                ConfigErrorKind::Package,
                 &context,
                 format!("unknown or unsafe table filename {name:?}"),
             ));
         }
         if !seen.insert(name) {
             return Err(ConfigError::new(
+                ConfigErrorKind::Package,
                 &context,
                 format!("duplicate table filename {name:?}"),
             ));
@@ -142,7 +153,8 @@ pub fn read_package(directory: impl AsRef<Path>) -> Result<BTreeMap<String, Vec<
         let size = integer(entry, "size", &context)?;
         if size > MAX_FILE_BYTES {
             return Err(ConfigError::new(
-                &context,
+                ConfigErrorKind::Capacity,
+                context.field("size"),
                 format!("table size exceeds limit {MAX_FILE_BYTES}"),
             ));
         }
@@ -155,14 +167,16 @@ pub fn read_package(directory: impl AsRef<Path>) -> Result<BTreeMap<String, Vec<
     }
     if seen.len() != expected.len() {
         return Err(ConfigError::new(
-            MANIFEST_FILE,
+            ConfigErrorKind::Package,
+            &context,
             "manifest does not list the complete expected table set",
         ));
     }
     records.sort_by(|left, right| left.name.cmp(&right.name));
     if package_data_hash(&records) != expected_data_hash {
         return Err(ConfigError::new(
-            MANIFEST_FILE,
+            ConfigErrorKind::Package,
+            context.field("data_hash"),
             "data_hash does not match the file manifest",
         ));
     }
@@ -175,18 +189,24 @@ pub fn read_package(directory: impl AsRef<Path>) -> Result<BTreeMap<String, Vec<
         add_package_size(&mut total, size)?;
         if size != record.size {
             return Err(ConfigError::new(
-                &record.name,
+                ConfigErrorKind::Package,
+                ConfigLocation::file(directory.join(&record.name)).field("size"),
                 "file size does not match manifest",
             ));
         }
         if blake3::hash(&bytes).to_hex().as_str() != record.hash {
             return Err(ConfigError::new(
-                &record.name,
+                ConfigErrorKind::Package,
+                ConfigLocation::file(directory.join(&record.name)).field("hash"),
                 "file hash does not match manifest",
             ));
         }
         let table_name = expected.get(&record.name).ok_or_else(|| {
-            ConfigError::new(&record.name, "table is absent from compiled schema")
+            ConfigError::new(
+                ConfigErrorKind::Package,
+                ConfigLocation::file(directory.join(&record.name)),
+                "table is absent from compiled schema",
+            )
         })?;
         loaded.insert((*table_name).to_owned(), bytes);
     }
@@ -202,13 +222,15 @@ fn expected_files() -> Result<BTreeMap<String, &'static str>, ConfigError> {
                 .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
         {
             return Err(ConfigError::new(
-                "compiled schema",
+                ConfigErrorKind::Package,
+                ConfigLocation::Operation("compiled schema"),
                 "table filename contains unsupported characters",
             ));
         }
         if expected.insert(format!("{table}.bytes"), table).is_some() {
             return Err(ConfigError::new(
-                "compiled schema",
+                ConfigErrorKind::Package,
+                ConfigLocation::Operation("compiled schema"),
                 "duplicate table filename",
             ));
         }
@@ -216,19 +238,23 @@ fn expected_files() -> Result<BTreeMap<String, &'static str>, ConfigError> {
     Ok(expected)
 }
 
-fn object<'a>(value: &'a Value, context: &str) -> Result<&'a Map<String, Value>, ConfigError> {
-    value
-        .as_object()
-        .ok_or_else(|| ConfigError::new(context, "expected a JSON object"))
+fn object<'a>(
+    value: &'a Value,
+    context: &ConfigLocation,
+) -> Result<&'a Map<String, Value>, ConfigError> {
+    value.as_object().ok_or_else(|| {
+        ConfigError::new(ConfigErrorKind::Package, context, "expected a JSON object")
+    })
 }
 
 fn require_fields(
     value: &Map<String, Value>,
     names: &[&str],
-    context: &str,
+    context: &ConfigLocation,
 ) -> Result<(), ConfigError> {
     if value.len() != names.len() || names.iter().any(|name| !value.contains_key(*name)) {
         return Err(ConfigError::new(
+            ConfigErrorKind::Package,
             context,
             "object fields do not match the package format",
         ));
@@ -236,20 +262,30 @@ fn require_fields(
     Ok(())
 }
 
-fn integer(value: &Map<String, Value>, name: &str, context: &str) -> Result<u64, ConfigError> {
-    value
-        .get(name)
-        .and_then(Value::as_u64)
-        .ok_or_else(|| ConfigError::new(context, format!("{name} must be an unsigned integer")))
+fn integer(
+    value: &Map<String, Value>,
+    name: &str,
+    context: &ConfigLocation,
+) -> Result<u64, ConfigError> {
+    value.get(name).and_then(Value::as_u64).ok_or_else(|| {
+        ConfigError::new(
+            ConfigErrorKind::Package,
+            context.field(name),
+            format!("{name} must be an unsigned integer"),
+        )
+    })
 }
 
 fn string<'a>(
     value: &'a Map<String, Value>,
     name: &str,
-    context: &str,
+    context: &ConfigLocation,
 ) -> Result<&'a str, ConfigError> {
-    value
-        .get(name)
-        .and_then(Value::as_str)
-        .ok_or_else(|| ConfigError::new(context, format!("{name} must be a string")))
+    value.get(name).and_then(Value::as_str).ok_or_else(|| {
+        ConfigError::new(
+            ConfigErrorKind::Package,
+            context.field(name),
+            format!("{name} must be a string"),
+        )
+    })
 }

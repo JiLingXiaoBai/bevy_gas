@@ -2,7 +2,7 @@
 
 use super::compiler::{evaluate_linear, validate_tables};
 use super::generated::{Tables, gas::ActionKind};
-use super::{AbilityId, ConfigError};
+use super::{AbilityId, ConfigError, ConfigErrorKind, ConfigLocation};
 
 mod report;
 

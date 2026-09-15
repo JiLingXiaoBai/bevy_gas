@@ -29,7 +29,7 @@ pub use catalog::{
     revoke_ability,
 };
 pub use compiler::compile_catalog;
-pub use error::ConfigError;
+pub use error::{ConfigError, ConfigErrorKind, ConfigLocation};
 pub use loading::load_tables;
 pub use package::{MAX_FILE_BYTES, MAX_PACKAGE_BYTES, read_package};
 

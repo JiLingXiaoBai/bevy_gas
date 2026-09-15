@@ -1,9 +1,9 @@
 //! Bounded binary loading with optional package integrity validation.
 
-use super::ConfigError;
 #[cfg(feature = "config-validation")]
 use super::generated::SCHEMA_PARTS;
 use super::generated::TABLE_FILES;
+use super::{ConfigError, ConfigErrorKind, ConfigLocation};
 
 mod files;
 #[cfg(feature = "config-validation")]

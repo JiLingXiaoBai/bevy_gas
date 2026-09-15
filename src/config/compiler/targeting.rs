@@ -2,7 +2,7 @@
 
 use super::numeric::square_is_finite;
 use super::registration::resolve_tags;
-use super::{ConfigError, data};
+use super::{ConfigError, ConfigErrorKind, ConfigLocation, data};
 use crate::{
     GameplayTag, TagRequirements, TargetingDefinition, TargetingOperation, TargetingSortOrder,
 };
@@ -12,7 +12,7 @@ pub(super) fn compile_targeting(
     row: &data::Targeting,
     tags: &BTreeMap<String, GameplayTag>,
 ) -> Result<TargetingDefinition, ConfigError> {
-    let context = format!("Targeting[{}]", row.id);
+    let context = ConfigLocation::table("Targeting").row(row.id);
     let used_radius = if matches!(
         row.selection,
         data::SelectionKind::Sphere | data::SelectionKind::Cone
@@ -24,7 +24,8 @@ pub(super) fn compile_targeting(
     for (name, distance) in [("radius", used_radius), ("max_distance", row.max_distance)] {
         if distance.is_some_and(|value| !square_is_finite(value)) {
             return Err(ConfigError::new(
-                format!("{context}.{name}"),
+                ConfigErrorKind::InvalidValue,
+                context.field(name),
                 "distance must have a finite square",
             ));
         }
@@ -33,17 +34,21 @@ pub(super) fn compile_targeting(
         data::SelectionKind::SelfTarget => TargetingOperation::SelectSelf,
         data::SelectionKind::ExplicitEntity => TargetingOperation::SelectExplicitEntity,
         data::SelectionKind::Sphere => TargetingOperation::SelectSphere {
-            radius: row
-                .radius
-                .ok_or_else(|| ConfigError::new(&context, "missing radius"))?,
+            radius: row.radius.ok_or_else(|| {
+                ConfigError::new(ConfigErrorKind::InvalidValue, &context, "missing radius")
+            })?,
         },
         data::SelectionKind::Cone => TargetingOperation::SelectCone {
-            radius: row
-                .radius
-                .ok_or_else(|| ConfigError::new(&context, "missing radius"))?,
-            half_angle_radians: row
-                .half_angle_radians
-                .ok_or_else(|| ConfigError::new(&context, "missing cone angle"))?,
+            radius: row.radius.ok_or_else(|| {
+                ConfigError::new(ConfigErrorKind::InvalidValue, &context, "missing radius")
+            })?,
+            half_angle_radians: row.half_angle_radians.ok_or_else(|| {
+                ConfigError::new(
+                    ConfigErrorKind::InvalidValue,
+                    &context,
+                    "missing cone angle",
+                )
+            })?,
         },
     };
     let mut operations = vec![selection];
@@ -55,7 +60,9 @@ pub(super) fn compile_targeting(
             resolve_tags(&row.required_tags, tags)?,
             resolve_tags(&row.blocked_tags, tags)?,
         )
-        .map_err(|error| ConfigError::new(&context, error.to_string()))?;
+        .map_err(|error| {
+            ConfigError::new(ConfigErrorKind::InvalidValue, &context, error.to_string())
+        })?;
         operations.push(TargetingOperation::FilterTags { requirements });
     }
     if row.require_attributes {
@@ -74,9 +81,11 @@ pub(super) fn compile_targeting(
         }),
     }
     operations.push(TargetingOperation::Limit {
-        count: usize::try_from(row.limit)
-            .map_err(|error| ConfigError::new(&context, error.to_string()))?,
+        count: usize::try_from(row.limit).map_err(|error| {
+            ConfigError::new(ConfigErrorKind::InvalidValue, &context, error.to_string())
+        })?,
     });
-    TargetingDefinition::new(operations)
-        .map_err(|error| ConfigError::new(context, error.to_string()))
+    TargetingDefinition::new(operations).map_err(|error| {
+        ConfigError::new(ConfigErrorKind::InvalidValue, context, error.to_string())
+    })
 }

@@ -2,7 +2,10 @@
 
 use super::effects::resolve_effect;
 use super::registration::resolve_tags;
-use super::{AbilityId, CompiledAbility, ConfigError, EffectId, Tables, data};
+use super::{
+    AbilityId, CompiledAbility, ConfigError, ConfigErrorKind, ConfigLocation, EffectId, Tables,
+    data,
+};
 use crate::{
     AbilityTags, AbilityTaskDef, AbilityTaskOnFinishedDef, GameplayAbility, GameplayEffect,
     GameplayTag, TargetingDefinition,
@@ -43,16 +46,28 @@ pub(super) fn compile_abilities(
         }
         let target = targeting.get(&row.targeting_id).ok_or_else(|| {
             ConfigError::new(
-                format!("Ability[{}].targeting_id", row.id),
+                ConfigErrorKind::Reference,
+                ConfigLocation::table("Ability")
+                    .row(row.id)
+                    .field("targeting_id"),
                 "unresolved targeting",
             )
         })?;
         let max_level = u32::try_from(row.max_level).map_err(|error| {
-            ConfigError::new(format!("Ability[{}].max_level", row.id), error.to_string())
+            ConfigError::new(
+                ConfigErrorKind::InvalidValue,
+                ConfigLocation::table("Ability")
+                    .row(row.id)
+                    .field("max_level"),
+                error.to_string(),
+            )
         })?;
         if max_level == 0 {
             return Err(ConfigError::new(
-                format!("Ability[{}].max_level", row.id),
+                ConfigErrorKind::InvalidValue,
+                ConfigLocation::table("Ability")
+                    .row(row.id)
+                    .field("max_level"),
                 "maximum level must be positive",
             ));
         }
@@ -83,13 +98,18 @@ fn compile_tasks(
     rows.sort_by_key(|action| (action.at_tick, action.order));
     let mut groups: BTreeMap<u32, Vec<AbilityTaskOnFinishedDef>> = BTreeMap::new();
     for row in rows {
-        let context = format!("AbilityAction[{}]", row.id);
+        let context = ConfigLocation::table("AbilityAction").row(row.id);
         let action = match row.kind {
             data::ActionKind::EndAbility => AbilityTaskOnFinishedDef::EndAbility,
             data::ActionKind::ApplyEffect => {
                 let effect = resolve_effect(
-                    row.effect_id
-                        .ok_or_else(|| ConfigError::new(&context, "missing effect reference"))?,
+                    row.effect_id.ok_or_else(|| {
+                        ConfigError::new(
+                            ConfigErrorKind::Reference,
+                            context.field("effect_id"),
+                            "missing effect reference",
+                        )
+                    })?,
                     effects,
                 )?;
                 match row.target_scope {
@@ -101,15 +121,21 @@ fn compile_tasks(
                     }
                     data::TargetScope::None => {
                         return Err(ConfigError::new(
-                            &context,
+                            ConfigErrorKind::InvalidValue,
+                            context.field("target_scope"),
                             "ApplyEffect needs a target scope",
                         ));
                     }
                 }
             }
         };
-        let tick = u32::try_from(row.at_tick)
-            .map_err(|error| ConfigError::new(context, error.to_string()))?;
+        let tick = u32::try_from(row.at_tick).map_err(|error| {
+            ConfigError::new(
+                ConfigErrorKind::InvalidValue,
+                context.field("at_tick"),
+                error.to_string(),
+            )
+        })?;
         groups.entry(tick).or_default().push(action);
     }
     Ok(groups

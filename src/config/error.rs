@@ -2,4 +2,4 @@
 
 mod definition;
 
-pub use definition::ConfigError;
+pub use definition::{ConfigError, ConfigErrorKind, ConfigLocation};
