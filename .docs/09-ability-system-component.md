@@ -169,9 +169,12 @@ pub fn can_activate_ability(
     target: Entity,
     ability: &Arc<GameplayAbility>,
     level: u32,
-    params: &mut AbilitySystemParams,
-) -> bool;
+    params: &AbilityActivationCheckParams,
+) -> Result<(), AbilityActivationCheckError>;
 ```
+
+`AbilityActivationCheckParams` 只包含只读 ASC 查询和 `EffectReadOnlyParams`，没有 Commands、
+随机数资源或可变 Gameplay 查询。错误区分技能互斥、阻止标签、缺失标签、冷却和具体成本错误。
 
 该函数只检查标签/Cooldown 与数值 Cost，不检查技能是否已授予、Handle、技能链、多实例、取消
 和 startup tasks，因此不是最终授权。Cost 计算上下文使用传入 `target`，但实际 Commit 把 Cost
@@ -256,7 +259,7 @@ Query 已可见实例与尚未提交的 pending 实例；共用操作不改变�
 
 消耗预检查与真实 commit 共用 Attribute 领域的逐笔数值预演和支付条件，但仍分别构造 Spec 与
 Effect Plan；快速预检按当前 removal tags 选择临时排除的来源，commit 使用计划中捕获的来源。`can_activate_ability()` 仅预检查标签与消耗，不验证授予 Handle、实例数限制或完整 Effect
-应用计划，也不携带本次激活上下文，因此返回 `true` 不保证后续激活成功。
+应用计划，也不携带本次激活上下文，因此返回 `Ok(())` 不保证后续激活成功。
 
 ## 默认 FixedUpdate 阶段
 
@@ -295,7 +298,9 @@ fn queue_cast(
     let chain = queue.new_root_chain(cast.handle);
     let context = AbilityActivationContext::direct(cast.source, chain);
     let targets = AbilityActivationTargets::single(cast.target);
-    queue.push_activation(cast.source, targets, cast.handle, context);
+    if let Err(error) = queue.push_activation(cast.source, targets, cast.handle, context) {
+        error!("failed to queue ability: {error}");
+    }
 }
 
 app.add_systems(

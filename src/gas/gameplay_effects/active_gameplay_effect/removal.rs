@@ -70,7 +70,7 @@ pub fn remove_active_effects_with_tags(
     let handles = collect_active_effects_with_tags_for_params(
         target,
         tags,
-        &params.active_effect_query,
+        &params.active_effect_query.as_readonly(),
         &params.tag_manager,
     )?;
     let removed_count = handles.len();
@@ -181,7 +181,7 @@ pub(super) fn force_remove_effect(
 pub(super) fn collect_active_effects_with_tags_for_params(
     target: Entity,
     tags: &[GameplayTag],
-    active_effect_query: &Query<&mut ActiveGameplayEffects>,
+    active_effect_query: &Query<&ActiveGameplayEffects>,
     tag_manager: &Res<GameplayTagManager>,
 ) -> Result<Vec<ActiveEffectHandle>, GameplayTagError> {
     if tags.is_empty() {

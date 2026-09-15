@@ -25,3 +25,20 @@ pub struct EffectSystemParams<'w, 's> {
     pub active_effect_query: Query<'w, 's, &'static mut ActiveGameplayEffects>,
     pub(crate) active_effect_requirement_sync: ResMut<'w, ActiveEffectRequirementSync>,
 }
+
+/// Read-only ECS access for effect evaluation and attribute-cost previews.
+///
+/// This parameter neither borrows the random generator nor grants mutation access to gameplay state.
+#[derive(SystemParam)]
+pub struct EffectReadOnlyParams<'w, 's> {
+    /// Registered gameplay tags used to inspect effect removal rules.
+    pub tag_manager: Res<'w, GameplayTagManager>,
+    /// Registered attribute IDs and their storage locations.
+    pub attribute_id_manager: Res<'w, AttributeIdManager>,
+    /// Attribute storage consulted by modifier evaluation and cost previews.
+    pub attr_set_query: Query<'w, 's, &'static AttributeSet>,
+    /// Gameplay tags consulted by modifier evaluation.
+    pub tag_container_query: Query<'w, 's, &'static GameplayTagContainer>,
+    /// Active effects whose modifiers may be excluded during a cost preview.
+    pub active_effect_query: Query<'w, 's, &'static ActiveGameplayEffects>,
+}

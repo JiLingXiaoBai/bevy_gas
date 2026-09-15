@@ -1,4 +1,6 @@
 use super::*;
+use bevy::ecs::system::SystemState;
+use bevy_gas::{AbilityActivationCheckError, AbilityActivationCheckParams, can_activate_ability};
 
 #[test]
 fn ability_disallows_multiple_instances_by_default() {
@@ -167,5 +169,67 @@ fn try_activate_ability_by_handle_returns_error_for_missing_spec() {
             source,
             handle: missing_handle
         }
+    );
+}
+
+#[test]
+fn readonly_activation_precheck_distinguishes_missing_and_blocking_tags() {
+    let mut app = test_app();
+    let required = register_tag(&mut app, "Precheck.Ready");
+    let blocked = register_tag(&mut app, "Precheck.Silenced");
+    let source = app
+        .world_mut()
+        .spawn((
+            AbilitySystemComponent::default(),
+            GameplayTagContainer::default(),
+        ))
+        .id();
+    let ability = Arc::new(GameplayAbility::new(
+        AbilityTags::new(
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+            vec![required],
+            vec![blocked],
+        ),
+        Vec::new(),
+        None,
+        None,
+        Vec::new(),
+        false,
+        false,
+    ));
+    let mut state = SystemState::<AbilityActivationCheckParams>::new(app.world_mut());
+    assert_eq!(
+        can_activate_ability(
+            source,
+            source,
+            &ability,
+            1,
+            &state.get(app.world()).unwrap()
+        ),
+        Err(AbilityActivationCheckError::MissingRequiredTags)
+    );
+    add_tag_to_entity(&mut app, source, required);
+    assert_eq!(
+        can_activate_ability(
+            source,
+            source,
+            &ability,
+            1,
+            &state.get(app.world()).unwrap()
+        ),
+        Ok(())
+    );
+    add_tag_to_entity(&mut app, source, blocked);
+    assert_eq!(
+        can_activate_ability(
+            source,
+            source,
+            &ability,
+            1,
+            &state.get(app.world()).unwrap()
+        ),
+        Err(AbilityActivationCheckError::ActivationBlocked)
     );
 }

@@ -1,9 +1,10 @@
 use super::*;
 use crate::support_test::{active_effect_handles, apply_effect, modifier, register_hot_attribute};
-use bevy::ecs::system::RunSystemOnce;
+use bevy::ecs::system::{RunSystemOnce, SystemState};
 use bevy_gas::{
-    AbilityCommitError, AbilitySystemParams, Aggregator, AttributeIdManager, AttributeSet,
-    EffectTags, can_activate_ability, commit_ability, default_executor,
+    AbilityActivationCheckError, AbilityActivationCheckParams, AbilityCommitError,
+    AbilitySystemParams, Aggregator, AttributeIdManager, AttributeSet, EffectTags,
+    can_activate_ability, commit_ability, default_executor,
 };
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -193,8 +194,8 @@ fn can_activate_cost_ability(
 ) -> bool {
     let ability = Arc::clone(ability);
     app.world_mut()
-        .run_system_once(move |mut params: AbilitySystemParams| {
-            can_activate_ability(source, source, &ability, 1, &mut params)
+        .run_system_once(move |params: AbilityActivationCheckParams| {
+            can_activate_ability(source, source, &ability, 1, &params).is_ok()
         })
         .unwrap()
 }
@@ -592,4 +593,26 @@ fn cost_affordability_includes_effects_removed_before_payment() {
             );
         }
     }
+}
+
+#[test]
+fn readonly_activation_precheck_reports_cost_errors_through_immutable_world_access() {
+    let mut app = test_app();
+    let mana = register_attribute(&mut app, "Precheck.Mana");
+    let source = spawn_attribute_set(&mut app, mana, 5.0);
+    let expensive = ability_with_cost_effect(instant_add_effect(mana, -10.0));
+    let affordable = ability_with_cost_effect(instant_add_effect(mana, -3.0));
+    let mut state = SystemState::<AbilityActivationCheckParams>::new(app.world_mut());
+    let params = state.get(app.world()).unwrap();
+    assert_eq!(
+        can_activate_ability(source, source, &expensive, 1, &params),
+        Err(AbilityActivationCheckError::Cost(
+            AbilityCommitError::InsufficientCost
+        ))
+    );
+    assert_eq!(
+        can_activate_ability(source, source, &affordable, 1, &params),
+        Ok(())
+    );
+    assert_eq!(current_value(&mut app, source, mana), 5.0);
 }

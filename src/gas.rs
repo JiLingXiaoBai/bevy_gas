@@ -15,7 +15,7 @@ pub mod settings;
 
 pub use ability_input::{AbilityInputBindingError, AbilityInputBindings};
 pub use ability_system::{
-    AbilityActivationError, AbilityCommitError, AbilitySystemComponent, AbilitySystemParams,
+    AbilityActivationCheckError, AbilityActivationCheckParams, AbilityActivationError, AbilityCommitError, AbilitySystemComponent, AbilitySystemParams,
     GameplayAbilitySystemBundle, PendingActiveGameplayAbilities, can_activate_ability,
     cancel_ability, cleanup_finished_abilities_system, commit_ability, end_ability,
     try_activate_ability_by_handle,
@@ -36,7 +36,7 @@ pub use gameplay_abilities::{
 pub use gameplay_effects::{
     ActiveEffectDurationTicks, ActiveEffectHandle, ActiveEffectPeriodTicks, ActiveGameplayEffect,
     ActiveGameplayEffects, EffectContext, EffectDurationTicks, EffectDurationTicksSpec,
-    EffectPayload, EffectPeriodTicks, EffectPeriodTicksSpec, EffectSystemParams, EffectTags,
+    EffectPayload, EffectPeriodTicks, EffectPeriodTicksSpec, EffectReadOnlyParams, EffectSystemParams, EffectTags,
     GameplayEffect, GameplayEffectApplicationError, GameplayEffectApplicationPlan,
     GameplayEffectImmunityQuery, GameplayEffectSpec, StackDurationPolicy, StackExpirationPolicy,
     StackMagnitudePolicy, StackOverflowPolicy, StackPeriodPolicy, StackingPolicy, StackingType,

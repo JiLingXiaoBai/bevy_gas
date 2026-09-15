@@ -4,8 +4,8 @@ use crate::gameplay_abilities::{
     AbilityActivationContext, GameplayAbility, effect_payload_from_ability_context,
 };
 use crate::gameplay_effects::{
-    EffectContext, GameplayEffectApplicationError, GameplayEffectApplicationPlan,
-    execute_gameplay_effect_plan_in_batch, prepare_gameplay_effect,
+    EffectContext, EffectReadOnlyParams, GameplayEffectApplicationError,
+    GameplayEffectApplicationPlan, execute_gameplay_effect_plan_in_batch, prepare_gameplay_effect,
     preview_instant_effect_modifiers, validate_gameplay_effect_plan,
 };
 use crate::modifiers::ModifierSpec;
@@ -184,18 +184,18 @@ fn can_pay_cost_plan(
     plan.preview_modifier_application(&params.effects, cost_balance_is_payable)
 }
 
-pub(super) fn can_pay_ability_cost(
+pub(super) fn check_ability_cost(
     source: Entity,
     target: Entity,
     ability: &Arc<GameplayAbility>,
     level: u32,
-    params: &mut AbilitySystemParams,
-) -> bool {
+    params: &EffectReadOnlyParams,
+) -> Result<(), AbilityCommitError> {
     let Some(cost_def) = ability.get_cost() else {
-        return true;
+        return Ok(());
     };
     if !cost_def.has_only_add_modifiers() {
-        return false;
+        return Err(AbilityCommitError::CostModifiersMustBeAdditive);
     }
 
     let payload = effect_payload_from_ability_context(source, level, None);
@@ -203,20 +203,29 @@ pub(super) fn can_pay_ability_cost(
         let context = EffectContext {
             target: Some(target),
             payload: &payload,
-            attribute_id_manager: &params.effects.attribute_id_manager,
-            attr_set_query: &params.effects.attr_set_query.as_readonly(),
-            tag_container_query: &params.effects.tag_container_query.as_readonly(),
+            attribute_id_manager: &params.attribute_id_manager,
+            attr_set_query: &params.attr_set_query,
+            tag_container_query: &params.tag_container_query,
         };
 
         cost_def.make_spec(&context)
     };
 
-    cost_modifiers_are_finite(cost_spec.get_modifier_specs())
-        && preview_instant_effect_modifiers(
-            source,
-            &cost_spec,
-            &params.effects,
-            cost_balance_is_payable,
-        )
-        .is_ok_and(|payable| payable)
+    if !cost_modifiers_are_finite(cost_spec.get_modifier_specs()) {
+        return Err(AbilityCommitError::InsufficientCost);
+    }
+    let payable = preview_instant_effect_modifiers(
+        source,
+        &cost_spec,
+        &params.attr_set_query,
+        &params.active_effect_query,
+        &params.attribute_id_manager,
+        &params.tag_manager,
+        cost_balance_is_payable,
+    )
+    .map_err(AbilityCommitError::CostPreparation)?;
+    if !payable {
+        return Err(AbilityCommitError::InsufficientCost);
+    }
+    Ok(())
 }

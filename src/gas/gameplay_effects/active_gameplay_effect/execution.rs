@@ -81,7 +81,7 @@ pub(crate) fn validate_gameplay_effect_plan(
         &params.tag_manager,
         &params.attr_set_query,
         &params.tag_container_query,
-        &params.active_effect_query,
+        &params.active_effect_query.as_readonly(),
     )?;
     Ok(())
 }
@@ -93,7 +93,7 @@ pub(super) fn validate_effect_execution_requirements(
     tag_manager: &Res<GameplayTagManager>,
     attr_query: &Query<&mut AttributeSet>,
     tag_query: &Query<&mut GameplayTagContainer>,
-    active_effect_query: &Query<&mut ActiveGameplayEffects>,
+    active_effect_query: &Query<&ActiveGameplayEffects>,
 ) -> Result<(), GameplayEffectApplicationError> {
     if !spec.get_duration_spec().is_instant() && active_effect_query.get(target).is_err() {
         return Err(GameplayEffectApplicationError::MissingActiveGameplayEffects { target });

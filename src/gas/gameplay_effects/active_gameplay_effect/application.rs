@@ -47,7 +47,7 @@ pub(super) fn find_stackable_active_effect(
     source: Entity,
     target: Entity,
     spec: &GameplayEffectSpec,
-    active_effect_query: &Query<&mut ActiveGameplayEffects>,
+    active_effect_query: &Query<&ActiveGameplayEffects>,
     ignored_handles: &[ActiveEffectHandle],
 ) -> Option<(ActiveEffectHandle, u32)> {
     let stacking_type = spec.get_stacking_policy().get_stacking_type();

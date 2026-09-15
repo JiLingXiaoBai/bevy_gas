@@ -1,7 +1,7 @@
 use super::component::AbilitySystemComponent;
 use crate::attributes::AttributeSetSnapshot;
 use crate::gameplay_abilities::{ActiveAbilityHandle, ActiveGameplayAbility};
-use crate::gameplay_effects::EffectSystemParams;
+use crate::gameplay_effects::{EffectReadOnlyParams, EffectSystemParams};
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use std::ops::{Deref, DerefMut};
@@ -77,4 +77,16 @@ impl<'w, 's> DerefMut for AbilitySystemParams<'w, 's> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.effects
     }
+}
+
+/// Read-only ECS access used to inspect activation tags and ability-cost affordability.
+///
+/// UI and AI systems can use this parameter without borrowing commands, random state, or mutable
+/// gameplay components. A successful check is a snapshot, not permission to skip resolver checks.
+#[derive(SystemParam)]
+pub struct AbilityActivationCheckParams<'w, 's> {
+    /// Read-only tags, attributes, active effects, and identifier registries.
+    pub effects: EffectReadOnlyParams<'w, 's>,
+    /// Granted abilities and blocking tags on gameplay actors.
+    pub asc_query: Query<'w, 's, &'static AbilitySystemComponent>,
 }

@@ -7,9 +7,12 @@ use super::application::{
 };
 use super::execution::validate_effect_execution_requirements;
 use super::removal::collect_active_effects_with_tags_for_params;
-use super::state::{ActiveEffectHandle, ActiveEffectStorageError};
-use crate::attributes::{AttributeId, AttributeIdError, AttributeSetError, AttributeSnapshot};
-use crate::gameplay_tags::GameplayTagError;
+use super::state::{ActiveEffectHandle, ActiveEffectStorageError, ActiveGameplayEffects};
+use crate::attributes::{
+    AttributeId, AttributeIdError, AttributeIdManager, AttributeSet, AttributeSetError,
+    AttributeSnapshot,
+};
+use crate::gameplay_tags::{GameplayTagError, GameplayTagManager};
 use crate::modifiers::{ModifierSourceId, ModifierSpec};
 use bevy::prelude::*;
 use std::error::Error;
@@ -64,7 +67,8 @@ impl GameplayEffectApplicationPlan {
             self.target,
             &self.spec,
             &self.removed_effects,
-            params,
+            &params.attr_set_query.as_readonly(),
+            &params.attribute_id_manager,
             accepts,
         )
     }
@@ -85,32 +89,42 @@ impl GameplayEffectApplicationPlan {
 pub(crate) fn preview_instant_effect_modifiers(
     target: Entity,
     spec: &GameplayEffectSpec,
-    params: &EffectSystemParams,
+    attributes: &Query<&AttributeSet>,
+    active_effects: &Query<&ActiveGameplayEffects>,
+    attribute_ids: &AttributeIdManager,
+    tag_manager: &Res<GameplayTagManager>,
     accepts: impl FnMut(AttributeSnapshot) -> bool,
 ) -> Result<bool, GameplayEffectApplicationError> {
     let removed_effects = collect_active_effects_with_tags_for_params(
         target,
         spec.get_def_tags().get_remove_effects_with_tags(),
-        &params.active_effect_query,
-        &params.tag_manager,
+        active_effects,
+        tag_manager,
     )?;
-    preview_modifiers_after_effect_removal(target, spec, &removed_effects, params, accepts)
+    preview_modifiers_after_effect_removal(
+        target,
+        spec,
+        &removed_effects,
+        attributes,
+        attribute_ids,
+        accepts,
+    )
 }
 
 fn preview_modifiers_after_effect_removal(
     target: Entity,
     spec: &GameplayEffectSpec,
     removed_effects: &[ActiveEffectHandle],
-    params: &EffectSystemParams,
+    attributes: &Query<&AttributeSet>,
+    attribute_ids: &AttributeIdManager,
     accepts: impl FnMut(AttributeSnapshot) -> bool,
 ) -> Result<bool, GameplayEffectApplicationError> {
-    let attributes = params
-        .attr_set_query
+    let attributes = attributes
         .get(target)
         .map_err(|_| GameplayEffectApplicationError::MissingAttributeSet { target })?;
     attributes
         .preview_instant_modifiers(
-            &params.attribute_id_manager,
+            attribute_ids,
             spec.get_modifier_specs(),
             removed_effects.iter().copied().map(ModifierSourceId::from),
             accepts,
@@ -307,20 +321,20 @@ pub fn prepare_gameplay_effect(
         &params.tag_manager,
         &params.attr_set_query,
         &params.tag_container_query,
-        &params.active_effect_query,
+        &params.active_effect_query.as_readonly(),
     )?;
 
     let removed_effects = collect_active_effects_with_tags_for_params(
         target,
         incoming_tags.get_remove_effects_with_tags(),
-        &params.active_effect_query,
+        &params.active_effect_query.as_readonly(),
         &params.tag_manager,
     )?;
     if let Some((handle, stack_count)) = find_stackable_active_effect(
         source,
         target,
         &spec,
-        &params.active_effect_query,
+        &params.active_effect_query.as_readonly(),
         &removed_effects,
     ) {
         let stacking_policy = spec.get_stacking_policy();

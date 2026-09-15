@@ -10,7 +10,7 @@ mod randoms;
 mod unique_names;
 
 pub use gas::{
-    ATTRIBUTE_SET_SIZE, AbilityActivationContext, AbilityActivationData, AbilityActivationError,
+    ATTRIBUTE_SET_SIZE, AbilityActivationCheckError, AbilityActivationCheckParams, AbilityActivationContext, AbilityActivationData, AbilityActivationError,
     AbilityActivationReason, AbilityActivationRequest, AbilityActivationStatus,
     AbilityActivationTargets, AbilityActivationTargetsError, AbilityChainContext,
     AbilityChainError, AbilityCommitError, AbilityInputBindingError, AbilityInputBindings,
@@ -23,7 +23,7 @@ pub use gas::{
     AttributePostExecute, AttributeRegion, AttributeSet, AttributeSetError, AttributeSetSnapshot,
     AttributeSnapshot, BLOCK_SIZE_EXPONENT, COLD_ATTRIBUTE_SET_SIZE, EffectContext,
     EffectDurationTicks, EffectDurationTicksSpec, EffectPayload, EffectPeriodTicks,
-    EffectPeriodTicksSpec, EffectSystemParams, EffectTags, GameplayAbility, GameplayAbilitySpec,
+    EffectPeriodTicksSpec, EffectReadOnlyParams, EffectSystemParams, EffectTags, GameplayAbility, GameplayAbilitySpec,
     GameplayAbilitySystemBundle, GameplayAbilitySystemPlugin, GameplayAbilitySystemRuntimePlugin,
     GameplayAbilitySystemSet, GameplayAbilitySystemSettings, GameplayEffect,
     GameplayEffectApplicationError, GameplayEffectApplicationPlan,
