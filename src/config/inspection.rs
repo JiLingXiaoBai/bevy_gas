@@ -1,7 +1,7 @@
 //! Feature-enabled inspection reports for authored ability tables.
 
-use super::compiler::{evaluate_linear, validate_tables};
-use super::generated::{Tables, gas::ActionKind};
+use super::compiler::{PreparedActionKind, PreparedTables, validate_prepared};
+use super::generated::Tables;
 use super::{AbilityId, ConfigError, ConfigErrorKind, ConfigLocation};
 
 mod report;

@@ -5,7 +5,7 @@ use bevy::platform::collections::HashMap;
 use bevy::prelude::{ResMut, Resource};
 
 /// Global registry for hierarchical gameplay tags and inherited bitsets.
-#[derive(Resource, Default)]
+#[derive(Resource, Default, Clone)]
 pub struct GameplayTagManager {
     tag_name_to_index: HashMap<UniqueName, u16>,
     tag_inherited_bits: Vec<GameplayTagBits>,

@@ -1,9 +1,11 @@
 //! Shared effect definitions and modifier construction.
 
 use super::magnitude::LinearLevelMagnitude;
-use super::numeric::{formula_parameters_are_finite, probability_is_valid};
+use super::numeric::probability_is_valid;
 use super::registration::resolve_tags;
-use super::{ConfigError, ConfigErrorKind, ConfigLocation, EffectId, Tables, data};
+use super::{
+    ConfigError, ConfigErrorKind, ConfigLocation, EffectId, PreparedMagnitude, PreparedTables, data,
+};
 use crate::{
     AttributeId, EffectDurationTicks, EffectPeriodTicks, EffectTags, GameplayEffect, GameplayTag,
     Modifier, ModifierMagnitude, ModifierOperation, StackingPolicy,
@@ -37,12 +39,12 @@ fn positive_effect_ticks(ticks: i32, context: ConfigLocation) -> Result<f32, Con
 }
 
 pub(super) fn compile_effects(
-    tables: &Tables,
+    prepared: &PreparedTables,
     tags: &BTreeMap<String, GameplayTag>,
     attributes: &BTreeMap<String, AttributeId>,
 ) -> Result<BTreeMap<EffectId, Arc<GameplayEffect>>, ConfigError> {
     let mut effects = BTreeMap::new();
-    for row in tables.tb_effect.iter() {
+    for row in prepared.tables.tb_effect.iter() {
         if !probability_is_valid(row.probability) {
             return Err(ConfigError::new(
                 ConfigErrorKind::InvalidValue,
@@ -52,14 +54,10 @@ pub(super) fn compile_effects(
                 "probability must be finite and in 0..=1",
             ));
         }
-        let mut rows: Vec<_> = tables
-            .tb_modifier
-            .iter()
-            .filter(|modifier| modifier.effect_id == row.id)
-            .collect();
-        rows.sort_by_key(|modifier| modifier.order);
+        let rows = prepared.modifiers(row.id);
         let mut modifiers = Vec::with_capacity(rows.len());
-        for modifier in rows {
+        for prepared_modifier in rows {
+            let modifier = prepared_modifier.row;
             let id = attributes
                 .get(&modifier.attribute)
                 .copied()
@@ -78,25 +76,12 @@ pub(super) fn compile_effects(
                 data::ModifierOperation::Multiply => ModifierOperation::Multiply,
                 data::ModifierOperation::Override => ModifierOperation::Override,
             };
-            if !formula_parameters_are_finite(
-                modifier.base,
-                (modifier.magnitude_kind == data::MagnitudeKind::LinearLevel)
-                    .then_some(modifier.per_level),
-            ) {
-                return Err(ConfigError::new(
-                    ConfigErrorKind::InvalidValue,
-                    ConfigLocation::table("Modifier")
-                        .row(modifier.id)
-                        .field("magnitude"),
-                    "used formula parameters must be finite",
-                ));
-            }
-            let magnitude = match modifier.magnitude_kind {
-                data::MagnitudeKind::Flat => ModifierMagnitude::Flat(modifier.base),
-                data::MagnitudeKind::LinearLevel => {
+            let magnitude = match prepared_modifier.magnitude {
+                PreparedMagnitude::Flat(value) => ModifierMagnitude::Flat(value),
+                PreparedMagnitude::LinearLevel { base, per_level } => {
                     ModifierMagnitude::Calculated(Box::new(LinearLevelMagnitude {
-                        base: modifier.base,
-                        per_level: modifier.per_level,
+                        base,
+                        per_level,
                     }))
                 }
             };

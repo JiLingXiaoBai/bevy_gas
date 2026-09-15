@@ -8,8 +8,8 @@
 //!
 //! Load binary tables and compile them once
 //! during startup before granting abilities to actors. Registry insertion is
-//! append-only; failed registration may leave names registered, but never publishes
-//! a partially compiled catalog. Runtime catalog replacement is not supported.
+//! performed on private registry snapshots. A failed compilation leaves all World
+//! resources unchanged. Runtime catalog replacement is not supported.
 
 mod catalog;
 mod compiler;

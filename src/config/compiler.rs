@@ -9,6 +9,7 @@ mod build;
 mod effects;
 mod magnitude;
 mod numeric;
+mod preparation;
 mod registration;
 mod targeting;
 #[cfg(feature = "config-validation")]
@@ -18,5 +19,8 @@ pub use build::compile_catalog;
 #[cfg(feature = "config-validation")]
 pub use validation::validate_tables;
 
+pub(crate) use preparation::{
+    PreparedActionKind, PreparedMagnitude, PreparedTables, PreparedTargetScope,
+};
 #[cfg(feature = "config-validation")]
-pub(crate) use magnitude::evaluate_linear;
+pub(crate) use validation::validate_prepared;

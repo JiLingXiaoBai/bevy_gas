@@ -3,8 +3,8 @@
 use super::effects::resolve_effect;
 use super::registration::resolve_tags;
 use super::{
-    AbilityId, CompiledAbility, ConfigError, ConfigErrorKind, ConfigLocation, EffectId, Tables,
-    data,
+    AbilityId, CompiledAbility, ConfigError, ConfigErrorKind, ConfigLocation, EffectId,
+    PreparedActionKind, PreparedTables, PreparedTargetScope,
 };
 use crate::{
     AbilityTags, AbilityTaskDef, AbilityTaskOnFinishedDef, GameplayAbility, GameplayEffect,
@@ -14,13 +14,13 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 pub(super) fn compile_abilities(
-    tables: &Tables,
+    prepared: &PreparedTables,
     tags: &BTreeMap<String, GameplayTag>,
     effects: &BTreeMap<EffectId, Arc<GameplayEffect>>,
     targeting: &BTreeMap<i32, Arc<TargetingDefinition>>,
 ) -> Result<BTreeMap<AbilityId, CompiledAbility>, ConfigError> {
     let mut abilities = BTreeMap::new();
-    for row in tables.tb_ability.iter() {
+    for row in prepared.tables.tb_ability.iter() {
         let ability_tags = AbilityTags::default()
             .with_ability_asset_tags(resolve_tags(&row.asset_tags, tags)?)
             .with_activation_required_tags(resolve_tags(&row.required_tags, tags)?)
@@ -34,7 +34,7 @@ pub(super) fn compile_abilities(
             .collect::<Result<Vec<_>, _>>()?;
         let mut definition = GameplayAbility::default()
             .with_tags(ability_tags)
-            .with_startup_tasks(compile_tasks(tables, row.id, effects)?)
+            .with_startup_tasks(compile_tasks(prepared, row.id, effects)?)
             .with_activation_effects(activation_effects)
             .with_end_on_activation(row.end_on_activation)
             .with_allow_multiple_instances(row.allow_multiple_instances);
@@ -86,57 +86,27 @@ pub(super) fn compile_abilities(
 }
 
 fn compile_tasks(
-    tables: &Tables,
+    prepared: &PreparedTables,
     ability_id: i32,
     effects: &BTreeMap<EffectId, Arc<GameplayEffect>>,
 ) -> Result<Vec<AbilityTaskDef>, ConfigError> {
-    let mut rows: Vec<_> = tables
-        .tb_ability_action
-        .iter()
-        .filter(|action| action.ability_id == ability_id)
-        .collect();
-    rows.sort_by_key(|action| (action.at_tick, action.order));
     let mut groups: BTreeMap<u32, Vec<AbilityTaskOnFinishedDef>> = BTreeMap::new();
-    for row in rows {
-        let context = ConfigLocation::table("AbilityAction").row(row.id);
+    for row in prepared.actions(ability_id) {
         let action = match row.kind {
-            data::ActionKind::EndAbility => AbilityTaskOnFinishedDef::EndAbility,
-            data::ActionKind::ApplyEffect => {
-                let effect = resolve_effect(
-                    row.effect_id.ok_or_else(|| {
-                        ConfigError::new(
-                            ConfigErrorKind::Reference,
-                            context.field("effect_id"),
-                            "missing effect reference",
-                        )
-                    })?,
-                    effects,
-                )?;
-                match row.target_scope {
-                    data::TargetScope::Primary => {
+            PreparedActionKind::EndAbility => AbilityTaskOnFinishedDef::EndAbility,
+            PreparedActionKind::ApplyEffect { effect_id, scope } => {
+                let effect = resolve_effect(effect_id, effects)?;
+                match scope {
+                    PreparedTargetScope::Primary => {
                         AbilityTaskOnFinishedDef::ApplyGameplayEffectToTarget { effect }
                     }
-                    data::TargetScope::AllCaptured => {
+                    PreparedTargetScope::AllCaptured => {
                         AbilityTaskOnFinishedDef::ApplyGameplayEffectToTargets { effect }
-                    }
-                    data::TargetScope::None => {
-                        return Err(ConfigError::new(
-                            ConfigErrorKind::InvalidValue,
-                            context.field("target_scope"),
-                            "ApplyEffect needs a target scope",
-                        ));
                     }
                 }
             }
         };
-        let tick = u32::try_from(row.at_tick).map_err(|error| {
-            ConfigError::new(
-                ConfigErrorKind::InvalidValue,
-                context.field("at_tick"),
-                error.to_string(),
-            )
-        })?;
-        groups.entry(tick).or_default().push(action);
+        groups.entry(row.tick).or_default().push(action);
     }
     Ok(groups
         .into_iter()

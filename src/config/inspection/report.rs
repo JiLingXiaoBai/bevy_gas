@@ -1,6 +1,6 @@
 use super::{
-    AbilityId, ActionKind, ConfigError, ConfigErrorKind, ConfigLocation, Tables, evaluate_linear,
-    validate_tables,
+    AbilityId, ConfigError, ConfigErrorKind, ConfigLocation, PreparedActionKind, PreparedTables,
+    Tables, validate_prepared,
 };
 use std::fmt::{self, Write};
 
@@ -21,7 +21,8 @@ pub fn describe_ability_at_level(
     id: AbilityId,
     level: u32,
 ) -> Result<String, ConfigError> {
-    validate_tables(tables)?;
+    let prepared = PreparedTables::new(tables)?;
+    validate_prepared(&prepared)?;
     let ability = tables.tb_ability.get(&id.0).ok_or_else(|| {
         ConfigError::new(
             ConfigErrorKind::UnknownAbility,
@@ -96,43 +97,28 @@ pub fn describe_ability_at_level(
     ] {
         if let Some(effect_id) = effect_id {
             writeln!(report, "{role}:").map_err(report_error)?;
-            append_effect(&mut report, tables, effect_id, level)?;
+            append_effect(&mut report, &prepared, effect_id, level)?;
         }
     }
     for &effect_id in &ability.activation_effect_ids {
         writeln!(report, "Activation effect to all captured targets:").map_err(report_error)?;
-        append_effect(&mut report, tables, effect_id, level)?;
+        append_effect(&mut report, &prepared, effect_id, level)?;
     }
-    let mut actions: Vec<_> = tables
-        .tb_ability_action
-        .iter()
-        .filter(|action| action.ability_id == id.0)
-        .collect();
-    actions.sort_by_key(|action| (action.at_tick, action.order));
-    for action in actions {
+    for action in prepared.actions(id.0) {
         match action.kind {
-            ActionKind::ApplyEffect => {
+            PreparedActionKind::ApplyEffect { effect_id, scope } => {
                 writeln!(
                     report,
                     "tick {} / order {}: ApplyEffect to {:?}",
-                    action.at_tick, action.order, action.target_scope
+                    action.tick, action.row.order, scope
                 )
                 .map_err(report_error)?;
-                let effect_id = action.effect_id.ok_or_else(|| {
-                    ConfigError::new(
-                        ConfigErrorKind::Reference,
-                        ConfigLocation::table("AbilityAction")
-                            .row(action.id)
-                            .field("effect_id"),
-                        "missing effect reference",
-                    )
-                })?;
-                append_effect(&mut report, tables, effect_id, level)?;
+                append_effect(&mut report, &prepared, effect_id, level)?;
             }
-            ActionKind::EndAbility => writeln!(
+            PreparedActionKind::EndAbility => writeln!(
                 report,
                 "tick {} / order {}: EndAbility",
-                action.at_tick, action.order
+                action.tick, action.row.order
             )
             .map_err(report_error)?,
         }
@@ -142,11 +128,11 @@ pub fn describe_ability_at_level(
 
 fn append_effect(
     report: &mut String,
-    tables: &Tables,
+    prepared: &PreparedTables,
     id: i32,
     level: u32,
 ) -> Result<(), ConfigError> {
-    let effect = tables.tb_effect.get(&id).ok_or_else(|| {
+    let effect = prepared.tables.tb_effect.get(&id).ok_or_else(|| {
         ConfigError::new(
             ConfigErrorKind::Reference,
             ConfigLocation::table("Effect").row(id),
@@ -160,14 +146,9 @@ fn append_effect(
         effect.asset_tags, effect.granted_tags
     )
     .map_err(report_error)?;
-    let mut modifiers: Vec<_> = tables
-        .tb_modifier
-        .iter()
-        .filter(|modifier| modifier.effect_id == id)
-        .collect();
-    modifiers.sort_by_key(|modifier| modifier.order);
-    for modifier in modifiers {
-        let value = evaluate_linear(modifier.base, modifier.per_level, level) as f32;
+    for prepared_modifier in prepared.modifiers(id) {
+        let modifier = prepared_modifier.row;
+        let value = prepared_modifier.magnitude.evaluate(level) as f32;
         writeln!(
             report,
             "  {} {:?} {value} | {:?}: base={}, per_level={}",

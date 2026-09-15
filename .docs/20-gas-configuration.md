@@ -28,9 +28,11 @@
 `bevy_gas::config::generated`；生成目录不维护独立 Cargo 包。
 
 加载与预览分属 `loading` 和 `inspection`：前者负责读包解码，后者仅在 `config-validation`
-启用时执行完整校验和文本报告。`ConfigError` 由配置领域共用的 `error` 模块拥有，
-编译器按注册、效果、目标、技能时间线拆分，并复用必要数值判断与幅度求值。
-这些私有职责边界不改变公共 API、feature 行为或配置协议；文件归属见
+启用时执行完整校验和文本报告。`ConfigError`、`ConfigErrorKind`、`ConfigLocation`
+由配置领域共用的 `error` 模块拥有。编译器按准备、注册、效果、目标、技能时间线拆分：
+`PreparedTables` 借用生成行，统一解析实际使用的动作和幅度参数，建立已排序的技能动作、
+效果修改器索引；编译、完整校验和预览共用这一视图，不重复扫描和解释同一关系。
+生成 DTO 与 GAS 运行时类型仍然分离，feature 行为与配置协议保持不变。文件归属见
 [17 — 源码布局与维护边界](./17-source-layout-and-maintenance.md#配置模块内部职责)。
 
 ## Feature 边界
@@ -43,7 +45,7 @@
 | manifest、schema、文件与整包摘要校验                                                                                            | 不编译，不读取清单   | 必须通过校验                                     |
 | 文件与解码大小限制，非法枚举、重复主键及二进制合法性                                                                            | 始终检查             | 始终检查                                         |
 | 构建所需引用、运行时注册表容量与状态、基本数值合法性                                                                            | 始终检查             | 始终检查                                         |
-| 命名规范、未使用字段、跨表业务约束、时间线、成本与冷却策略                                                                      | 跳过完整业务校验     | `compile_catalog` 在注册前调用 `validate_tables` |
+| 命名规范、未使用字段、跨表业务约束、时间线、成本与冷却策略                                                                      | 跳过完整业务校验     | `compile_catalog` 在注册前对准备结果执行完整校验 |
 | `package_schema_hash`、`MAX_MANIFEST_BYTES`、`validate_tables`、`describe_ability*`、`write_package_manifest`、`gas-config` CLI | 不编译               | 可用                                             |
 | `config_fireball` 示例                                                                                                          | 可用，直接读取表数据 | 可用，并执行包校验和完整业务校验                 |
 
@@ -182,9 +184,10 @@ ApplyEffect 的 Primary/AllCaptured 分别使用激活时捕获的主目标/全�
 交给解码器，不在校验后重新读取文件。
 
 启用 `config-validation` 后，`validate_tables(&tables)` 检查名称、引用、未使用参数、
-成本/冷却、动作顺序与公式；`compile_catalog(&tables, &mut world)` 在注册前调用它。
-默认构建跳过这次完整业务校验；两种构建均在名称注册与 Arc 定义构建过程中
-保留所需引用、数值及运行时注册状态检查。
+成本/冷却、动作顺序与公式；`compile_catalog(&tables, &mut world)` 在注册前使用相同校验，
+直接复用已经完成的 `PreparedTables`，不重复准备。默认构建跳过完整制作规则，
+两种构建均保留动作载荷、实际使用的幅度参数、所需引用和运行时注册状态检查。
+未被任何现存技能或效果使用的孤立动作/修改器仍由完整制作校验拒绝；默认构建不使用它们。
 World 应先安装 GameplayAbilitySystemPlugin。
 
 ```rust
@@ -195,11 +198,17 @@ let catalog = compile_catalog(&tables, app.world_mut())?;
 app.world_mut().insert_resource(catalog);
 ```
 
-启用 feature 时，完整业务校验在注册前完成；名称注册采用追加语义。
+`compile_catalog` 返回 `Err` 时，World 中的名称池、标签表、属性表及已有 catalog 均保持原状。
+实现先克隆三个注册表，在私有快照上完成名称登记与全部 Arc 定义构建，成功后才统一提交
+三个 Resource；准备期间不会从 World 移除资源。快照同时承担注册预检和最终提交内容，
+因此不需要维护两套容量/冲突判断，也没有失败回滚分支。
+
 同名现存标签必须具有与配置一致的完整继承位图，同名属性必须属于一致的 Hot/Cold 区域。
-如果现存注册表容量不足，或默认构建在部分名称登记后发现后续构建错误，已成功登记的名字
-可能保留，但不会自动发布不完整 catalog。
-调用方只在 compile_catalog 成功后插入 Resource。首版在启动加载，不替换战斗中的 catalog。
+容量不足、继承冲突、区域冲突或后期构建错误均丢弃快照，调用方可修正配置或加载备用配置，
+失败尝试不会消耗后续名称与内部 ID。成功注册仍保留已有条目并追加新名称。
+
+快照会复制启动时的注册表数据；这是为失败原子性付出的冷路径成本，不进入战斗热路径。
+调用方只在 compile_catalog 成功后插入 catalog Resource。首版仍只支持启动加载，不替换战斗中的 catalog。
 
 - 按名字排序登记 Tag/Attribute，祖先先于子标签，避免依赖 HashMap 或 Excel 行顺序。
 - 固定注册顺序只保证相同配置的重复结果，不保证不同配置版本的内部编号相同。
@@ -277,3 +286,7 @@ cargo build
 根目录 `target/` 是可删除的构建缓存，后续 Cargo 命令会重新创建。
 
 有关工具安装和 MCP 的细节见 [19 — Luban 工具链](./19-luban-toolchain.md)。
+
+配置编译回归测试位于 `tests/config_test/compilation_test.rs`：覆盖已初始化注册表冲突后的
+资源保持与重试、后期构建失败不影响已有 catalog、缺失 Resource 分类，以及输入行序变化时
+编译任务与预览时间线顺序一致。默认构建和启用 feature 的构建均需执行这些外部行为测试。

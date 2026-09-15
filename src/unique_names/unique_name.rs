@@ -37,7 +37,7 @@ impl fmt::Display for UniqueNameError {
 
 impl Error for UniqueNameError {}
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 enum HashBucket {
     Single(u32),
     Collisions(Vec<u32>),
@@ -70,7 +70,7 @@ fn entry_matches(entry_pool: &[String], index: u32, name: &str) -> bool {
         .is_some_and(|entry| entry == name)
 }
 
-#[derive(Resource)]
+#[derive(Resource, Clone)]
 pub struct UniqueNamePool {
     entry_pool: Vec<String>,
     lookup_hash: HashMap<u64, HashBucket>,

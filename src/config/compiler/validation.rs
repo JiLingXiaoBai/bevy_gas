@@ -5,7 +5,9 @@ use super::data::{
 use super::numeric::{
     formula_parameters_are_finite, is_within_f32_range, probability_is_valid, square_is_finite,
 };
-use super::{ConfigError, ConfigErrorKind, ConfigLocation, Tables, evaluate_linear};
+use super::{
+    ConfigError, ConfigErrorKind, ConfigLocation, PreparedActionKind, PreparedTables, Tables,
+};
 use crate::{COLD_ATTRIBUTE_SET_SIZE, HOT_ATTRIBUTE_SET_SIZE, MAX_TAG_COUNTS};
 use std::collections::BTreeSet;
 
@@ -18,12 +20,17 @@ const MAX_CONFIG_LEVEL: i32 = 100;
 /// against empty registries, or the first contextual semantic error. Existing
 /// runtime registry capacity and registration conflicts are checked at compilation.
 pub fn validate_tables(tables: &Tables) -> Result<(), ConfigError> {
+    validate_prepared(&PreparedTables::new(tables)?)
+}
+
+pub(crate) fn validate_prepared(prepared: &PreparedTables) -> Result<(), ConfigError> {
+    let tables = prepared.tables;
     validate_names(tables)?;
     validate_effects(tables)?;
     validate_modifiers(tables)?;
     validate_targeting(tables)?;
     validate_actions(tables)?;
-    validate_abilities(tables)
+    validate_abilities(prepared)
 }
 
 fn require(
@@ -382,7 +389,8 @@ fn validate_actions(tables: &Tables) -> Result<(), ConfigError> {
     Ok(())
 }
 
-fn validate_abilities(tables: &Tables) -> Result<(), ConfigError> {
+fn validate_abilities(prepared: &PreparedTables) -> Result<(), ConfigError> {
+    let tables = prepared.tables;
     let mut ids = BTreeSet::new();
     for row in tables.tb_ability.iter() {
         let context = ConfigLocation::table("Ability").row(row.id);
@@ -421,19 +429,14 @@ fn validate_abilities(tables: &Tables) -> Result<(), ConfigError> {
         let mut effects: BTreeSet<i32> = row.activation_effect_ids.iter().copied().collect();
         effects.extend(row.cost_effect_id);
         effects.extend(row.cooldown_effect_id);
-        let mut actions: Vec<_> = tables
-            .tb_ability_action
-            .iter()
-            .filter(|action| action.ability_id == row.id)
-            .collect();
-        actions.sort_by_key(|action| (action.at_tick, action.order));
+        let actions = prepared.actions(row.id);
         let ends = actions
             .iter()
-            .filter(|action| action.kind == ActionKind::EndAbility)
+            .filter(|action| matches!(action.kind, PreparedActionKind::EndAbility))
             .count();
         if row.end_on_activation {
             require(
-                actions.iter().all(|action| action.at_tick == 0),
+                actions.iter().all(|action| action.tick == 0),
                 context.field("end_on_activation"),
                 "waiting actions cannot run after end_on_activation",
             )?;
@@ -445,15 +448,17 @@ fn validate_abilities(tables: &Tables) -> Result<(), ConfigError> {
         } else {
             require(
                 ends == 1
-                    && actions
-                        .last()
-                        .is_some_and(|action| action.kind == ActionKind::EndAbility),
+                    && actions.last().is_some_and(|action| {
+                        matches!(action.kind, PreparedActionKind::EndAbility)
+                    }),
                 &context,
                 "exactly one EndAbility must be the final ordered action",
             )?;
         }
         for action in actions {
-            effects.extend(action.effect_id);
+            if let PreparedActionKind::ApplyEffect { effect_id, .. } = action.kind {
+                effects.insert(effect_id);
+            }
         }
         for effect_id in effects {
             require(
@@ -461,13 +466,9 @@ fn validate_abilities(tables: &Tables) -> Result<(), ConfigError> {
                 &context,
                 format!("unknown effect {effect_id}"),
             )?;
-            for modifier in tables
-                .tb_modifier
-                .iter()
-                .filter(|modifier| modifier.effect_id == effect_id)
-            {
-                let maximum =
-                    evaluate_linear(modifier.base, modifier.per_level, row.max_level as u32);
+            for prepared_modifier in prepared.modifiers(effect_id) {
+                let modifier = prepared_modifier.row;
+                let maximum = prepared_modifier.magnitude.evaluate(row.max_level as u32);
                 require(
                     is_within_f32_range(maximum),
                     ConfigLocation::table("Modifier")
@@ -478,21 +479,22 @@ fn validate_abilities(tables: &Tables) -> Result<(), ConfigError> {
             }
         }
         if let Some(cost_id) = row.cost_effect_id {
-            validate_cost(tables, cost_id, row.max_level, &context)?;
+            validate_cost(prepared, cost_id, row.max_level, &context)?;
         }
         if let Some(cooldown_id) = row.cooldown_effect_id {
-            validate_cooldown(tables, cooldown_id, &context)?;
+            validate_cooldown(prepared, cooldown_id, &context)?;
         }
     }
     Ok(())
 }
 
 fn validate_cost(
-    tables: &Tables,
+    prepared: &PreparedTables,
     id: i32,
     max_level: i32,
     ability_context: &ConfigLocation,
 ) -> Result<(), ConfigError> {
+    let tables = prepared.tables;
     let context = ability_context.field("cost_effect_id");
     let effect = tables
         .tb_effect
@@ -507,11 +509,8 @@ fn validate_cost(
     )?;
     let mut attributes = BTreeSet::new();
     let mut count = 0;
-    for modifier in tables
-        .tb_modifier
-        .iter()
-        .filter(|modifier| modifier.effect_id == id)
-    {
+    for prepared_modifier in prepared.modifiers(id) {
+        let modifier = prepared_modifier.row;
         count += 1;
         require(
             modifier.operation == ModifierOperation::Add,
@@ -524,8 +523,7 @@ fn validate_cost(
             "cost cannot contain duplicate attributes",
         )?;
         require(
-            modifier.base < 0.0
-                && evaluate_linear(modifier.base, modifier.per_level, max_level as u32) < 0.0,
+            modifier.base < 0.0 && prepared_modifier.magnitude.evaluate(max_level as u32) < 0.0,
             &context,
             "cost magnitude must remain negative at all supported levels",
         )?;
@@ -538,10 +536,11 @@ fn validate_cost(
 }
 
 fn validate_cooldown(
-    tables: &Tables,
+    prepared: &PreparedTables,
     id: i32,
     ability_context: &ConfigLocation,
 ) -> Result<(), ConfigError> {
+    let tables = prepared.tables;
     let context = ability_context.field("cooldown_effect_id");
     let effect = tables
         .tb_effect
@@ -556,10 +555,7 @@ fn validate_cooldown(
         "cooldown requires positive duration, granted tags, probability=1, and no period",
     )?;
     require(
-        !tables
-            .tb_modifier
-            .iter()
-            .any(|modifier| modifier.effect_id == id),
+        prepared.modifiers(id).is_empty(),
         &context,
         "cooldown effects must not modify attributes",
     )
