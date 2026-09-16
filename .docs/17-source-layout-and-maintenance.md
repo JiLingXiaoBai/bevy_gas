@@ -329,7 +329,7 @@ commit 和生命周期编排的流程：
 
 | 文件                                        | 主要所有权                                                                     |
 | ------------------------------------------- | ------------------------------------------------------------------------------ |
-| `gameplay_ability.rs`                       | AbilityTags、startup task、cost/cooldown/activation Effect 定义                |
+| `gameplay_ability.rs`                       | AbilityTags、startup task、cost/cooldown Effect 定义                           |
 | `gameplay_ability_spec.rs`                  | 授予 Handle、level 和 active count                                             |
 | `activation_data.rs`                        | 唯一组合 source、targets 与传播 context 的不可变激活值                         |
 | `ability_chain.rs`、`activation_context.rs` | 请求与运行实例共用的链保护、传播上下文，以及 Ability → Effect payload 转换     |

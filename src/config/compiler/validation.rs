@@ -426,7 +426,7 @@ fn validate_abilities(prepared: &PreparedTables) -> Result<(), ConfigError> {
             &context.field("block_ability_tags"),
         )?;
         validate_tag_requirements(tables, &row.required_tags, &row.blocked_tags, &context)?;
-        let mut effects: BTreeSet<i32> = row.activation_effect_ids.iter().copied().collect();
+        let mut effects = BTreeSet::new();
         effects.extend(row.cost_effect_id);
         effects.extend(row.cooldown_effect_id);
         let actions = prepared.actions(row.id);
@@ -434,27 +434,14 @@ fn validate_abilities(prepared: &PreparedTables) -> Result<(), ConfigError> {
             .iter()
             .filter(|action| matches!(action.kind, PreparedActionKind::EndAbility))
             .count();
-        if row.end_on_activation {
-            require(
-                actions.iter().all(|action| action.tick == 0),
-                context.field("end_on_activation"),
-                "waiting actions cannot run after end_on_activation",
-            )?;
-            require(
-                ends == 0,
-                &context,
-                "end_on_activation makes explicit EndAbility actions redundant",
-            )?;
-        } else {
-            require(
-                ends == 1
-                    && actions.last().is_some_and(|action| {
-                        matches!(action.kind, PreparedActionKind::EndAbility)
-                    }),
-                &context,
-                "exactly one EndAbility must be the final ordered action",
-            )?;
-        }
+        require(
+            ends == 1
+                && actions
+                    .last()
+                    .is_some_and(|action| matches!(action.kind, PreparedActionKind::EndAbility)),
+            &context,
+            "exactly one EndAbility must be the final ordered action",
+        )?;
         for action in actions {
             if let PreparedActionKind::ApplyEffect { effect_id, .. } = action.kind {
                 effects.insert(effect_id);

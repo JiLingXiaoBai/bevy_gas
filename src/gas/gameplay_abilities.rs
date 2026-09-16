@@ -16,7 +16,6 @@ pub use ability_task::{
     AbilityTask, AbilityTaskDef, AbilityTaskEvent, AbilityTaskExecutionContext, AbilityTaskKind,
     AbilityTaskOnFinished, AbilityTaskOnFinishedDef, tick_ability_tasks_system,
 };
-pub(crate) use ability_task::{AbilityTaskCompletion, dispatch_ability_task_completion};
 pub(crate) use activation_context::effect_payload_from_ability_context;
 pub use activation_context::{AbilityActivationContext, AbilityActivationReason};
 pub use activation_data::AbilityActivationData;

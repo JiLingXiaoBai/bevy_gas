@@ -152,8 +152,6 @@ fn fixed_update_activation_tasks_and_cleanup_run_in_plugin_order() {
         )],
         None,
         None,
-        Vec::new(),
-        false,
         false,
     ));
     let handle = give_ability(&mut app, source, ability);
@@ -209,8 +207,6 @@ fn startup_instant_task_executes_during_activation_tick() {
         )],
         None,
         None,
-        Vec::new(),
-        false,
         false,
     ));
     let handle = give_ability(&mut app, source, ability);

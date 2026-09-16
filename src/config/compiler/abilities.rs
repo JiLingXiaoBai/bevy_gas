@@ -27,16 +27,9 @@ pub(super) fn compile_abilities(
             .with_activation_blocked_tags(resolve_tags(&row.blocked_tags, tags)?)
             .with_cancel_abilities_with_tags(resolve_tags(&row.cancel_ability_tags, tags)?)
             .with_block_abilities_with_tags(resolve_tags(&row.block_ability_tags, tags)?);
-        let activation_effects = row
-            .activation_effect_ids
-            .iter()
-            .map(|id| resolve_effect(*id, effects))
-            .collect::<Result<Vec<_>, _>>()?;
         let mut definition = GameplayAbility::default()
             .with_tags(ability_tags)
             .with_startup_tasks(compile_tasks(prepared, row.id, effects)?)
-            .with_activation_effects(activation_effects)
-            .with_end_on_activation(row.end_on_activation)
             .with_allow_multiple_instances(row.allow_multiple_instances);
         if let Some(id) = row.cost_effect_id {
             definition = definition.with_cost(resolve_effect(id, effects)?);

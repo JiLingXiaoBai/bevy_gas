@@ -74,8 +74,8 @@ flowchart TB
     TargetRequest -- "共享" --> TargetDef
 ```
 
-第一张图只表示值的持有与引用关系。`GameplayAbility` 对 `GameplayEffect` 的引用包括 cost、
-cooldown 和 activation effects。`GameplayEffect` 在 prepare 时把 `Modifier` 求值为
+第一张图只表示值的持有与引用关系。`GameplayAbility` 通过 cost、cooldown 和 startup task
+引用 `GameplayEffect`。`GameplayEffect` 在 prepare 时把 `Modifier` 求值为
 `ModifierSpec`；定义对象不会主动触发运行时执行。
 
 ### 运行时主路径
@@ -112,7 +112,7 @@ flowchart TB
     EffectRuntime["Effect 应用：prepare、execute"]
     AbilityState["ASC 和 ActiveGameplayAbility"]
     WaitTask["WaitTicks 创建 AbilityTask 实体"]
-    AbilityEffects["cost、cooldown、activation effects"]
+    AbilityEffects["cost、cooldown、startup Instant 效果"]
     EffectLifetime["持续效果和授予标签"]
     AttributeState["属性 base、Aggregator 和 dirty bits"]
 
@@ -130,9 +130,10 @@ flowchart TB
 
 - Targeting 成功时，内建 `ActivateAbility` continuation 直接把目标数据加入统一 FIFO；无论成功
   或失败，随后触发的 `TargetingResultEvent` 都是独立 Observer 通知，不是 continuation 的中间节点；
-- startup `Instant` 在技能激活内直接分派，不创建任务实体；只有 `WaitTicks` 创建
-  `AbilityTask`。完成动作中只有 `ActivateAbility` 与 `ApplyGameplayEffect*` 会追加 Gameplay 请求，
-  `EmitEvent` 和 `EndAbility` 不会；
+- startup `Instant` 在技能激活内逐动作同步结算效果与链式子技能 startup，不创建任务实体；
+  `WaitTicks` 创建 `AbilityTask`，游戏层也可手动创建运行时 Instant。运行时任务的
+  `ActivateAbility` 与 `ApplyGameplayEffect*` 仍追加 Gameplay 请求；`EmitEvent` 保持 deferred，
+  `EndAbility` 更新技能状态；
 - Instant/periodic Effect 通过 `ModifierSpec` 修改 Attribute base；非周期 Duration/Infinite Effect
   把 modifier 写入 Aggregator 并标记 dirty。只有 Duration/Infinite Effect 存入
   `ActiveGameplayEffects`，其 granted tags 随 Active Effect 生命周期维护；dirty Attribute 在读取时

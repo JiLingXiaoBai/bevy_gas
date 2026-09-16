@@ -143,15 +143,16 @@ app.add_systems(
 2. 若任务跨 tick，在 `src/gas/gameplay_abilities/ability_task/state.rs` 的 `AbilityTaskKind`
    添加运行时状态，并更新接收 `AbilityTaskExecutionContext` 的
    `AbilityTaskDef::instantiate()`；
-3. 在 `src/gas/ability_system/activation/startup.rs` 的 `start_startup_ability_tasks()` 明确它是
-   startup 内立即完成，还是生成任务实体后由后续 tick 推进；
+3. 在 `src/gas/ability_system/activation/startup.rs` 的 startup 执行状态中明确它是
+   startup 内同步完成，还是生成任务实体后由后续 tick 推进；
 4. 如需完成动作，在 `AbilityTaskOnFinishedDef` 与 `AbilityTaskOnFinished` 添加对应变体，
    并更新实例化；运行时变体只保存动作专属数据，不要重复 source、targets、
    spec handle 或 level；
-5. 在 `src/gas/gameplay_abilities/ability_task/completion.rs` 的
-   `dispatch_ability_task_completion()` 实现完成分派；从单独传入的 execution context 读取
-   source/spec/level，从父 Active Ability 的 `AbilityActivationData` 借用唯一
-   `AbilityActivationTargets`；
+5. 分别实现 startup 与运行时路径：在 `ability_system/activation` 的迭代执行栈中处理同步
+   动作，在 `src/gas/gameplay_abilities/ability_task/completion.rs` 的
+   `dispatch_ability_task_completion()` 中处理运行时完成分派。两者都从任务上下文读取
+   source/spec/level，并分别从 Request 或 Active Ability 借用唯一的 `AbilityActivationTargets`；
+   链式 startup 使用执行栈，不递归调用激活函数，也不把尚未完成的同步动作交给公共 FIFO；
 6. 保持 `src/gas/gameplay_abilities/ability_task/ticking.rs` 的
    `tick_ability_tasks_system()` 只负责稳定顺序推进与调用 completion；
 7. 分别添加 startup 与 runtime tick 路径测试，验证执行 tick、FIFO 顺序和结束/取消语义；

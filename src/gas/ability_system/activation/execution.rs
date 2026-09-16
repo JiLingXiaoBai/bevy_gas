@@ -1,35 +1,32 @@
 use super::super::commit::{execute_ability_commit_plans, prepare_ability_commit_plans};
-use super::super::lifecycle::{cancel_active_abilities_with_tags, finish_ability_with_status};
+use super::super::lifecycle::cancel_active_abilities_with_tags;
 use super::super::params::AbilitySystemParams;
 use super::error::{AbilityActivationError, ability_activation_failed};
-use super::startup::{StartupAbilityTaskContext, start_startup_ability_tasks};
+use super::startup::{StartupAbility, run_startup_ability_tasks};
 use super::validation::passes_ability_activation_requirements;
-use crate::gameplay_abilities::{
-    AbilityActivationContext, AbilityActivationStatus, AbilitySpecHandle,
-    effect_payload_from_ability_context,
-};
+use crate::gameplay_abilities::{AbilityActivationContext, AbilitySpecHandle};
 use crate::gameplay_effects::{
-    apply_gameplay_effect_in_batch, resolve_active_effect_tag_requirements,
-    resolve_active_effect_tag_requirements_if_dirty,
+    resolve_active_effect_tag_requirements, resolve_active_effect_tag_requirements_if_dirty,
 };
-use crate::gameplay_execution::{
-    AbilityActivationRequest, GameplayExecutionQueue, drain_gameplay_execution_queue,
-};
+use crate::gameplay_execution::AbilityActivationRequest;
 use crate::gameplay_tags::tag_bits_from_tags_with_manager;
 use crate::gameplay_targeting::AbilityActivationTargets;
 use bevy::prelude::*;
 
-/// Activates an ability through an independent synchronous call path and drains all startup Instant
-/// follow-up requests before returning.
+/// Activates an ability and resolves startup Instant effects and chained activations in definition
+/// order before returning. Child startup completes before the next parent action runs.
 ///
-/// This function does not consume or order itself against the global [`GameplayExecutionQueue`].
+/// This function does not consume or order itself against the global
+/// [`GameplayExecutionQueue`](crate::gameplay_execution::GameplayExecutionQueue).
 /// Runtime producer systems should enqueue activations instead of mixing this immediate API with
 /// already queued mutations in the same logical phase. "Synchronous" describes logical resolution,
 /// not transactional rollback or an immediate flush of entity changes queued through [`Commands`].
+/// Startup effects and child activations are best-effort: failures are logged and do not roll back
+/// earlier actions or fail the parent activation. Event observers remain deferred.
 ///
 /// # Errors
 ///
-/// Returns [`AbilityActivationError`] when validation, commit, cancellation, or startup fails.
+/// Returns [`AbilityActivationError`] when validation, commit, cancellation, or instance creation fails.
 pub fn try_activate_ability_by_handle(
     source: Entity,
     targets: impl Into<AbilityActivationTargets>,
@@ -41,21 +38,27 @@ pub fn try_activate_ability_by_handle(
     params
         .pending_active_abilities
         .retain_unapplied(&params.active_ability_query);
-    let mut execution_queue = GameplayExecutionQueue::default();
     let result = execute_ability_activation_in_batch(
         AbilityActivationRequest::new(source, targets, handle, activation_context),
-        &mut execution_queue,
         params,
     );
-    drain_gameplay_execution_queue(&mut execution_queue, params, |_| {});
+    resolve_active_effect_tag_requirements_if_dirty(&mut params.effects);
     result
 }
 
 pub(crate) fn execute_ability_activation_in_batch(
     request: AbilityActivationRequest,
-    execution_queue: &mut GameplayExecutionQueue,
     params: &mut AbilitySystemParams,
 ) -> Result<(), AbilityActivationError> {
+    let startup = begin_ability_activation(request, params)?;
+    run_startup_ability_tasks(startup, params);
+    Ok(())
+}
+
+pub(super) fn begin_ability_activation(
+    request: AbilityActivationRequest,
+    params: &mut AbilitySystemParams,
+) -> Result<StartupAbility, AbilityActivationError> {
     let source = request.get_source();
     let handle = request.get_handle();
     let activation_context = request.get_context();
@@ -187,45 +190,5 @@ pub(crate) fn execute_ability_activation_in_batch(
     }
     resolve_active_effect_tag_requirements_if_dirty(&mut params.effects);
 
-    for effect in ability.get_activation_effects() {
-        for activation_target in request.get_targets().entities() {
-            let payload =
-                effect_payload_from_ability_context(source, level, Some(activation_context));
-            if let Err(error) = apply_gameplay_effect_in_batch(
-                activation_target,
-                effect,
-                &mut params.effects,
-                &payload,
-            ) {
-                if error.is_rejection() {
-                    debug!("ability activation effect was rejected: {error}");
-                } else {
-                    error!("ability activation effect failed: {error}");
-                }
-            }
-            resolve_active_effect_tag_requirements_if_dirty(&mut params.effects);
-        }
-    }
-
-    let startup_ends_ability = start_startup_ability_tasks(
-        ability.get_startup_tasks(),
-        StartupAbilityTaskContext {
-            active_handle,
-            request: &request,
-            level,
-        },
-        execution_queue,
-        params,
-    );
-
-    if startup_ends_ability || ability.should_end_on_activation() {
-        finish_ability_with_status(
-            source,
-            active_handle,
-            AbilityActivationStatus::Ending,
-            params,
-        );
-    }
-
-    Ok(())
+    Ok(StartupAbility::new(ability, request, active_handle, level))
 }

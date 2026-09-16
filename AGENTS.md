@@ -237,5 +237,6 @@ cargo build
   （`GameplayTagError`、`AttributeIdError`）
 - **统一执行队列** — 技能激活和效果应用进入同一跨类型 FIFO；在
   `GameplayResolve` 前由 `AbilityTasks`、`RequestProducers` 或 `Targeting` 产生的请求在当前
-  fixed tick 完整消费，resolver 之后产生的请求进入下一 tick。队列避免递归执行导致的借用问题，
-  同时保持确定的跨类型顺序
+  fixed tick 完整消费，resolver 之后产生的请求进入下一 tick。启动阶段的 `Instant` 效果和链式
+  激活在当前激活内部按定义顺序同步结算，子技能启动完成后才继续父动作，不追加到公共 FIFO；
+  使用显式执行栈避免递归激活。运行时等待任务仍产生 FIFO 请求，事件 Observer 仍延迟执行

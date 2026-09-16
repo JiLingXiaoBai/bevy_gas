@@ -2,6 +2,7 @@
 //!
 //! Ability activation and effect application requests share one FIFO so their
 //! relative ordering remains observable within a fixed tick.
+//! Startup Instant actions resolve inside their activation before the next queued request.
 
 mod queue;
 mod request;
@@ -12,7 +13,6 @@ pub use queue::{GameplayExecutionQueue, GameplayExecutionQueueError, GameplayExe
 pub use request::{
     AbilityActivationRequest, GameplayEffectApplicationRequest, GameplayExecutionRequest,
 };
-pub(crate) use resolver::drain_gameplay_execution_queue;
 pub use resolver::{gameplay_execution_queue_has_work, process_gameplay_execution_queue_system};
 
 pub use result::{GameplayExecutionError, GameplayExecutionOutcome, GameplayExecutionResult};

@@ -172,14 +172,12 @@ fn ability() -> Ability {
         max_level: 2,
         cost_effect_id: None,
         cooldown_effect_id: None,
-        activation_effect_ids: vec![],
         asset_tags: vec![],
         required_tags: vec![],
         blocked_tags: vec![],
         cancel_ability_tags: vec![],
         block_ability_tags: vec![],
         targeting_id: 1,
-        end_on_activation: false,
         allow_multiple_instances: false,
     }
 }
@@ -329,4 +327,49 @@ fn validation_and_inspection_share_the_compiler_timeline_order() {
             "tick 2 / order 3: EndAbility",
         ]
     );
+}
+
+#[cfg(feature = "config-validation")]
+#[test]
+fn configured_abilities_require_one_explicit_final_end_action() {
+    for invalid_timeline in ["missing", "duplicate", "early"] {
+        let mut tables = timeline_tables(false);
+        let mut actions: Vec<_> = tables
+            .tb_ability_task
+            .iter()
+            .map(|row| row.as_ref().clone())
+            .collect();
+        match invalid_timeline {
+            "missing" => actions.retain(|action| action.kind != ActionKind::EndAbility),
+            "duplicate" => actions.push(AbilityTask {
+                id: 5,
+                ability_id: 1,
+                at_tick: 3,
+                order: 0,
+                kind: ActionKind::EndAbility,
+                target_scope: TargetScope::None,
+                effect_id: None,
+            }),
+            "early" => {
+                let end = actions
+                    .iter_mut()
+                    .find(|action| action.kind == ActionKind::EndAbility)
+                    .unwrap();
+                end.at_tick = 0;
+                end.order = 1;
+            }
+            _ => unreachable!(),
+        }
+        tables.tb_ability_task = Arc::new(TbAbilityTask::from_rows(actions).unwrap());
+        let error = validate_tables(&tables).unwrap_err();
+        assert_eq!(error.kind(), ConfigErrorKind::Validation);
+        assert!(
+            matches!(error.location(), ConfigLocation::Table { table: "Ability", row: Some(row), field: None } if row == "1")
+        );
+        assert_eq!(
+            error.message(),
+            "exactly one EndAbility must be the final ordered action",
+            "{invalid_timeline}"
+        );
+    }
 }

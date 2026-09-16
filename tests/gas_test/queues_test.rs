@@ -99,11 +99,11 @@ fn gameplay_queue_processes_entire_activation_batch() {
     let mut app = test_app();
     let ability = Arc::new(GameplayAbility::new(
         bevy_gas::AbilityTags::default(),
-        Vec::new(),
+        vec![AbilityTaskDef::instant(
+            AbilityTaskOnFinishedDef::EndAbility,
+        )],
         None,
         None,
-        Vec::new(),
-        true,
         true,
     ));
     let source = app
@@ -176,8 +176,6 @@ fn ability_activation_request_is_preserved_through_startup() {
         Vec::new(),
         None,
         None,
-        Vec::new(),
-        false,
         false,
     ));
     let handle = give_ability(&mut app, source, ability);
@@ -298,8 +296,6 @@ fn startup_task_context_preserves_ability_handle_and_level() {
         )],
         None,
         None,
-        Vec::new(),
-        false,
         false,
     ));
     let handle = app
@@ -411,20 +407,26 @@ fn gameplay_queue_processes_activation_requests_fifo() {
     ));
     let first = Arc::new(GameplayAbility::new(
         bevy_gas::AbilityTags::default(),
-        Vec::new(),
+        vec![
+            AbilityTaskDef::instant(AbilityTaskOnFinishedDef::ApplyGameplayEffectToTargets {
+                effect: first_effect,
+            }),
+            AbilityTaskDef::instant(AbilityTaskOnFinishedDef::EndAbility),
+        ],
         None,
         None,
-        vec![first_effect],
-        true,
         false,
     ));
     let second = Arc::new(GameplayAbility::new(
         bevy_gas::AbilityTags::default(),
-        Vec::new(),
+        vec![
+            AbilityTaskDef::instant(AbilityTaskOnFinishedDef::ApplyGameplayEffectToTargets {
+                effect: second_effect,
+            }),
+            AbilityTaskDef::instant(AbilityTaskOnFinishedDef::EndAbility),
+        ],
         None,
         None,
-        vec![second_effect],
-        true,
         false,
     ));
     let first_handle = give_ability(&mut app, source, first);
@@ -457,7 +459,7 @@ fn gameplay_execution_queue_preserves_cross_type_fifo() {
         .world_mut()
         .spawn((AbilitySystemComponent::default(), attributes))
         .id();
-    let activation_effect = Arc::new(GameplayEffect::new(
+    let startup_effect = Arc::new(GameplayEffect::new(
         vec![modifier(marker, ModifierOperation::Override, 2.0)],
         EffectDurationTicks::Instant,
         None,
@@ -475,11 +477,14 @@ fn gameplay_execution_queue_preserves_cross_type_fifo() {
     ));
     let ability = Arc::new(GameplayAbility::new(
         bevy_gas::AbilityTags::default(),
-        Vec::new(),
+        vec![
+            AbilityTaskDef::instant(AbilityTaskOnFinishedDef::ApplyGameplayEffectToTargets {
+                effect: startup_effect,
+            }),
+            AbilityTaskDef::instant(AbilityTaskOnFinishedDef::EndAbility),
+        ],
         None,
         None,
-        vec![activation_effect],
-        true,
         false,
     ));
     let handle = give_ability(&mut app, source, ability);
@@ -611,11 +616,11 @@ fn task_can_enqueue_ability_activation() {
     let target = source;
     let ability = Arc::new(GameplayAbility::new(
         bevy_gas::AbilityTags::default(),
-        Vec::new(),
+        vec![AbilityTaskDef::instant(
+            AbilityTaskOnFinishedDef::EndAbility,
+        )],
         None,
         None,
-        Vec::new(),
-        true,
         false,
     ));
     let handle = give_ability(&mut app, source, ability);
@@ -682,8 +687,6 @@ fn execution_results_identify_fifo_success_rejection_and_failure() {
         Vec::new(),
         None,
         None,
-        Vec::new(),
-        false,
         false,
     ));
     let handle = give_ability(&mut app, source, ability);
@@ -819,13 +822,14 @@ fn synchronous_activation_does_not_publish_local_queue_results() {
     let effect = instant_add_effect(attribute, 1.0);
     let ability = Arc::new(GameplayAbility::new(
         Default::default(),
-        vec![AbilityTaskDef::Instant {
-            on_finished: AbilityTaskOnFinishedDef::ApplyGameplayEffectToTarget { effect },
-        }],
+        vec![
+            AbilityTaskDef::Instant {
+                on_finished: AbilityTaskOnFinishedDef::ApplyGameplayEffectToTarget { effect },
+            },
+            AbilityTaskDef::instant(AbilityTaskOnFinishedDef::EndAbility),
+        ],
         None,
         None,
-        Vec::new(),
-        true,
         false,
     ));
     let handle = give_ability(&mut app, source, ability);

@@ -82,8 +82,8 @@ pub fn describe_ability_at_level(
     .map_err(report_error)?;
     writeln!(
         report,
-        "End on activation: {} | multiple instances: {}",
-        ability.end_on_activation, ability.allow_multiple_instances
+        "Multiple instances: {}",
+        ability.allow_multiple_instances
     )
     .map_err(report_error)?;
     writeln!(
@@ -99,10 +99,6 @@ pub fn describe_ability_at_level(
             writeln!(report, "{role}:").map_err(report_error)?;
             append_effect(&mut report, &prepared, effect_id, level)?;
         }
-    }
-    for &effect_id in &ability.activation_effect_ids {
-        writeln!(report, "Activation effect to all captured targets:").map_err(report_error)?;
-        append_effect(&mut report, &prepared, effect_id, level)?;
     }
     for action in prepared.actions(id.0) {
         match action.kind {

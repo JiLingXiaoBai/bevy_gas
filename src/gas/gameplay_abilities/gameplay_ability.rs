@@ -107,39 +107,39 @@ impl AbilityTags {
     }
 }
 
-/// Defines shared ability rules, effects, and startup tasks.
+/// Defines shared ability rules, cost and cooldown effects, and startup tasks.
 ///
 /// Definitions are shared through [`Arc`]; each activation has its own runtime state.
-/// Activation automatically commits cost and cooldown effects to the owner before applying
-/// activation effects to the selected targets and starting tasks. Callers do not need to
-/// commit again after activation succeeds.
+/// Activation automatically commits cost and cooldown effects to the owner before starting
+/// tasks. Callers do not need to commit again after activation succeeds. Use Instant startup
+/// tasks to apply effects during activation and an explicit EndAbility action to end the instance.
 ///
-/// Startup tasks are siblings: waiting tasks count from activation rather than waiting for
-/// the previous task to finish. Ending the ability cleans up its tasks but does not remove
-/// already applied effects; those effects follow their own lifetimes.
+/// Startup tasks run in definition order. Waiting tasks count from activation rather than
+/// waiting for the previous task to finish. Completing startup leaves the ability active unless
+/// an action explicitly ends or cancels it. Ending the ability cleans up its tasks but does not
+/// remove already applied effects; those effects follow their own lifetimes.
 ///
-/// The default definition has empty tags, tasks, and activation effects, no cost or cooldown,
-/// and both flags set to `false`. It remains active until explicitly ended or cancelled.
+/// The default definition has empty tags and tasks, no cost or cooldown, and disallows multiple
+/// active instances. It remains active until explicitly ended or cancelled.
 #[derive(Default)]
 pub struct GameplayAbility {
     ability_tags: AbilityTags,
     startup_tasks: Vec<AbilityTaskDef>,
     cooldown: Option<Arc<GameplayEffect>>,
     cost: Option<Arc<GameplayEffect>>,
-    activation_effects: Vec<Arc<GameplayEffect>>,
-    end_on_activation: bool,
     allow_multiple_instances: bool,
 }
 
 impl GameplayAbility {
     /// Creates an ability definition with all configuration supplied explicitly.
     ///
-    /// `ability_tags` control identity and activation rules. `startup_tasks` start as sibling
-    /// tasks during activation. `cooldown` and `cost` are committed to the owner automatically;
-    /// `activation_effects` apply immediately to the selected targets. `end_on_activation`
-    /// ends the instance after startup, while `allow_multiple_instances` permits concurrent
-    /// activations of the same granted ability. Returns the definition without granting or
-    /// activating it.
+    /// `ability_tags` control identity and activation rules. `startup_tasks` start in definition
+    /// order during activation; Instant effects and chained activations resolve inline, while
+    /// waiting tasks run concurrently. Event observers remain deferred.
+    /// `cooldown` and `cost` are committed to the owner automatically. `allow_multiple_instances`
+    /// permits concurrent activations of the same granted ability. Completing startup does not
+    /// end the instance; use an explicit EndAbility action or end or cancel it through the ability
+    /// system. Returns the definition without granting or activating it.
     ///
     /// Use [`Self::default`] and the `with_*` methods to configure individual fields by name.
     pub fn new(
@@ -147,8 +147,6 @@ impl GameplayAbility {
         startup_tasks: Vec<AbilityTaskDef>,
         cooldown: Option<Arc<GameplayEffect>>,
         cost: Option<Arc<GameplayEffect>>,
-        activation_effects: Vec<Arc<GameplayEffect>>,
-        end_on_activation: bool,
         allow_multiple_instances: bool,
     ) -> Self {
         Self {
@@ -156,8 +154,6 @@ impl GameplayAbility {
             startup_tasks,
             cooldown,
             cost,
-            activation_effects,
-            end_on_activation,
             allow_multiple_instances,
         }
     }
@@ -171,8 +167,10 @@ impl GameplayAbility {
     /// Replaces the startup tasks with `tasks` and returns the definition.
     ///
     /// Tasks start in definition order, but waiting tasks count from activation concurrently.
+    /// Instant effects and chained activations finish before the next startup action begins.
+    /// Child cancellation stops the parent's remaining startup actions. Event observers stay deferred.
     /// An instant task that ends the ability prevents subsequent startup tasks from starting.
-    /// Keep `end_on_activation` disabled if waiting tasks need to finish.
+    /// Completing startup without an explicit end leaves the ability active.
     pub fn with_startup_tasks(mut self, tasks: Vec<AbilityTaskDef>) -> Self {
         self.startup_tasks = tasks;
         self
@@ -196,24 +194,6 @@ impl GameplayAbility {
         self
     }
 
-    /// Replaces effects applied immediately to the selected targets with `effects`.
-    ///
-    /// For delayed effects, use a waiting task's completion action instead. Ending the ability
-    /// does not remove already applied effects. Returns the definition.
-    pub fn with_activation_effects(mut self, effects: Vec<Arc<GameplayEffect>>) -> Self {
-        self.activation_effects = effects;
-        self
-    }
-
-    /// Sets whether the ability ends after startup and returns the definition.
-    ///
-    /// When `end_on_activation` is `true`, waiting tasks cannot finish because their parent
-    /// ability ends in the activation tick. Already applied effects keep their own lifetimes.
-    pub fn with_end_on_activation(mut self, end_on_activation: bool) -> Self {
-        self.end_on_activation = end_on_activation;
-        self
-    }
-
     /// Sets whether the same granted ability may have concurrent active instances.
     ///
     /// `allow_multiple_instances` does not bypass cost, cooldown, or tag requirements.
@@ -228,7 +208,7 @@ impl GameplayAbility {
         &self.ability_tags
     }
 
-    /// Returns the sibling tasks started during activation, in definition order.
+    /// Returns the tasks started during activation, in definition order.
     pub fn get_startup_tasks(&self) -> &[AbilityTaskDef] {
         &self.startup_tasks
     }
@@ -241,16 +221,6 @@ impl GameplayAbility {
     /// Returns the cost effect automatically committed to the owner, if configured.
     pub fn get_cost(&self) -> Option<&Arc<GameplayEffect>> {
         self.cost.as_ref()
-    }
-
-    /// Returns effects applied immediately to selected targets before startup tasks begin.
-    pub fn get_activation_effects(&self) -> &[Arc<GameplayEffect>] {
-        &self.activation_effects
-    }
-
-    /// Returns whether the ability should end after activation startup completes.
-    pub fn should_end_on_activation(&self) -> bool {
-        self.end_on_activation
     }
 
     /// Returns whether the same granted ability may have concurrent active instances.

@@ -180,6 +180,10 @@ for _ in 0..tick_count {
 2. resolver drain 期间追加的派生请求仍在本次 drain 消费；
 3. `GameplayResolve` 之后入队，请求明确保留到下一 tick。
 
+startup Instant 另需验证激活请求内部的顺序：效果先于下一动作实际生效，链式子技能 startup
+先于父技能续点完成，再消费下一个公共 FIFO 请求。运行时 Instant/WaitTicks 仍入队；事件
+Observer 保持 deferred。还应覆盖子技能取消父技能后的截断及内部步骤没有独立请求结果。
+
 ## 公共 API 路径测试
 
 prelude 是精简入口，不是完整 API 镜像。测试常见用法可导入 `bevy_gas::prelude::*`；错误、

@@ -3,7 +3,7 @@ use bevy::ecs::system::SystemState;
 use bevy_gas::{AbilityActivationCheckError, AbilityActivationCheckParams, can_activate_ability};
 
 #[test]
-fn ability_disallows_multiple_instances_by_default() {
+fn ability_without_end_stays_active_and_disallows_multiple_instances() {
     let mut app = test_app();
     let source = app
         .world_mut()
@@ -14,13 +14,13 @@ fn ability_disallows_multiple_instances_by_default() {
         Vec::new(),
         None,
         None,
-        Vec::new(),
-        false,
         false,
     ));
     let handle = give_ability(&mut app, source, ability);
 
     assert!(activate_ability(&mut app, source, source, handle));
+    run_ability_tasks(&mut app);
+    run_finished_ability_cleanup(&mut app);
     assert!(!activate_ability(&mut app, source, source, handle));
     assert_eq!(active_ability_count(&mut app), 1);
     assert_eq!(
@@ -47,8 +47,6 @@ fn ability_allows_multiple_instances_when_enabled() {
         Vec::new(),
         None,
         None,
-        Vec::new(),
-        false,
         true,
     ));
     let handle = give_ability(&mut app, source, ability);
@@ -91,8 +89,6 @@ fn ability_activation_required_and_blocked_tags_are_enforced() {
         Vec::new(),
         None,
         None,
-        Vec::new(),
-        false,
         true,
     ));
     let handle = give_ability(&mut app, source, ability);
@@ -126,8 +122,6 @@ fn active_ability_block_tags_prevent_matching_ability_activation() {
         Vec::new(),
         None,
         None,
-        Vec::new(),
-        false,
         false,
     ));
     let movement = Arc::new(GameplayAbility::new(
@@ -141,8 +135,6 @@ fn active_ability_block_tags_prevent_matching_ability_activation() {
         Vec::new(),
         None,
         None,
-        Vec::new(),
-        false,
         false,
     ));
     let channel_handle = give_ability(&mut app, source, channel);
@@ -195,8 +187,6 @@ fn readonly_activation_precheck_distinguishes_missing_and_blocking_tags() {
         Vec::new(),
         None,
         None,
-        Vec::new(),
-        false,
         false,
     ));
     let mut state = SystemState::<AbilityActivationCheckParams>::new(app.world_mut());

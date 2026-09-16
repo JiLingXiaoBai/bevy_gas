@@ -8,7 +8,7 @@ use crate::gameplay_effects::{
 };
 use bevy::prelude::*;
 
-pub(crate) fn drain_gameplay_execution_queue(
+fn drain_gameplay_execution_queue(
     execution_queue: &mut GameplayExecutionQueue,
     params: &mut AbilitySystemParams,
     mut on_completed: impl FnMut(GameplayExecutionResult),
@@ -29,7 +29,7 @@ pub(crate) fn drain_gameplay_execution_queue(
         };
         let result = match request {
             GameplayExecutionRequest::ActivateAbility(request) => {
-                execute_ability_activation_in_batch(request, execution_queue, params)
+                execute_ability_activation_in_batch(request, params)
                     .map(|_| ())
                     .map_err(GameplayExecutionError::AbilityActivation)
             }
@@ -63,6 +63,8 @@ pub(crate) fn drain_gameplay_execution_queue(
 
 /// Drains gameplay mutations in FIFO order and publishes one result per consumed request.
 ///
+/// Startup Instant effects and chained activations finish inside the owning activation and do
+/// not enqueue requests or publish independent results. Task events remain deferred.
 /// Result consumers run after this system. Any requests they enqueue run in the next fixed tick.
 pub fn process_gameplay_execution_queue_system(
     mut execution_queue: ResMut<GameplayExecutionQueue>,

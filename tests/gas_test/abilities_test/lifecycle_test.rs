@@ -20,8 +20,6 @@ fn activating_ability_cancels_matching_active_abilities() {
         Vec::new(),
         None,
         None,
-        Vec::new(),
-        false,
         false,
     ));
     let breaker = Arc::new(GameplayAbility::new(
@@ -35,8 +33,6 @@ fn activating_ability_cancels_matching_active_abilities() {
         Vec::new(),
         None,
         None,
-        Vec::new(),
-        false,
         false,
     ));
     let stance_handle = give_ability(&mut app, source, stance);
@@ -80,8 +76,6 @@ fn repeated_same_batch_cancellation_cleans_live_ability_only_once() {
         Vec::new(),
         None,
         None,
-        Vec::new(),
-        false,
         false,
     ));
     let survivor = Arc::new(GameplayAbility::new(
@@ -95,8 +89,6 @@ fn repeated_same_batch_cancellation_cleans_live_ability_only_once() {
         Vec::new(),
         None,
         None,
-        Vec::new(),
-        false,
         false,
     ));
     let canceller = Arc::new(GameplayAbility::new(
@@ -107,11 +99,11 @@ fn repeated_same_batch_cancellation_cleans_live_ability_only_once() {
             Vec::new(),
             Vec::new(),
         ),
-        Vec::new(),
+        vec![AbilityTaskDef::instant(
+            AbilityTaskOnFinishedDef::EndAbility,
+        )],
         None,
         None,
-        Vec::new(),
-        true,
         true,
     ));
     let blocked = Arc::new(GameplayAbility::new(
@@ -125,8 +117,6 @@ fn repeated_same_batch_cancellation_cleans_live_ability_only_once() {
         Vec::new(),
         None,
         None,
-        Vec::new(),
-        false,
         true,
     ));
 
@@ -197,8 +187,6 @@ fn failed_activation_does_not_cancel_matching_active_abilities() {
         Vec::new(),
         None,
         None,
-        Vec::new(),
-        false,
         false,
     ));
     let breaker = Arc::new(GameplayAbility::new(
@@ -212,8 +200,6 @@ fn failed_activation_does_not_cancel_matching_active_abilities() {
         Vec::new(),
         None,
         None,
-        Vec::new(),
-        false,
         false,
     ));
     let stance_handle = give_ability(&mut app, source, stance);
@@ -243,14 +229,12 @@ fn cleanup_finished_ability_despawns_startup_tasks_and_is_repeatable() {
         .id();
     let ability = Arc::new(GameplayAbility::new(
         AbilityTags::default(),
-        vec![AbilityTaskDef::wait_ticks(
-            10,
-            AbilityTaskOnFinishedDef::None,
-        )],
+        vec![
+            AbilityTaskDef::wait_ticks(10, AbilityTaskOnFinishedDef::None),
+            AbilityTaskDef::instant(AbilityTaskOnFinishedDef::EndAbility),
+        ],
         None,
         None,
-        Vec::new(),
-        true,
         false,
     ));
     let handle = give_ability(&mut app, source, ability);
@@ -283,20 +267,20 @@ fn ability_spec_preserves_granted_level_and_clear_rebuilds_indices() {
     let mut asc = AbilitySystemComponent::default();
     let first = Arc::new(GameplayAbility::new(
         AbilityTags::default(),
-        Vec::new(),
+        vec![AbilityTaskDef::instant(
+            AbilityTaskOnFinishedDef::EndAbility,
+        )],
         None,
         None,
-        Vec::new(),
-        true,
         false,
     ));
     let second = Arc::new(GameplayAbility::new(
         AbilityTags::default(),
-        Vec::new(),
+        vec![AbilityTaskDef::instant(
+            AbilityTaskOnFinishedDef::EndAbility,
+        )],
         None,
         None,
-        Vec::new(),
-        true,
         false,
     ));
 
@@ -326,8 +310,6 @@ fn clear_ability_returns_false_while_spec_is_active() {
         Vec::new(),
         None,
         None,
-        Vec::new(),
-        false,
         false,
     ));
     let handle = give_ability(&mut app, source, ability);
@@ -363,8 +345,6 @@ fn removing_active_components_releases_each_shared_block_only_once() {
         Vec::new(),
         None,
         None,
-        Vec::new(),
-        false,
         true,
     ));
     let first = give_ability(&mut app, owner, Arc::clone(&definition));
@@ -407,8 +387,6 @@ fn replacing_an_active_component_terminates_its_old_activation_and_tasks() {
         )],
         None,
         None,
-        Vec::new(),
-        false,
         false,
     ));
     let handle = give_ability(&mut app, owner, definition);
@@ -450,8 +428,6 @@ fn replacing_an_asc_terminates_its_old_instances_without_touching_new_grants() {
         )],
         None,
         None,
-        Vec::new(),
-        false,
         false,
     ));
     let old_handle = give_ability(&mut app, owner, Arc::clone(&definition));

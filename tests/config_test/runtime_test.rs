@@ -1,8 +1,8 @@
 use bevy::prelude::{App, MinimalPlugins, World};
 use bevy_gas::config::generated::gas::{
-    Ability, Attribute, AttributeRegion, DurationKind, Effect, MagnitudeKind, Modifier,
-    ModifierOperation, SelectionKind, SortOrder, Targeting, TbAbility, TbAttribute, TbEffect,
-    TbModifier, TbTargeting,
+    Ability, AbilityTask, ActionKind, Attribute, AttributeRegion, DurationKind, Effect,
+    MagnitudeKind, Modifier, ModifierOperation, SelectionKind, SortOrder, TargetScope, Targeting,
+    TbAbility, TbAbilityTask, TbAttribute, TbEffect, TbModifier, TbTargeting,
 };
 use bevy_gas::config::generated::{ByteBuf, TABLE_FILES, Tables};
 use bevy_gas::config::{
@@ -35,15 +35,25 @@ fn tables(unused_radius: Option<f32>) -> Tables {
             max_level: 2,
             cost_effect_id: None,
             cooldown_effect_id: None,
-            activation_effect_ids: vec![],
             asset_tags: vec![],
             required_tags: vec![],
             blocked_tags: vec![],
             cancel_ability_tags: vec![],
             block_ability_tags: vec![],
             targeting_id: 1,
-            end_on_activation: true,
             allow_multiple_instances: false,
+        }])
+        .unwrap(),
+    );
+    tables.tb_ability_task = Arc::new(
+        TbAbilityTask::from_rows(vec![AbilityTask {
+            id: 1,
+            ability_id: 1,
+            at_tick: 0,
+            order: 0,
+            kind: ActionKind::EndAbility,
+            target_scope: TargetScope::None,
+            effect_id: None,
         }])
         .unwrap(),
     );

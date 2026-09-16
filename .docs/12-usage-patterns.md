@@ -56,8 +56,8 @@ cargo run --example ability_effect_flow
 | 20 | 30 | 70 | 0 | 移除 |
 
 初始法力为 50、目标生命为 100。两个 `WaitTicks` 都从激活时开始等待：第 5 tick 应用伤害，
-第 6 tick 结束技能；冷却 Effect 自己继续存活到第 20 tick。示例展示具名配置入口，原有
-`GameplayAbility::new(...)`、`AbilityTags::new(...)` 仍兼容。
+第 6 tick 结束技能；冷却 Effect 自己继续存活到第 20 tick。示例展示具名配置入口，也可以使用
+五参数的 `GameplayAbility::new(...)` 和 `AbilityTags::new(...)` 构造定义。
 
 输入与技能栏绑定见 [`examples/ability_input_bindings.rs`](../examples/ability_input_bindings.rs)：
 
@@ -180,7 +180,7 @@ fn make_fireball_damage(
 }
 ```
 
-能力的 startup tasks 是从激活时刻开始的并列时间线，不是依次执行的 continuation：
+能力的 startup WaitTicks 从同一激活时刻开始并行计时；startup Instant 则按定义顺序同步结算：
 
 ```rust
 fn make_fireball_ability(
@@ -209,8 +209,6 @@ fn make_fireball_ability(
         ],
         Some(cooldown_effect),
         Some(cost_effect),
-        vec![],
-        false,
         false,
     ))
 }
@@ -332,10 +330,10 @@ let hit_two_tasks = vec![
 ];
 ```
 
-若把 `ActivateAbility` 放在 sibling `Instant` task 中，下一段会在当前激活的队列 drain 中立即
-入队。单个 `AbilityTaskOnFinishedDef` 只能表达一种完成动作；一个完成点需要触发多个项目级动作
-时，可使用 `EmitEvent` 交给 Observer 按明确顺序处理，或新增项目级组合 task。Observer 派生
-请求是否仍在同一 tick 消费取决于事件产生阶段，见下一节。
+若把 `ActivateAbility` 放在 sibling `Instant` task 中，下一段会同步激活并完成其 startup，
+然后才继续本段的下一动作；它不会等待子技能的 WaitTicks。一个完成点需要多个有序动作时，
+使用 `AbilityTaskOnFinishedDef::Batch`。项目级通知可使用 `EmitEvent` 交给 Observer，但 Observer
+保持 deferred，其派生请求是否仍在同一 tick 消费取决于事件产生阶段，见下一节。
 
 ## 模式 5：事件驱动逻辑
 

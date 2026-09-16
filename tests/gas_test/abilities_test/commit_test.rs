@@ -32,11 +32,11 @@ fn ability_activation_commits_cost_and_cooldown_then_cooldown_blocks_reactivatio
     ));
     let ability = Arc::new(GameplayAbility::new(
         AbilityTags::default(),
-        Vec::new(),
+        vec![AbilityTaskDef::instant(
+            AbilityTaskOnFinishedDef::EndAbility,
+        )],
         Some(cooldown),
         Some(cost),
-        Vec::new(),
-        true,
         false,
     ));
     let handle = give_ability(&mut app, source, ability);
@@ -77,11 +77,11 @@ fn ability_cost_fails_when_it_would_drop_attribute_below_zero() {
         .id();
     let ability = Arc::new(GameplayAbility::new(
         AbilityTags::default(),
-        Vec::new(),
+        vec![AbilityTaskDef::instant(
+            AbilityTaskOnFinishedDef::EndAbility,
+        )],
         None,
         Some(instant_add_effect(stamina, -20.0)),
-        Vec::new(),
-        true,
         false,
     ));
     let handle = give_ability(&mut app, source, ability);
@@ -110,11 +110,11 @@ fn cooldown_prepare_failure_does_not_spend_ability_cost() {
     ));
     let ability = Arc::new(GameplayAbility::new(
         AbilityTags::default(),
-        Vec::new(),
+        vec![AbilityTaskDef::instant(
+            AbilityTaskOnFinishedDef::EndAbility,
+        )],
         Some(cooldown),
         Some(instant_add_effect(mana, -20.0)),
-        Vec::new(),
-        true,
         false,
     ));
     let handle = give_ability(&mut app, source, ability);
@@ -125,7 +125,7 @@ fn cooldown_prepare_failure_does_not_spend_ability_cost() {
 }
 
 #[test]
-fn activation_effect_failure_does_not_block_ability_success() {
+fn startup_effect_failure_does_not_block_ability_success_or_explicit_end() {
     let mut app = test_app();
     let tag = register_tag(&mut app, "Effect.MissingTargetContainer");
     let source = app
@@ -142,11 +142,14 @@ fn activation_effect_failure_does_not_block_ability_success() {
     ));
     let ability = Arc::new(GameplayAbility::new(
         AbilityTags::default(),
-        Vec::new(),
+        vec![
+            AbilityTaskDef::instant(AbilityTaskOnFinishedDef::ApplyGameplayEffectToTargets {
+                effect: best_effort_effect,
+            }),
+            AbilityTaskDef::instant(AbilityTaskOnFinishedDef::EndAbility),
+        ],
         None,
         None,
-        vec![best_effort_effect],
-        true,
         false,
     ));
     let handle = give_ability(&mut app, source, ability);
@@ -162,16 +165,18 @@ fn activation_effect_failure_does_not_block_ability_success() {
             .get_active_count(),
         1
     );
+    run_finished_ability_cleanup(&mut app);
+    assert_eq!(active_ability_count(&mut app), 0);
 }
 
 fn ability_with_cost_effect(cost: Arc<GameplayEffect>) -> Arc<GameplayAbility> {
     Arc::new(GameplayAbility::new(
         AbilityTags::default(),
-        Vec::new(),
+        vec![AbilityTaskDef::instant(
+            AbilityTaskOnFinishedDef::EndAbility,
+        )],
         None,
         Some(cost),
-        Vec::new(),
-        true,
         false,
     ))
 }

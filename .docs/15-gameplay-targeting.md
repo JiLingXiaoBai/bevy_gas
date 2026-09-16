@@ -215,14 +215,14 @@ RecalculateAttributes
 
 ## 多目标效果
 
-- 技能 `activation_effects` 在激活请求内部按效果定义顺序、再按
+- startup `Instant` 中的 `ApplyGameplayEffectToTargets` 在激活请求内部按动作定义顺序、再按
   `AbilityActivationTargets::entities()` 顺序直接应用。
-- `ApplyGameplayEffectToTargets` task 按同一个目标值的顺序向统一 Gameplay FIFO 追加独立请求；
-  single 产生一个请求，acquired 按 Target Data 顺序产生多个请求。
+- 运行时任务的同名动作按同一个目标值的顺序向统一 Gameplay FIFO 追加独立请求；single
+  产生一个请求，acquired 按 Target Data 顺序产生多个请求。
 - `ApplyGameplayEffectToTarget` 使用同一目标值的 `get_primary_target()`，主目标没有第二个存储源。
 - 空 Target Data 不能创建 acquired 激活目标，因此运行时不存在 Context 与 Request 各自携带
   不同目标的分裂状态。
-- 每个目标独立进行要求、免疫、概率和堆叠检查；一个目标拒绝不会中断后续 FIFO 请求。
+- 每个目标独立进行要求、免疫、概率和堆叠检查；一个目标拒绝不会中断后续目标的处理。
 
 ## 确定性与当前边界
 

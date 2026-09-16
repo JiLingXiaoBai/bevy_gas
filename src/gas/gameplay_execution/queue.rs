@@ -50,6 +50,7 @@ impl Error for GameplayExecutionQueueError {}
 ///
 /// All request-producing systems that require same-tick execution must run before the resolver.
 /// Requests appended while the resolver is running are consumed by the same drain operation.
+/// Startup Instant actions execute inside the current activation instead of joining this FIFO.
 #[derive(Resource)]
 pub struct GameplayExecutionQueue {
     requests: VecDeque<(GameplayExecutionRequestId, GameplayExecutionRequest)>,

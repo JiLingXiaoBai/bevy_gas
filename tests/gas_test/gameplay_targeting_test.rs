@@ -246,8 +246,6 @@ fn targeting_queue_activates_ability_with_complete_target_data() {
         Vec::new(),
         None,
         None,
-        Vec::new(),
-        false,
         false,
     ));
     let handle = give_ability(&mut app, source, ability);
@@ -351,8 +349,6 @@ fn multi_target_task_applies_effect_to_every_acquired_entity() {
         )],
         None,
         None,
-        Vec::new(),
-        false,
         false,
     ));
     let handle = give_ability(&mut app, source, ability);
@@ -384,7 +380,7 @@ fn multi_target_task_applies_effect_to_every_acquired_entity() {
 }
 
 #[test]
-fn activation_effects_apply_to_every_entity_in_target_data() {
+fn startup_effects_apply_to_every_entity_in_target_data() {
     let mut app = test_app();
     let health = register_attribute(&mut app, "Health");
     let source = app
@@ -405,11 +401,14 @@ fn activation_effects_apply_to_every_entity_in_target_data() {
     ));
     let ability = Arc::new(GameplayAbility::new(
         AbilityTags::default(),
-        Vec::new(),
+        vec![
+            AbilityTaskDef::instant(AbilityTaskOnFinishedDef::ApplyGameplayEffectToTargets {
+                effect: damage,
+            }),
+            AbilityTaskDef::instant(AbilityTaskOnFinishedDef::EndAbility),
+        ],
         None,
         None,
-        vec![damage],
-        true,
         false,
     ));
     let handle = give_ability(&mut app, source, ability);

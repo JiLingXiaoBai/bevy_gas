@@ -135,7 +135,9 @@ system 签名中保持可见但标记为 `#[doc(hidden)]`。它们都是运行�
 `GameplayResolve` 之前。多个生产系统的入队顺序具有玩法语义时，必须使用 `.chain()`、
 `.before()` 或 `.after()` 固定顺序；仅处于同一个 SystemSet 不保证并行系统之间的确定顺序。
 
-resolver 会完整 drain 当前 FIFO，消费期间追加的派生请求也在同一次 drain 内继续处理。
+resolver 会完整 drain 当前 FIFO，消费期间通过队列 API 追加的请求也在同一次 drain 内继续处理。
+一个激活请求内部的 startup Instant 效果及链式子技能 startup 会先同步完成，再消费下一个
+FIFO 请求；运行时 AbilityTask 完成动作仍通过公共队列提交效果或激活。
 `GameplayResolve` 之后才入队的请求会保留到下一 tick；这是公开阶段边界，不是按请求数量或
 运行负载随机分帧。
 

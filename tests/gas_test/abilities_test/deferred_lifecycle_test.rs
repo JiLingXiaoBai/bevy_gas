@@ -16,8 +16,6 @@ fn assert_deferred_asc_discard_cleans_activations(replace: bool) {
         )],
         None,
         None,
-        Vec::new(),
-        false,
         false,
     ));
     let handle = give_ability(&mut app, owner, Arc::clone(&definition));

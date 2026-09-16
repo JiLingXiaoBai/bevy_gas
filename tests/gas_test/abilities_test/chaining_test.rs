@@ -18,8 +18,6 @@ fn chained_ability_activation_blocks_cycles() {
         )],
         None,
         None,
-        Vec::new(),
-        false,
         true,
     ));
     let second = Arc::new(GameplayAbility::new(
@@ -31,8 +29,6 @@ fn chained_ability_activation_blocks_cycles() {
         )],
         None,
         None,
-        Vec::new(),
-        false,
         true,
     ));
 
@@ -83,8 +79,6 @@ fn chained_startup_activation_can_cancel_deferred_parent() {
         )],
         None,
         None,
-        Vec::new(),
-        false,
         false,
     ));
     let child = Arc::new(GameplayAbility::new(
@@ -98,8 +92,6 @@ fn chained_startup_activation_can_cancel_deferred_parent() {
         Vec::new(),
         None,
         None,
-        Vec::new(),
-        false,
         false,
     ));
 
@@ -128,7 +120,7 @@ fn chained_startup_activation_can_cancel_deferred_parent() {
 }
 
 #[test]
-fn chained_activation_inherits_context_and_activation_effects_use_payload() {
+fn chained_startup_effect_inherits_activation_payload() {
     let mut app = test_app();
     let power = register_attribute(&mut app, "Power");
     let damage = register_attribute(&mut app, "Damage");
@@ -161,11 +153,9 @@ fn chained_activation_inherits_context_and_activation_effects_use_payload() {
         )],
         None,
         None,
-        Vec::new(),
-        false,
         true,
     ));
-    let activation_effect = Arc::new(GameplayEffect::new(
+    let startup_effect = Arc::new(GameplayEffect::new(
         vec![Modifier::new(
             damage,
             ModifierOperation::Add,
@@ -183,11 +173,13 @@ fn chained_activation_inherits_context_and_activation_effects_use_payload() {
     ));
     let second = Arc::new(GameplayAbility::new(
         AbilityTags::default(),
-        Vec::new(),
+        vec![AbilityTaskDef::instant(
+            AbilityTaskOnFinishedDef::ApplyGameplayEffectToTargets {
+                effect: startup_effect,
+            },
+        )],
         None,
         None,
-        vec![activation_effect],
-        false,
         true,
     ));
 

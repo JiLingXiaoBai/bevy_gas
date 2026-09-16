@@ -52,19 +52,18 @@ pub struct GameplayAbility {
     startup_tasks: Vec<AbilityTaskDef>,
     cooldown: Option<Arc<GameplayEffect>>,
     cost: Option<Arc<GameplayEffect>>,
-    activation_effects: Vec<Arc<GameplayEffect>>,
-    end_on_activation: bool,
     allow_multiple_instances: bool,
 }
 ```
 
-通过 `GameplayAbility::default().with_*()` 具名配置，或通过保留的 `GameplayAbility::new(...)`
+通过 `GameplayAbility::default().with_*()` 具名配置，或通过
+`GameplayAbility::new(tags, startup_tasks, cooldown, cost, allow_multiple_instances)`
 创建定义，再通过 Getter 只读访问。定义通常放入 `Arc`，同一份定义可被多个
 `GameplayAbilitySpec` 共享。
 
-默认定义没有标签、任务、消耗、冷却或激活效果；`end_on_activation` 和 `allow_multiple_instances`
-均为 `false`。因此默认激活会保持 Active，必须使用 `EndAbility` 任务、生命周期 API，或显式设置
-`with_end_on_activation(true)` 来结束。链式方法消费并返回定义；列表配置替换原列表，不追加。
+默认定义没有标签、任务、消耗或冷却，`allow_multiple_instances` 为 `false`。默认激活会保持
+Active，必须通过 `EndAbility` 动作或生命周期 API 结束；全部任务完成也不会自动结束技能。
+链式方法消费并返回定义；列表配置替换原列表，不追加。
 
 ```rust
 let ability = GameplayAbility::default()
@@ -82,10 +81,21 @@ let ability = GameplayAbility::default()
 
 这里的效果和标签是调用方先前创建的值，完整注册与调用见
 [`ability_effect_flow`](../examples/ability_effect_flow.rs)。激活自动支付 cost/cooldown；
-`with_activation_effects(...)` 配置的效果在 startup tasks 之前立即作用于捕获目标，不会等待前摇。
+需要激活时立即施加效果时，在 startup tasks 中配置 `Instant` 效果动作；它会在下一动作前结算。
 多个等待任务从同一激活时刻开始计时，结束 Ability 不自动移除已应用的 Effect。
-同 tick 的有序动作使用一个 `AbilityTaskOnFinishedDef::Batch`；它在首个 EndAbility 处停止，
-已入队效果继续结算。任务顺序与边界见 [08 — 技能任务](./08-ability-tasks.md)。
+同 tick 的有序动作使用一个 `AbilityTaskOnFinishedDef::Batch`；它在首个 EndAbility 处停止。
+startup Instant 的效果与链式激活在下一动作之前同步结算；运行时任务仍把效果和激活请求写入
+FIFO，已入队请求不会因 EndAbility 撤回。任务顺序与边界见 [08 — 技能任务](./08-ability-tasks.md)。
+
+### 旧字段迁移
+
+`activation_effects` 和 `end_on_activation` 已删除，包括对应的构造参数、配置方法与 Getter。
+迁移时，将原激活效果按原顺序放在 startup tasks 最前面，使用
+`AbilityTaskDef::instant(AbilityTaskOnFinishedDef::ApplyGameplayEffectToTargets { effect })`；
+原结束标记为 `true` 时，在所有启动动作末尾追加
+`AbilityTaskDef::instant(AbilityTaskOnFinishedDef::EndAbility)`。标记为 `false` 时无需追加。
+这保持原有的即时效果与结束顺序。需要等待后结束的技能，应将 `EndAbility` 放入实际结束时刻的
+`WaitTicks` 完成动作；末尾的 Instant EndAbility 不会等待先前创建的任务。
 
 ### `AbilityTags`
 
@@ -172,7 +182,7 @@ pub struct AbilityActivationContext {
 | `with_source_snapshot(snapshot)` | 固定来源属性快照 |
 | `child_for_chained_ability(parent, handle)` | 继承上下文并推进技能链，原因改为 `Chained` |
 
-Cost、Cooldown、activation effects 和 Ability Task 完成动作都通过同一个 crate 内部转换
+Cost、Cooldown 和 Ability Task 完成动作都通过同一个 crate 内部转换
 函数构造 `EffectPayload`。`source` 和 `level` 由当前执行路径传入，`instigator`、`causer`
 与来源快照在存在 `AbilityActivationContext` 时从中继承；独立 `commit_ability()` 没有激活
 上下文，因此使用默认 instigator 且不带 causer/快照。该函数是内部一致性边界，不是
@@ -185,9 +195,9 @@ Request 与 Active Ability 都通过 `AbilityActivationData` 持有该值，star
 它，链式激活则用父数据中的 source、targets 与派生 Context 组装新的激活数据；不再同时维护
 独立 `target: Entity` 与 Context 内 Target Data 两份可能冲突的状态。
 
-消耗与冷却仍应用到技能 `source`。`activation_effects` 统一按
-`AbilityActivationTargets::entities()` 的确定顺序逐个应用：single 产生一个实体，acquired 按
-Target Data 的 Hit 顺序产生实体。
+消耗与冷却仍应用到技能 `source`。任务的 `ApplyGameplayEffectToTargets` 动作统一按
+`AbilityActivationTargets::entities()` 的确定顺序逐个处理：single 产生一个实体，acquired 按
+Target Data 的 Hit 顺序产生实体。startup Instant 同步应用，运行时任务按同一顺序写入 FIFO。
 
 公共构造路径可产生 `Direct` 或 `Input`，链式 API 产生 `Chained`；`TaskEvent` 和
 `GameplayEffect` 原因目前没有公共 Setter 或专用构造器。`AbilityActivationReason::Input`
@@ -239,10 +249,10 @@ pub fn try_activate_ability_by_handle(
 ) -> Result<(), AbilityActivationError>;
 ```
 
-该入口先把参数归一为 `AbilityActivationRequest`，收敛 Active Effect Requirement，再使用一个
-局部 `GameplayExecutionQueue` 执行根激活，并在返回前 drain 根激活的 startup `Instant`
-派生请求。它不会查看或消费全局队列，所以不要在同一逻辑阶段把它与尚未消费的全局请求混用。
-派生请求失败由 resolver 记录日志，不会改写已经成功的根激活返回值。
+该入口先把参数归一为 `AbilityActivationRequest`，收敛 Active Effect Requirement，再通过激活
+执行栈完成根激活及其 startup `Instant`。链式子技能的 startup 以深度优先顺序完成后，才继续
+父技能的下一动作。它不会查看或消费全局队列，所以不要在同一逻辑阶段把它与尚未消费的全局
+请求混用。startup 效果或链式子激活失败会记录日志，不会改写已经成功的根激活返回值。
 
 “同步”只表示这条逻辑路径在返回前完成本地结算，不表示 `Commands` 已 flush，也不表示事务式
 回滚。
@@ -261,9 +271,14 @@ pub fn try_activate_ability_by_handle(
    pending overlay。
 8. 执行已准备的 Cost 与 Cooldown；失败时回滚新技能的启动 bookkeeping。
 9. 收敛 Commit 产生的 Requirement 变化。
-10. 尽力应用 `activation_effects`；单个目标或效果拒绝不会使根激活失败。
-11. 按定义顺序启动 startup tasks；`Instant` 直接派发，`WaitTicks` 创建任务实体。
-12. startup `EndAbility` 或 `end_on_activation` 将实例标记为 `Ending`。
+10. 按定义顺序启动 startup tasks；`Instant` 的效果立即结算，链式子技能先完成自己的 startup，
+    再继续父技能；`WaitTicks` 通过 Commands 创建任务实体。遇到 `Instant EndAbility` 时立即
+    标记 `Ending` 并停止剩余启动动作，不会先启动后面的等待任务。若子技能已经取消父技能，
+    父技能不再执行剩余 startup，并保留取消状态。
+
+startup 使用迭代执行栈处理嵌套 Batch 与链式激活，不通过 Rust 函数递归执行技能。
+`EmitEvent` 仍只向 Commands 写入通知；此处的同步结算不包含 Observer 的 deferred 回写。
+单个目标、效果或链式子激活失败不会使已经成功的根激活失败；后续动作仍可执行。
 
 验证与 Plan 准备失败发生在取消旧技能之前。进入取消阶段后，后续启动或 Commit 失败不会恢复
 已经取消的旧技能；Commit 也不提供数据库式的全部副作用回滚。
@@ -307,8 +322,8 @@ Active ──► Ending ──► Cleanup/despawn
 
 - 在 `AbilityTasks`、`RequestProducers` 或 `Targeting` 阶段产生的 Gameplay 请求可由当前 tick 的
   `GameplayResolve` 消费。
-- `GameplayResolve` 正在 drain 时，startup `Instant` 追加的效果或链式激活继续由当前 drain
-  消费。
+- `GameplayResolve` 执行一个激活请求时，会先同步完成其 startup `Instant` 效果和链式子技能的
+  startup，再取出下一个全局 FIFO 请求；普通入队请求仍按 FIFO 顺序消费。
 - `GameplayResolve` 创建的 startup `WaitTicks` 任务错过了本 tick 的 `AbilityTasks` 阶段，最早
   在下一次 `FixedUpdate` 推进。
 - 在 `GameplayResolve` 返回后才写入统一队列的请求留到下一次 `FixedUpdate`。
@@ -318,11 +333,11 @@ Active ──► Ending ──► Cleanup/despawn
 | 测试文件 | 覆盖范围 |
 | -------- | -------- |
 | `tests/gas_test/abilities_test/activation_test.rs` | 多实例、required/blocked tag、阻止标签和缺失规格 |
-| `tests/gas_test/abilities_test/commit_test.rs` | Cost、Cooldown、准备失败与 activation effect 容错 |
+| `tests/gas_test/abilities_test/commit_test.rs` | Cost、Cooldown、准备失败与 startup 效果容错 |
 | `tests/gas_test/abilities_test/chaining_test.rs` | 循环/深度保护、上下文继承和 pending 父技能取消 |
 | `tests/gas_test/abilities_test/lifecycle_test.rs` | 标签取消、活跃计数、清除规格和清理幂等性 |
 | `tests/gas_test/runtime_paths_test.rs` | 插件阶段、startup `Instant` 与 Bundle 组合 |
-| `tests/gas_test/gameplay_targeting_test.rs` | Target Data 与多目标 activation effects |
+| `tests/gas_test/gameplay_targeting_test.rs` | Target Data 与多目标 startup 效果 |
 
 继续阅读：[08 — 技能任务](./08-ability-tasks.md)、
 [09 — 技能系统组件](./09-ability-system-component.md)、

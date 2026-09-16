@@ -38,7 +38,8 @@ impl Error for GameplayExecutionError {}
 /// Outcome of a queued request, preserving the concrete error when it failed.
 #[derive(Debug, Clone, PartialEq)]
 pub enum GameplayExecutionOutcome {
-    /// The request's primary operation succeeded. Follow-up requests have their own results.
+    /// The primary operation succeeded. Best-effort startup actions may still fail independently.
+    /// Only follow-up actions explicitly submitted to the queue have their own results.
     Succeeded,
     /// A gameplay rule rejected the request, such as cooldown, cost, or immunity.
     Rejected(GameplayExecutionError),
@@ -59,9 +60,9 @@ impl GameplayExecutionOutcome {
 /// Buffered result published by the global gameplay resolver in execution order.
 ///
 /// Consume this message after `GameplayResolve`. Requests submitted by a result consumer run in
-/// the next fixed tick because the current drain has finished. Synchronous activation uses a local
-/// queue and does not publish results here. Success reports the primary request operation; it does
-/// not turn ability activation effects or derived requests into a transaction.
+/// the next fixed tick because the current drain has finished. The synchronous activation API and
+/// startup Instant actions do not publish results here. Success reports the primary request
+/// operation; startup actions are best-effort, without transaction rollback.
 #[derive(Message, Debug, Clone, PartialEq)]
 pub struct GameplayExecutionResult {
     /// Identifier returned when this request was accepted by the global queue.

@@ -135,8 +135,8 @@ impl AbilityActivationError {
     }
 }
 
-pub(super) fn ability_activation_failed(
+pub(super) fn ability_activation_failed<T>(
     error: AbilityActivationError,
-) -> Result<(), AbilityActivationError> {
+) -> Result<T, AbilityActivationError> {
     Err(error)
 }

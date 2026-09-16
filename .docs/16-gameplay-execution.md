@@ -3,7 +3,8 @@
 ## 模块定位
 
 `gameplay_execution` 是技能激活与效果应用的统一结算入口。它把两类 Gameplay mutation
-放入同一个跨类型 FIFO，并在 `FixedUpdate` 的 `GameplayResolve` 阶段完整消费。
+放入同一个跨类型 FIFO，并在 `FixedUpdate` 的 `GameplayResolve` 阶段完整消费。技能请求内部
+的 startup Instant 效果与链式子技能 startup 同步完成后，resolver 才消费下一个队列请求。
 
 该模块解决四个问题：
 
@@ -229,7 +230,7 @@ app.add_systems(
 1. 从 pending overlay 移除已经由 `Commands` 应用、可通过 Query 访问的 Active Ability；
 2. 收敛此前标记为 dirty 的 Active Effect Requirement；
 3. 从 FIFO 头部取出一个请求；
-4. 执行技能激活或效果应用；
+4. 执行技能激活或效果应用；技能激活包括其同步 startup Instant 与链式子技能 startup；
 5. 收敛该请求产生的 Tag Requirement 变化；
 6. 发布该请求的 `GameplayExecutionResult`；
 7. 回到步骤 3，直到队列为空。
@@ -239,9 +240,15 @@ Exclusive World system。Active Effect、Tag 与属性修改直接写入现有 C
 Active Ability 则由 pending overlay 补足同批次可见性。deferred ECS command 仍由 Bevy 在正常的
 调度边界统一应用。
 
-执行请求时新追加的请求位于 FIFO 尾部，并由同一次 drain 继续消费。startup `Instant`
-任务产生的效果或链式技能因此可以在当前激活 tick 内完成；`WaitTicks` 则创建任务实体，
-由后续 `AbilityTasks` 阶段推进。
+执行请求时通过队列 API 新追加的请求仍位于 FIFO 尾部，并由同一次 drain 继续消费。
+startup `Instant` 的效果与链式激活属于当前激活请求的内部步骤，不再向全局 FIFO 追加请求。
+它们按动作顺序同步结算，链式 startup 使用迭代执行栈按深度优先顺序完成；`WaitTicks` 则通过
+Commands 创建任务实体，由后续 `AbilityTasks` 阶段推进。
+
+例如全局队列为 `[Activate A, Activate B]`，A 的 startup 包含 `[Apply X, Activate C, End A]`，
+顺序为 A 提交 → X 结算 → C 的提交及 startup → A 结束 → B 激活。A 与 B 的入队顺序不变，
+C 是 A 的内部动作，不是插入公共队列的新请求。若 C 取消 A，A 的剩余 startup 不再执行。
+这项同步保证只覆盖 startup Instant；运行时任务产生的效果与激活仍遵循公共 FIFO。
 
 Gameplay 拒绝（例如免疫、条件不满足）记录为 debug 日志；配置或运行时状态错误记录为
 error。单个请求失败不会中止后续 FIFO 请求。
@@ -270,8 +277,9 @@ pub enum GameplayExecutionOutcome {
 持有。`GameplayExecutionError` 保留 `AbilityActivation(AbilityActivationError)` 或
 `EffectApplication(GameplayEffectApplicationError)`，无需从日志文本解析原因。
 
-- `Succeeded`：该请求的主操作成功。技能激活本身成功不表示每个 best-effort activation effect
-  都成功，也不表示后续派生请求成功；派生请求进入 FIFO 后有自己的 ID 和结果。
+- `Succeeded`：该请求的主操作成功。技能激活本身成功不表示每个 startup 效果或链式子激活
+  都成功；这些内部步骤失败会记录日志，不改写根激活的成功结果。
+  startup 内部步骤没有独立请求 ID 或结果，只有实际进入公共 FIFO 的请求才有各自的 ID 和结果。
 - `Rejected`：预期的玩法拒绝，如实例限制、Cost、Cooldown 或免疫。
 - `Failed`：配置或运行时状态错误，如目标缺少必需组件。失败不阻断后续请求。
 
@@ -280,8 +288,8 @@ pub enum GameplayExecutionOutcome {
 结果消费者追加的请求在下一次 FixedUpdate 执行。结果是 Bevy 缓冲 Message，须正常推进 reader，
 不是持久审计日志。
 
-同步 `try_activate_ability_by_handle()` 的局部 FIFO 不发布这个全局 Message，避免局部重号 ID
-与全局请求混淆。调用方直接读取同步函数的 `Result`；其派生请求依然在同步返回前执行。
+同步 `try_activate_ability_by_handle()` 不向公共 FIFO 提交请求，因此不发布这个全局 Message。
+调用方直接读取同步函数的 `Result`；其 startup 效果与链式子技能 startup 在同步返回前完成。
 `clear()` 丢弃的请求和通过公共 `pop()` 交给自定义消费者的请求，不会自动生成 resolver 结果。
 
 ## 请求之间的可见性
@@ -302,7 +310,8 @@ spawn。较早请求创建的效果会立即参与后续请求的堆叠、免疫
 
 创建或移除 Active Effect 会标记 Requirement dirty。resolver 在每个请求后执行确定性固定点
 收敛，因此队列产生的 granted Tag、ongoing requirement、removal requirement 以及跨实体
-source Tag 依赖，会在下一个请求执行前达到稳定状态。
+source Tag 依赖，会在下一个请求执行前达到稳定状态。startup Instant 直接应用效果后也执行
+相同的 dirty Requirement 收敛，使下一 startup 动作能看到稳定的标签状态。
 
 Requirement 每一轮先基于同一快照收集决策，再按稳定的实体和槽位顺序提交。非收敛循环会
 确定性 fail-closed，移除参与循环的效果，而不是跨 tick 保留不稳定中间态。
@@ -319,7 +328,8 @@ Requirement 每一轮先基于同一快照收集决策，再按稳定的实体�
 | ------------------ | -------------------- |
 | `AbilityTasks`、`RequestProducers` 或 Targeting direct continuation 写入 Gameplay FIFO | 当前 `FixedUpdate` |
 | `TargetingResultEvent` Observer 写入 Gameplay FIFO | deferred trigger 在 resolver 前应用，当前 `FixedUpdate` |
-| `GameplayResolve` drain 内直接追加 Gameplay 请求 | 当前 drain |
+| `GameplayResolve` drain 内直接追加 Gameplay 请求 | 当前 drain，按 FIFO 排队 |
+| 激活请求内部的 startup Instant 效果或链式激活 | 同步完成效果或子技能 startup 后才进入下一动作及下一个队列请求 |
 | `GameplayResolve` 创建 startup `WaitTicks` | `AbilityTasks` 已结束，下一次 `FixedUpdate` 才开始推进 |
 | `GameplayResolve` 内 startup `Instant::EmitEvent` 的 Observer 写入 Gameplay FIFO | resolver 已结束，下一次 `FixedUpdate` |
 | `GameplayResolve` 之后的系统写入 Gameplay FIFO | 下一次 `FixedUpdate` |
@@ -345,8 +355,8 @@ startup 派生效果或技能严格在当前 batch 生效，应使用 `ApplyGame
 
 以下 API 提供独立的同步调用路径，不参与全局 FIFO 排序：
 
-- `try_activate_ability_by_handle()`：先收敛 Requirement，使用局部队列执行根激活，并在返回前
-  drain 该激活产生的 startup Instant 后续请求；
+- `try_activate_ability_by_handle()`：先收敛 Requirement，再通过迭代执行栈完成根激活及其
+  startup Instant 效果和链式子技能 startup；
 - `apply_gameplay_effect()`：应用前检查当前 Requirement，并在返回前完成本次效果引起的收敛；
 - `execute_gameplay_effect_plan()`：执行已准备计划，并收敛由该计划标记的变化。
 
@@ -368,9 +378,10 @@ pub fn execute_gameplay_effect_plan(
 ```
 
 这里的“同步”表示返回前完成该调用路径的逻辑结算与 Requirement 收敛；Ability 激活路径还会
-完成其局部队列 drain。它不表示数据库式原子事务：由 `Commands` 创建或销毁的实体可能尚未
-flush，执行失败也不承诺回滚此前全部副作用。初始化、测试或明确需要立即结算时可以使用这些
-API。运行时如果已经存在全局排队请求，不要在同一逻辑阶段混用同步 mutation，否则它会越过
+完成整条 startup 链，但不会等待子技能的 WaitTicks。它不表示数据库式原子事务：由 `Commands`
+创建或销毁的实体可能尚未 flush，执行失败也不承诺回滚此前全部副作用。初始化、测试或明确
+需要立即结算时可以使用这些 API。运行时如果已经存在全局排队请求，不要在同一逻辑阶段混用
+同步 mutation，否则它会越过
 全局 FIFO 中尚未消费的请求。
 
 ## 容量、延迟与性能
@@ -405,7 +416,7 @@ API。运行时如果已经存在全局排队请求，不要在同一逻辑阶�
 
 相关集成测试位于：
 
-- `tests/gas_test/queues_test.rs`：完整 drain、同类型和跨类型 FIFO、结果 ID/顺序/失败分类、结果驱动请求的下一 tick 边界，以及同步局部结果隔离；
+- `tests/gas_test/queues_test.rs`：完整 drain、同类型和跨类型 FIFO、结果 ID/顺序/失败分类、结果驱动请求的下一 tick 边界，以及同步入口不发布全局结果；
 - `tests/gas_test/runtime_paths_test.rs`：阶段边界、当前 tick 与下一 tick；
 - `tests/gas_test/effects_test/requirements_test.rs` 与 `stacking_test.rs`：请求间 Requirement、免疫、堆叠和跨实体 Tag 可见性；
 - `tests/gas_test/abilities_test/chaining_test.rs` 与 `lifecycle_test.rs`：startup Instant、链式激活和 deferred cancellation。

@@ -311,8 +311,6 @@ pub struct Ability {
     pub cost_effect_id: Option<i32>,
     /// Configures cooldown_effect_id.
     pub cooldown_effect_id: Option<i32>,
-    /// Configures activation_effect_ids.
-    pub activation_effect_ids: Vec<i32>,
     /// Configures asset_tags.
     pub asset_tags: Vec<String>,
     /// Configures required_tags.
@@ -325,8 +323,6 @@ pub struct Ability {
     pub block_ability_tags: Vec<String>,
     /// Configures targeting_id.
     pub targeting_id: i32,
-    /// Configures end_on_activation.
-    pub end_on_activation: bool,
     /// Configures allow_multiple_instances.
     pub allow_multiple_instances: bool,
 }
@@ -341,8 +337,6 @@ impl Decode for Ability {
             Decode::decode(buf).map_err(|error| error.context("Ability.cost_effect_id"))?;
         let cooldown_effect_id: Option<i32> =
             Decode::decode(buf).map_err(|error| error.context("Ability.cooldown_effect_id"))?;
-        let activation_effect_ids: Vec<i32> =
-            Decode::decode(buf).map_err(|error| error.context("Ability.activation_effect_ids"))?;
         let asset_tags: Vec<String> =
             Decode::decode(buf).map_err(|error| error.context("Ability.asset_tags"))?;
         let required_tags: Vec<String> =
@@ -355,8 +349,6 @@ impl Decode for Ability {
             Decode::decode(buf).map_err(|error| error.context("Ability.block_ability_tags"))?;
         let targeting_id: i32 =
             Decode::decode(buf).map_err(|error| error.context("Ability.targeting_id"))?;
-        let end_on_activation: bool =
-            Decode::decode(buf).map_err(|error| error.context("Ability.end_on_activation"))?;
         let allow_multiple_instances: bool = Decode::decode(buf)
             .map_err(|error| error.context("Ability.allow_multiple_instances"))?;
         Ok(Self {
@@ -365,14 +357,12 @@ impl Decode for Ability {
             max_level,
             cost_effect_id,
             cooldown_effect_id,
-            activation_effect_ids,
             asset_tags,
             required_tags,
             blocked_tags,
             cancel_ability_tags,
             block_ability_tags,
             targeting_id,
-            end_on_activation,
             allow_multiple_instances,
         })
     }
@@ -1213,14 +1203,12 @@ pub const SCHEMA_DESCRIPTOR: &str = concat!(
     "max_level:i32;",
     "cost_effect_id:Option<i32>;",
     "cooldown_effect_id:Option<i32>;",
-    "activation_effect_ids:Vec<i32>;",
     "asset_tags:Vec<String>;",
     "required_tags:Vec<String>;",
     "blocked_tags:Vec<String>;",
     "cancel_ability_tags:Vec<String>;",
     "block_ability_tags:Vec<String>;",
     "targeting_id:i32;",
-    "end_on_activation:bool;",
     "allow_multiple_instances:bool;",
     "bean:AbilityTask;",
     "id:i32;",

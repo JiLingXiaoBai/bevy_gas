@@ -37,6 +37,7 @@ GameplayResolve：验证并执行技能
 
 ```rust
 use bevy::prelude::*;
+use bevy_gas::gas::gameplay_abilities::{AbilityTaskDef, AbilityTaskOnFinishedDef};
 use bevy_gas::prelude::*;
 use std::sync::Arc;
 
@@ -48,7 +49,9 @@ enum PlayerAction {
 
 fn spawn_player(mut commands: Commands) {
     let mut ability_system = AbilitySystemComponent::default();
-    let fireball = Arc::new(GameplayAbility::default().with_end_on_activation(true));
+    let fireball = Arc::new(GameplayAbility::default().with_startup_tasks(vec![
+        AbilityTaskDef::instant(AbilityTaskOnFinishedDef::EndAbility),
+    ]));
     let handle = ability_system.give_ability(fireball, 1);
 
     let mut bindings = AbilityInputBindings::<PlayerAction>::default();

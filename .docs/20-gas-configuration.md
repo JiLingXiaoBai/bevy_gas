@@ -96,7 +96,7 @@ Luban 的结构校验和 Rust 的玩法校验是连续两层，不能互相替�
 | gas.TbAttribute     | name | 属性名、Hot/Cold 区域及说明                           |
 | gas.TbEffect        | id   | 持续、周期、概率、asset/granted 标签                  |
 | gas.TbModifier      | id   | effect_id、order、属性、操作、Flat/LinearLevel 参数   |
-| gas.TbAbility       | id   | 等级、标签、消耗、冷却、立即效果、目标规则、实例策略  |
+| gas.TbAbility       | id   | 等级、标签、消耗、冷却、目标规则、实例策略            |
 | gas.TbAbilityTask   | id   | ability_id、at_tick、order、动作、目标范围、effect_id |
 | gas.TbTargeting     | id   | 选择、标签/距离过滤、排序与数量上限                   |
 
@@ -136,7 +136,7 @@ SelectionKind 使用 `SelfTarget`，Excel 别名可以填写 Self，避免 Rust 
 - Targeting 3001：显式实体 → 排除来源 → 要求 AttributeSet → 最大距离 20 → 保留一个目标。
 - Action 10011：at_tick=12、order=1，向主目标施加 2003。
 - Action 10012：at_tick=12、order=2，EndAbility。
-- 激活阻止标签 State.Stunned；end_on_activation=false，不允许同规格多实例。
+- 激活阻止标签 State.Stunned；通过第 12 tick 的 EndAbility 结束，不允许同规格多实例。
 
 第五级示例从 Health=500、Mana=100 开始，成功激活后 Mana=80，十二次后续
 AbilityTasks 推进后目标 Health=320，技能在同一 tick 结束；冷却仍按自身生命周期保留。
@@ -163,17 +163,24 @@ period_ticks 留空表示无周期，有值时必须为正；execute_on_applied 
 无周期且无属性修改器。冷却检查使用 granted tags，不使用 asset tags。
 
 动作按 `(at_tick, order)` 排序，三元组 `(ability_id, at_tick, order)` 必须唯一。
-同 tick 动作编译为一个 `AbilityTaskOnFinishedDef::Batch`，只创建一个等待任务。
+同 tick 动作编译为一个 `AbilityTaskOnFinishedDef::Batch`；正 tick 只创建一个等待任务。
 at_tick=0 使用 Instant；正值使用 WaitTicks，所有时间都相对于同一次激活。
 
-有限技能二选一：
+当前配置层只支持有限技能：每个技能必须显式配置恰好一条 EndAbility，且为最后一个有序动作。
+即时技能把 EndAbility 放在 at_tick=0 的最后；需要等待的技能把它放在实际结束 tick。
+底层运行时 API 仍支持由外部生命周期逻辑结束的技能，任务执行完毕不会自动结束。
 
-1. end_on_activation=true，只配置即时动作，不再写 EndAbility；
-2. end_on_activation=false，恰好一条 EndAbility，且必须为最后一个有序动作。
-
-Batch 按定义顺序派发，遇到第一个 EndAbility 后停止，已入队效果继续结算。
-它不提供事务回滚，不会让普通 sibling WaitTicks 自动变成串行任务，也不会让
+Batch 按定义顺序处理，遇到第一个 EndAbility 后停止。at_tick=0 的 Instant 会在激活阶段
+逐动作同步应用效果，因此 `[ApplyEffect, EndAbility]` 先尝试结算效果，再结束技能。
+正 tick 的 WaitTicks 仍在完成时把效果写入公共 FIFO；后续 EndAbility 不撤回已入队效果。
+两条路径都不提供事务回滚，不会让普通 sibling WaitTicks 自动变成串行任务，也不会让
 EmitEvent Observer 在 startup resolver 内同步回写。完整边界见 [08 — 技能任务](./08-ability-tasks.md)。
+
+旧表迁移：Ability 表的 `activation_effect_ids` 和 `end_on_activation` 列已删除。原即时效果改为
+TbAbilityTask 中 at_tick=0、kind=ApplyEffect、target_scope=AllCaptured 的动作，order
+必须排在原即时动作之前；原结束标记为 true 时，追加同一 tick 的最后一条 EndAbility。
+原结束标记为 false 时，保留时间线中原有的 EndAbility。字段删除改变二进制结构，旧数据包必须
+重新导出，并与生成的 Rust 模块一起部署。
 
 ApplyEffect 的 Primary/AllCaptured 分别使用激活时捕获的主目标/全部目标。
 命中时重新抓取、独立 Self 动作、地面点空目标、弹体和跨技能配置动作尚未开放。
@@ -216,7 +223,7 @@ app.world_mut().insert_resource(catalog);
 
 - 按名字排序登记 Tag/Attribute，祖先先于子标签，避免依赖 HashMap 或 Excel 行顺序。
 - 固定注册顺序只保证相同配置的重复结果，不保证不同配置版本的内部编号相同。
-- 按 EffectId 创建唯一 Arc，成本、冷却、动作和立即效果复用它。
+- 按 EffectId 创建唯一 Arc，成本、冷却和任务动作复用它。
 - 不按内容去重两个不同 EffectId；内容相同不代表叠层身份相同。
 - 存档保存稳定配置 ID/名字，不保存 GameplayTag 位编号、AttributeId 或 AbilitySpecHandle。
 - `grant_ability` 将共享定义授予 ASC，并写入同一角色的 ConfiguredAbilities。

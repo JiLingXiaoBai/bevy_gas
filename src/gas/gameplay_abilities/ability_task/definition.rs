@@ -7,6 +7,9 @@ use crate::unique_names::UniqueName;
 use std::sync::Arc;
 
 /// Describes an action to instantiate when an ability task finishes.
+///
+/// Startup Instant effects and chained activations resolve before the next action. Runtime tasks
+/// queue those operations for the gameplay resolver. Events always use deferred Commands.
 #[derive(Clone)]
 pub enum AbilityTaskOnFinishedDef {
     /// Performs no follow-up action.
@@ -15,7 +18,7 @@ pub enum AbilityTaskOnFinishedDef {
     EndAbility,
     /// Dispatches actions in order, stopping at the first `EndAbility`.
     ///
-    /// Previously queued gameplay requests remain queued. A batch is not a transaction.
+    /// Already applied effects and queued runtime requests are preserved. A batch is not a transaction.
     Batch {
         /// Ordered completion actions; nested batches preserve depth-first order.
         actions: Vec<AbilityTaskOnFinishedDef>,
@@ -35,7 +38,9 @@ pub enum AbilityTaskOnFinishedDef {
         /// Defines the effect to apply.
         effect: Arc<GameplayEffect>,
     },
-    /// Queues another ability activation using the task context.
+    /// Activates another ability using the task context.
+    ///
+    /// Startup Instant waits for the child's startup; runtime tasks enqueue the activation.
     ActivateAbility {
         /// Identifies the ability to activate.
         handle: AbilitySpecHandle,
@@ -45,7 +50,8 @@ pub enum AbilityTaskOnFinishedDef {
 /// Defines an ability task created when its owning ability starts.
 #[derive(Clone)]
 pub enum AbilityTaskDef {
-    /// Dispatches the completion action during ability startup.
+    /// Resolves effects and chained activations during startup, before the next startup action.
+    /// Event observers and entity commands remain deferred; waiting tasks are not advanced.
     Instant {
         /// Describes the action dispatched on completion.
         on_finished: AbilityTaskOnFinishedDef,
@@ -71,6 +77,9 @@ impl AbilityTaskDef {
     }
 
     /// Instantiates this definition for an active ability and shared execution context.
+    ///
+    /// A manually spawned Instant task runs in the task system and queues its gameplay operations.
+    /// Inline startup execution is provided by the owning ability's activation path.
     pub fn instantiate(
         &self,
         active_ability: ActiveAbilityHandle,

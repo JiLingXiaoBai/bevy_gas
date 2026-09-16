@@ -161,8 +161,8 @@ pub fn try_activate_ability_by_handle(
 ) -> Result<(), AbilityActivationError>;
 ```
 
-这是独立同步入口，会使用局部 Gameplay 队列完成 startup `Instant` 派生请求，但不与全局 FIFO
-排序。常规运行时使用 `GameplayExecutionQueue::push_activation()`；完整流程见
+这是独立同步入口，会通过迭代执行栈完成 startup `Instant` 效果和链式子技能 startup，但不与
+全局 FIFO 排序。常规运行时使用 `GameplayExecutionQueue::push_activation()`；完整流程见
 [07 — Gameplay 技能](./07-gameplay-abilities.md#激活关键流程)。
 
 ### 快速预检
@@ -244,11 +244,12 @@ pub fn cancel_ability(
 整份激活数据。ASC 的私有实例登记保存 active handle 与 spec handle 的对应关系；
 结束、回滚和组件丢弃都通过同一个释放操作，只有仍在登记中的实例才移除阻止标签并递减计数。
 
-私有 `StartupAbilityTaskContext` 仅保存 active handle、`&AbilityActivationRequest` 和 level。
-source、targets 与 activation context 通过请求中的 `AbilityActivationData` 读取，spec handle
-直接从请求读取；启动函数只创建一次不含目标的轻量 `AbilityTaskExecutionContext`，并在同一
-激活的所有 sibling startup task 间复用。Instant 完成分派直接借用激活数据中的 targets；跨
-tick task 完成时从父 `ActiveGameplayAbility` 的激活数据读取同一值。
+私有 startup 执行状态持有规范化的 `AbilityActivationRequest`、共享技能定义、active handle、
+轻量 `AbilityTaskExecutionContext` 与动作遍历位置。source、targets 与 activation context
+通过请求中的 `AbilityActivationData` 读取，同一激活的 sibling 任务复用任务上下文。
+迭代执行栈在启动链式子技能时保留父技能续点；子技能 startup 完成后才恢复父技能，若父技能
+已被取消则丢弃剩余动作。startup Instant 直接借用请求中的 targets；跨 tick task 完成时从父
+`ActiveGameplayAbility` 的激活数据读取同一值。
 
 `cleanup_finished_abilities_system` 位于 `GameplayAbilitySystemSet::Cleanup`：
 
