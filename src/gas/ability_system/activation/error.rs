@@ -125,6 +125,10 @@ impl AbilityActivationError {
             Self::MultipleInstancesNotAllowed { .. }
             | Self::ActivationRequirementsNotMet { .. } => true,
             Self::CommitPreparationFailed { error, .. } => error.is_rejection(),
+            Self::CommitExecutionFailed {
+                error: AbilityCommitError::AdditionalCost(error),
+                ..
+            } => error.is_rejection(),
             Self::InvalidChain(_)
             | Self::MissingAbilitySystemComponent { .. }
             | Self::AbilityNotFound { .. }

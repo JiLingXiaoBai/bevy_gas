@@ -1,4 +1,4 @@
-use super::AbilityTaskDef;
+use super::{AbilityTaskDef, AdditionalCost};
 use crate::gameplay_effects::GameplayEffect;
 use crate::gameplay_tags::GameplayTag;
 use std::sync::Arc;
@@ -110,6 +110,7 @@ impl AbilityTags {
 /// Defines shared ability rules, cost and cooldown effects, and startup tasks.
 ///
 /// Definitions are shared through [`Arc`]; each activation has its own runtime state.
+/// Optional additional costs describe game-owned resources paid through a configured ECS provider.
 /// Activation automatically commits cost and cooldown effects to the owner before starting
 /// tasks. Callers do not need to commit again after activation succeeds. Use Instant startup
 /// tasks to apply effects during activation and an explicit EndAbility action to end the instance.
@@ -127,6 +128,7 @@ pub struct GameplayAbility {
     startup_tasks: Vec<AbilityTaskDef>,
     cooldown: Option<Arc<GameplayEffect>>,
     cost: Option<Arc<GameplayEffect>>,
+    additional_costs: Vec<AdditionalCost>,
     allow_multiple_instances: bool,
 }
 
@@ -154,6 +156,7 @@ impl GameplayAbility {
             startup_tasks,
             cooldown,
             cost,
+            additional_costs: Vec::new(),
             allow_multiple_instances,
         }
     }
@@ -192,6 +195,21 @@ impl GameplayAbility {
     pub fn with_cost(mut self, cost: Arc<GameplayEffect>) -> Self {
         self.cost = Some(cost);
         self
+    }
+
+    /// Replaces the external-resource requirements paid at activation with `costs`.
+    ///
+    /// The configured additional-cost provider checks and temporarily debits the complete batch
+    /// before attribute cost and cooldown execution. Successful commit confirms payment before
+    /// startup tasks; later cancellation does not refund it. Returns the updated definition.
+    pub fn with_additional_costs(mut self, costs: Vec<AdditionalCost>) -> Self {
+        self.additional_costs = costs;
+        self
+    }
+
+    /// Returns the external-resource requirements in their configured order.
+    pub fn get_additional_costs(&self) -> &[AdditionalCost] {
+        &self.additional_costs
     }
 
     /// Sets whether the same granted ability may have concurrent active instances.

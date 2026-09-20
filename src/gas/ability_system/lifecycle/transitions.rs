@@ -1,3 +1,4 @@
+use super::super::commit::AdditionalCostProvider;
 use super::{
     AbilityActivationStatus, AbilitySystemParams, ActiveAbilityHandle, ActiveGameplayAbility,
     GameplayAbility, GameplayTag, GameplayTagError, GameplayTagManager,
@@ -10,7 +11,7 @@ use bevy::prelude::*;
 pub fn end_ability(
     source: Entity,
     active_handle: ActiveAbilityHandle,
-    params: &mut AbilitySystemParams,
+    params: &mut AbilitySystemParams<'_, '_, impl AdditionalCostProvider>,
 ) -> bool {
     finish_ability_with_status(
         source,
@@ -25,7 +26,7 @@ pub fn end_ability(
 pub fn cancel_ability(
     source: Entity,
     active_handle: ActiveAbilityHandle,
-    params: &mut AbilitySystemParams,
+    params: &mut AbilitySystemParams<'_, '_, impl AdditionalCostProvider>,
 ) -> bool {
     finish_ability_with_status(
         source,
@@ -40,7 +41,7 @@ pub(in crate::gas::ability_system) fn finish_ability_with_status(
     source: Entity,
     active_handle: ActiveAbilityHandle,
     status: AbilityActivationStatus,
-    params: &mut AbilitySystemParams,
+    params: &mut AbilitySystemParams<'_, '_, impl AdditionalCostProvider>,
 ) -> bool {
     let mut updated = false;
     if let Ok((_, mut active_ability)) = params.active_ability_query.get_mut(active_handle)
@@ -74,7 +75,7 @@ pub(in crate::gas::ability_system) fn finish_ability_with_status(
 pub(in crate::gas::ability_system) fn cancel_active_abilities_with_tags(
     source: Entity,
     tags: &[GameplayTag],
-    params: &mut AbilitySystemParams,
+    params: &mut AbilitySystemParams<'_, '_, impl AdditionalCostProvider>,
 ) -> Result<(), GameplayTagError> {
     if tags.is_empty() {
         return Ok(());

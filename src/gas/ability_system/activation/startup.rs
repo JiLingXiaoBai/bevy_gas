@@ -1,3 +1,4 @@
+use super::super::commit::AdditionalCostProvider;
 use super::super::lifecycle::{finish_ability_startup, finish_ability_with_status};
 use super::super::params::AbilitySystemParams;
 use super::execution::begin_ability_activation;
@@ -43,7 +44,10 @@ impl StartupAbility {
     }
 
     /// Runs until a child activation must complete or this startup has finished.
-    fn advance(&mut self, params: &mut AbilitySystemParams) -> Option<AbilityActivationRequest> {
+    fn advance(
+        &mut self,
+        params: &mut AbilitySystemParams<'_, '_, impl AdditionalCostProvider>,
+    ) -> Option<AbilityActivationRequest> {
         // A synchronous child may cancel this parent before its commands become visible.
         if !self.is_active(params) {
             self.finish(false, params);
@@ -129,7 +133,7 @@ impl StartupAbility {
         }
     }
 
-    fn is_active(&self, params: &AbilitySystemParams) -> bool {
+    fn is_active(&self, params: &AbilitySystemParams<'_, '_, impl AdditionalCostProvider>) -> bool {
         params
             .pending_active_abilities
             .iter()
@@ -146,7 +150,11 @@ impl StartupAbility {
             .is_some_and(|status| status == AbilityActivationStatus::Active)
     }
 
-    fn finish(&self, ends_ability: bool, params: &mut AbilitySystemParams) {
+    fn finish(
+        &self,
+        ends_ability: bool,
+        params: &mut AbilitySystemParams<'_, '_, impl AdditionalCostProvider>,
+    ) {
         finish_ability_startup(
             self.request.get_source(),
             self.active_handle,
@@ -165,7 +173,7 @@ impl StartupAbility {
 
 pub(super) fn run_startup_ability_tasks(
     mut current: StartupAbility,
-    params: &mut AbilitySystemParams,
+    params: &mut AbilitySystemParams<'_, '_, impl AdditionalCostProvider>,
 ) {
     // Only chained activations allocate a parent stack; ordinary startup stays in this frame.
     let mut parents = Vec::new();
@@ -200,7 +208,7 @@ fn apply_startup_effect(
     effect: &Arc<GameplayEffect>,
     request: &AbilityActivationRequest,
     level: u32,
-    params: &mut AbilitySystemParams,
+    params: &mut AbilitySystemParams<'_, '_, impl AdditionalCostProvider>,
 ) {
     let payload = effect_payload_from_ability_context(
         request.get_source(),

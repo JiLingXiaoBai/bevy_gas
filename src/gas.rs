@@ -16,9 +16,10 @@ pub mod settings;
 pub use ability_input::{AbilityInputBindingError, AbilityInputBindings};
 pub use ability_system::{
     AbilityActivationCheckError, AbilityActivationCheckParams, AbilityActivationError,
-    AbilityCommitError, AbilitySystemComponent, AbilitySystemParams, GameplayAbilitySystemBundle,
-    PendingActiveGameplayAbilities, can_activate_ability, cancel_ability,
-    cleanup_finished_abilities_system, commit_ability, end_ability, try_activate_ability_by_handle,
+    AbilityCommitError, AbilitySystemComponent, AbilitySystemParams, AdditionalCostContext,
+    AdditionalCostProvider, GameplayAbilitySystemBundle, PendingActiveGameplayAbilities,
+    can_activate_ability, cancel_ability, cleanup_finished_abilities_system, commit_ability,
+    end_ability, try_activate_ability_by_handle,
 };
 pub use attributes::{
     ATTRIBUTE_SET_SIZE, Aggregator, AttributeId, AttributeIdError, AttributeIdManager,
@@ -31,7 +32,8 @@ pub use gameplay_abilities::{
     AbilityActivationStatus, AbilityChainContext, AbilityChainError, AbilitySpecHandle,
     AbilityTags, AbilityTask, AbilityTaskDef, AbilityTaskEvent, AbilityTaskExecutionContext,
     AbilityTaskKind, AbilityTaskOnFinished, AbilityTaskOnFinishedDef, ActiveAbilityHandle,
-    ActiveGameplayAbility, GameplayAbility, GameplayAbilitySpec, tick_ability_tasks_system,
+    ActiveGameplayAbility, AdditionalCost, AdditionalCostError, GameplayAbility,
+    GameplayAbilitySpec, tick_ability_tasks_system,
 };
 pub use gameplay_effects::{
     ActiveEffectDurationTicks, ActiveEffectHandle, ActiveEffectPeriodTicks, ActiveGameplayEffect,
@@ -52,6 +54,7 @@ pub use gameplay_execution::{
     GameplayExecutionOutcome, GameplayExecutionQueue, GameplayExecutionQueueError,
     GameplayExecutionRequest, GameplayExecutionRequestId, GameplayExecutionResult,
     gameplay_execution_queue_has_work, process_gameplay_execution_queue_system,
+    process_gameplay_execution_queue_with_costs_system,
 };
 pub use gameplay_tags::{
     BLOCK_SIZE_EXPONENT, GameplayTag, GameplayTagBits, GameplayTagContainer, GameplayTagError,

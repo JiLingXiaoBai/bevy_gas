@@ -1,4 +1,6 @@
-use super::super::commit::{AbilityCommitError, check_ability_cost};
+use super::super::commit::{
+    AbilityCommitError, AdditionalCostContext, AdditionalCostProvider, check_ability_cost,
+};
 use super::super::component::AbilitySystemComponent;
 use super::super::params::{AbilityActivationCheckParams, AbilitySystemParams};
 use crate::gameplay_abilities::GameplayAbility;
@@ -37,13 +39,14 @@ impl fmt::Display for AbilityActivationCheckError {
 
 impl Error for AbilityActivationCheckError {}
 
-/// Inspects activation tags and additive-cost affordability without mutating gameplay state.
+/// Inspects activation tags, additive cost, and external-cost affordability without mutation.
 ///
 /// This does not validate a granted handle, active-instance limits, instant cost duration, or
 /// effect application requirements, and never rolls probability. Success does not guarantee that
 /// a subsequent activation succeeds. Missing optional tag containers retain the runtime's existing
 /// tag-check semantics. Cost previews exclude sources selected by the cost's removal tags and do
-/// not invoke post-execute callbacks.
+/// not invoke post-execute callbacks. External previews use `P::ReadOnly`; use the same provider
+/// type as the runtime plugin. Preview context has no captured activation metadata.
 ///
 /// # Parameters
 ///
@@ -56,12 +59,12 @@ impl Error for AbilityActivationCheckError {}
 /// # Returns
 ///
 /// `Ok(())` if the inspected rules pass, or the first concrete unavailable reason.
-pub fn can_activate_ability(
+pub fn can_activate_ability<P: AdditionalCostProvider>(
     source: Entity,
     target: Entity,
     ability: &Arc<GameplayAbility>,
     level: u32,
-    params: &AbilityActivationCheckParams,
+    params: &AbilityActivationCheckParams<'_, '_, P>,
 ) -> Result<(), AbilityActivationCheckError> {
     check_activation_tags(
         params.asc_query.get(source).ok(),
@@ -69,13 +72,27 @@ pub fn can_activate_ability(
         ability,
     )?;
     check_ability_cost(source, target, ability, level, &params.effects)
-        .map_err(AbilityActivationCheckError::Cost)
+        .map_err(AbilityActivationCheckError::Cost)?;
+    if !ability.get_additional_costs().is_empty() {
+        P::check_readonly(
+            &params.additional_costs,
+            &AdditionalCostContext {
+                source,
+                level,
+                activation: None,
+            },
+            ability.get_additional_costs(),
+        )
+        .map_err(AbilityCommitError::AdditionalCost)
+        .map_err(AbilityActivationCheckError::Cost)?;
+    }
+    Ok(())
 }
 
 pub(super) fn passes_ability_activation_requirements(
     source: Entity,
     ability: &Arc<GameplayAbility>,
-    params: &AbilitySystemParams,
+    params: &AbilitySystemParams<'_, '_, impl AdditionalCostProvider>,
 ) -> bool {
     check_activation_tags(
         params.asc_query.get(source).ok(),

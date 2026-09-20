@@ -1,8 +1,9 @@
+use super::commit::AdditionalCostProvider;
 use super::component::AbilitySystemComponent;
 use crate::attributes::AttributeSetSnapshot;
 use crate::gameplay_abilities::{ActiveAbilityHandle, ActiveGameplayAbility};
 use crate::gameplay_effects::{EffectReadOnlyParams, EffectSystemParams};
-use bevy::ecs::system::SystemParam;
+use bevy::ecs::system::{StaticSystemParam, SystemParam};
 use bevy::prelude::*;
 use std::ops::{Deref, DerefMut};
 
@@ -54,8 +55,15 @@ impl PendingActiveGameplayAbilities {
     }
 }
 
+/// ECS access for ability activation, commit, and lifecycle orchestration.
+///
+/// `P` declares optional game-owned external-cost access; `()` preserves the default GAS-only
+/// access. Use the provider configured on the runtime plugin for direct activations and commits.
+/// A default parameter rejects abilities with additional costs instead of bypassing payment.
 #[derive(SystemParam)]
-pub struct AbilitySystemParams<'w, 's> {
+pub struct AbilitySystemParams<'w, 's, P: AdditionalCostProvider = ()> {
+    /// Synchronous external-resource access declared by the configured game adapter.
+    pub additional_costs: StaticSystemParam<'w, 's, P>,
     pub commands: Commands<'w, 's>,
     /// Effect-specific ECS access shared with effect preparation and execution APIs.
     pub effects: EffectSystemParams<'w, 's>,
@@ -65,7 +73,7 @@ pub struct AbilitySystemParams<'w, 's> {
     pub(crate) pending_active_abilities: ResMut<'w, PendingActiveGameplayAbilities>,
 }
 
-impl<'w, 's> Deref for AbilitySystemParams<'w, 's> {
+impl<'w, 's, P: AdditionalCostProvider> Deref for AbilitySystemParams<'w, 's, P> {
     type Target = EffectSystemParams<'w, 's>;
 
     fn deref(&self) -> &Self::Target {
@@ -73,7 +81,7 @@ impl<'w, 's> Deref for AbilitySystemParams<'w, 's> {
     }
 }
 
-impl<'w, 's> DerefMut for AbilitySystemParams<'w, 's> {
+impl<'w, 's, P: AdditionalCostProvider> DerefMut for AbilitySystemParams<'w, 's, P> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.effects
     }
@@ -84,7 +92,9 @@ impl<'w, 's> DerefMut for AbilitySystemParams<'w, 's> {
 /// UI and AI systems can use this parameter without borrowing commands, random state, or mutable
 /// gameplay components. A successful check is a snapshot, not permission to skip resolver checks.
 #[derive(SystemParam)]
-pub struct AbilityActivationCheckParams<'w, 's> {
+pub struct AbilityActivationCheckParams<'w, 's, P: AdditionalCostProvider = ()> {
+    /// Read-only external-resource access corresponding to the runtime provider.
+    pub additional_costs: StaticSystemParam<'w, 's, <P as AdditionalCostProvider>::ReadOnly>,
     /// Read-only tags, attributes, active effects, and identifier registries.
     pub effects: EffectReadOnlyParams<'w, 's>,
     /// Granted abilities and blocking tags on gameplay actors.

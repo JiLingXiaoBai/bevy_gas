@@ -13,6 +13,9 @@ pub use queue::{GameplayExecutionQueue, GameplayExecutionQueueError, GameplayExe
 pub use request::{
     AbilityActivationRequest, GameplayEffectApplicationRequest, GameplayExecutionRequest,
 };
-pub use resolver::{gameplay_execution_queue_has_work, process_gameplay_execution_queue_system};
+pub use resolver::{
+    gameplay_execution_queue_has_work, process_gameplay_execution_queue_system,
+    process_gameplay_execution_queue_with_costs_system,
+};
 
 pub use result::{GameplayExecutionError, GameplayExecutionOutcome, GameplayExecutionResult};

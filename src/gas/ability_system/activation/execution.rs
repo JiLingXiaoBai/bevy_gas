@@ -1,4 +1,6 @@
-use super::super::commit::{execute_ability_commit_plans, prepare_ability_commit_plans};
+use super::super::commit::{
+    AdditionalCostProvider, execute_ability_commit_plans, prepare_ability_commit_plans,
+};
 use super::super::lifecycle::cancel_active_abilities_with_tags;
 use super::super::params::AbilitySystemParams;
 use super::error::{AbilityActivationError, ability_activation_failed};
@@ -21,6 +23,8 @@ use bevy::prelude::*;
 /// Runtime producer systems should enqueue activations instead of mixing this immediate API with
 /// already queued mutations in the same logical phase. "Synchronous" describes logical resolution,
 /// not transactional rollback or an immediate flush of entity changes queued through [`Commands`].
+/// Use the same additional-cost provider in `params` as on the runtime plugin. External payment
+/// completes before startup and is not refunded by subsequent cancellation or startup failure.
 /// Startup effects and child activations are best-effort: failures are logged and do not roll back
 /// earlier actions or fail the parent activation. Event observers remain deferred.
 ///
@@ -32,7 +36,7 @@ pub fn try_activate_ability_by_handle(
     targets: impl Into<AbilityActivationTargets>,
     handle: AbilitySpecHandle,
     activation_context: AbilityActivationContext,
-    params: &mut AbilitySystemParams,
+    params: &mut AbilitySystemParams<'_, '_, impl AdditionalCostProvider>,
 ) -> Result<(), AbilityActivationError> {
     resolve_active_effect_tag_requirements(&mut params.effects);
     params
@@ -48,7 +52,7 @@ pub fn try_activate_ability_by_handle(
 
 pub(crate) fn execute_ability_activation_in_batch(
     request: AbilityActivationRequest,
-    params: &mut AbilitySystemParams,
+    params: &mut AbilitySystemParams<'_, '_, impl AdditionalCostProvider>,
 ) -> Result<(), AbilityActivationError> {
     let startup = begin_ability_activation(request, params)?;
     run_startup_ability_tasks(startup, params);
@@ -57,7 +61,7 @@ pub(crate) fn execute_ability_activation_in_batch(
 
 pub(super) fn begin_ability_activation(
     request: AbilityActivationRequest,
-    params: &mut AbilitySystemParams,
+    params: &mut AbilitySystemParams<'_, '_, impl AdditionalCostProvider>,
 ) -> Result<StartupAbility, AbilityActivationError> {
     let source = request.get_source();
     let handle = request.get_handle();

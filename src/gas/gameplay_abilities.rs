@@ -8,6 +8,7 @@ mod ability_task;
 mod activation_context;
 mod activation_data;
 mod active_gameplay_ability;
+mod additional_cost;
 mod gameplay_ability;
 mod gameplay_ability_spec;
 
@@ -22,5 +23,6 @@ pub use activation_data::AbilityActivationData;
 pub use active_gameplay_ability::{
     AbilityActivationStatus, ActiveAbilityHandle, ActiveGameplayAbility,
 };
+pub use additional_cost::{AdditionalCost, AdditionalCostError};
 pub use gameplay_ability::{AbilityTags, GameplayAbility};
 pub use gameplay_ability_spec::{AbilitySpecHandle, GameplayAbilitySpec};

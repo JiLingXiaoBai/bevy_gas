@@ -12,6 +12,7 @@ use bevy_gas::{
     GameplayAbility, GameplayAbilitySystemBundle, GameplayAbilitySystemSet, GameplayEffect,
     GameplayExecutionQueue, GameplayTag, GameplayTagContainer, Modifier, ModifierEvaluationContext,
     ModifierMagnitude, ModifierMagnitudeCalculation, ModifierOperation, StackingPolicy,
+    process_gameplay_execution_queue_system,
 };
 use std::sync::Arc;
 
@@ -425,4 +426,38 @@ fn stale_active_effect_handle_cannot_remove_reused_slot() {
         active_effect_handles(&app, target),
         vec![replacement_handle]
     );
+}
+
+#[test]
+fn default_runtime_preserves_ordering_against_the_public_resolver_system() {
+    let mut app = test_app();
+    let health = register_attribute(&mut app, "Health");
+    let target = spawn_attribute_set(&mut app, health, 10.0);
+    let effect = Arc::new(GameplayEffect::new(
+        vec![add_modifier(health, 5.0)],
+        EffectDurationTicks::Instant,
+        None,
+        1.0,
+        StackingPolicy::non_stacking(),
+        empty_effect_tags(),
+    ));
+    app.insert_resource(OneShotEffectRequest {
+        target,
+        effect,
+        submitted: false,
+    });
+    app.add_systems(
+        FixedUpdate,
+        (
+            submit_one_shot_effect_request.before(process_gameplay_execution_queue_system),
+            (|request: Res<OneShotEffectRequest>, queue: Res<GameplayExecutionQueue>| {
+                assert!(request.submitted);
+                assert!(queue.is_empty());
+            })
+            .after(process_gameplay_execution_queue_system),
+        )
+            .in_set(GameplayAbilitySystemSet::GameplayResolve),
+    );
+    run_fixed_update(&mut app);
+    assert_eq!(current_value(&mut app, target, health), 15.0);
 }

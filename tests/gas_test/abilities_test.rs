@@ -57,3 +57,6 @@ mod tasks_test;
 
 #[path = "abilities_test/deferred_lifecycle_test.rs"]
 mod deferred_lifecycle_test;
+
+#[path = "abilities_test/additional_cost_test.rs"]
+mod additional_cost_test;
