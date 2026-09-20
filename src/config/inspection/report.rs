@@ -100,11 +100,11 @@ pub fn describe_ability_at_level(
             append_effect(&mut report, &prepared, effect_id, level)?;
         }
     }
-    for cost in prepared.additional_costs(id.0) {
+    for (order, cost) in prepared.additional_costs(id.0).iter().enumerate() {
         writeln!(
             report,
             "Additional cost / order {}: resource={}, amount={}",
-            cost.row.order, cost.row.resource, cost.amount
+            order, cost.row.resource, cost.amount
         )
         .map_err(report_error)?;
     }
@@ -114,7 +114,7 @@ pub fn describe_ability_at_level(
                 writeln!(
                     report,
                     "tick {} / order {}: ApplyEffect to {:?}",
-                    action.tick, action.row.order, scope
+                    action.tick, action.order, scope
                 )
                 .map_err(report_error)?;
                 append_effect(&mut report, &prepared, effect_id, level)?;
@@ -122,7 +122,7 @@ pub fn describe_ability_at_level(
             PreparedActionKind::EndAbility => writeln!(
                 report,
                 "tick {} / order {}: EndAbility",
-                action.tick, action.row.order
+                action.tick, action.order
             )
             .map_err(report_error)?,
         }

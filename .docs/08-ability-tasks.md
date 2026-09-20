@@ -167,8 +167,9 @@ startup definitions 按定义顺序处理。每个 Instant 效果结算并收敛
 两条路径都不提供事务回滚。单个效果或链式子激活失败后，仍可执行后续动作；已经成功的效果
 不会回滚。Batch 也不会改变 EmitEvent 的 deferred 时机。
 
-独立 sibling 任务仍按 Entity bits 排序，不能通过创建多个同 tick WaitTicks 表达策划的 order。
-配置编译器因此将同一技能、同一 at_tick 的动作合为一个 Batch，详情见
+独立 sibling 任务仍按 Entity bits 排序，不能通过创建多个同 tick WaitTicks 表达策划的动作顺序。
+配置编译器因此将同一技能、同一 at_tick 的动作按父技能 `task_ids` 中的位置合为一个 Batch；
+不同 tick 仍相对激活时点并行计时，详情见
 [20 — 技能配置](./20-gas-configuration.md)。
 
 ## Tick 算法与生命周期

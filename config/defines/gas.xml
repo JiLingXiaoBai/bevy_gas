@@ -4,10 +4,10 @@
     <table name="TbTag" value="gas.Tag" readSchemaFromFile="true" input="gas.tag.xlsx" index="name" mode="map" comment="Gameplay tag names and descriptions."/>
     <table name="TbAttribute" value="gas.Attribute" readSchemaFromFile="true" input="gas.attribute.xlsx" index="name" mode="map" comment="Attribute names and storage regions."/>
     <table name="TbEffect" value="gas.Effect" readSchemaFromFile="true" input="gas.effect.xlsx" index="id" mode="map" comment="Gameplay effect definitions."/>
-    <table name="TbModifier" value="gas.Modifier" readSchemaFromFile="true" input="gas.modifier.xlsx" index="id" mode="map" comment="Ordered attribute modifiers grouped by effect."/>
+    <table name="TbModifier" value="gas.Modifier" readSchemaFromFile="true" input="gas.modifier.xlsx" index="id" mode="map" comment="Reusable attribute modifiers referenced by effects."/>
     <table name="TbAbility" value="gas.Ability" readSchemaFromFile="true" input="gas.ability.xlsx" index="id" mode="map" comment="Gameplay ability definitions and activation rules."/>
-    <table name="TbAbilityAdditionalCost" value="gas.AbilityAdditionalCost" readSchemaFromFile="true" input="gas.ability_additional_cost.xlsx" index="id" mode="map" comment="Ordered additional resource costs grouped by ability."/>
-    <table name="TbAbilityTask" value="gas.AbilityTask" readSchemaFromFile="true" input="gas.ability_task.xlsx" index="id" mode="map" comment="Ordered actions scheduled relative to ability activation."/>
+    <table name="TbAbilityAdditionalCost" value="gas.AbilityAdditionalCost" readSchemaFromFile="true" input="gas.ability_additional_cost.xlsx" index="id" mode="map" comment="Reusable additional resource costs referenced by abilities."/>
+    <table name="TbAbilityTask" value="gas.AbilityTask" readSchemaFromFile="true" input="gas.ability_task.xlsx" index="id" mode="map" comment="Reusable actions scheduled relative to ability activation."/>
     <table name="TbTargeting" value="gas.Targeting" readSchemaFromFile="true" input="gas.targeting.xlsx" index="id" mode="map" comment="Target selection, filtering, ordering, and limits."/>
 
     <enum name="AttributeRegion" flags="false" unique="true" comment="Valid AttributeRegion values.">

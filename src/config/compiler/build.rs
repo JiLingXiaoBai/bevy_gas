@@ -45,7 +45,7 @@ pub fn compile_catalog(tables: &Tables, world: &mut World) -> Result<GameplayCat
     // The snapshots serve as both registration preflight and the eventual commit.
     let tags = register_tags(tables, &mut names, &mut tag_manager)?;
     let attributes = register_attributes(tables, &mut names, &mut attribute_manager)?;
-    let additional_cost_resources = register_additional_cost_resources(tables, &mut names)?;
+    let additional_cost_resources = register_additional_cost_resources(&prepared, &mut names)?;
     let effects = compile_effects(&prepared, &tags, &attributes)?;
     let mut targeting = BTreeMap::new();
     for row in tables.tb_targeting.iter() {

@@ -256,7 +256,9 @@ src/
 | `compiler/magnitude.rs`、`compiler/numeric.rs` | 线性幅度求值及运行时计算器、编译与校验共用的数值纯函数           |
 | `compiler/validation.rs`                       | 仅在 feature 启用时执行的完整制作规则校验                        |
 
-`compiler/preparation.rs` 借用原始行，集中解析动作、幅度、额外消耗和关系排序，校验、编译和报告共用。
+`compiler/preparation.rs` 借用原始行，按 Ability 的 `task_ids`、`additional_cost_ids` 和 Effect 的
+`modifier_ids` 解析有序关系，集中处理动作、幅度和额外消耗，校验、编译和报告共用。
+父列表内检查重复 ID 与缺失引用，跨父允许复用定义；任务按 tick 排序，同 tick 保留父列表顺序。
 编译器在三个注册表的私有快照上构建；返回 Err 保留原 World，成功才提交完整快照。
 共用数值判断不改变校验策略：运行时必要检查始终执行，制作限制和全等级预演仍由 feature 控制。
 `ConfigError` 属于配置领域公共错误，读取或授予代码无需通过 compiler 获取它。
@@ -448,6 +450,7 @@ tests/
 ├── config_test/
 │   ├── runtime_test.rs
 │   ├── compilation_test.rs
+│   ├── references_test.rs
 │   └── additional_cost_test.rs
 ├── gas_test.rs
 ├── gas_test/

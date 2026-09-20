@@ -1,6 +1,6 @@
 //! Deterministic registry construction and tag reference resolution.
 
-use super::{ConfigError, ConfigErrorKind, ConfigLocation, Tables, data};
+use super::{ConfigError, ConfigErrorKind, ConfigLocation, PreparedTables, Tables, data};
 use crate::{
     AttributeId, AttributeIdManager, AttributeRegion, GameplayTag, GameplayTagBits,
     GameplayTagManager, UniqueName, UniqueNamePool, add_bit_with_tag,
@@ -97,12 +97,15 @@ pub(super) fn register_attributes(
 }
 
 pub(super) fn register_additional_cost_resources<'a>(
-    tables: &'a Tables,
+    prepared: &PreparedTables<'a>,
     names: &mut UniqueNamePool,
 ) -> Result<BTreeMap<&'a str, UniqueName>, ConfigError> {
     let mut ordered = BTreeMap::new();
-    for row in tables.tb_ability_additional_cost.iter() {
-        ordered.entry(row.resource.as_str()).or_insert(row.id);
+    for ability in prepared.tables.tb_ability.iter() {
+        for cost in prepared.additional_costs(ability.id) {
+            let row = cost.row;
+            ordered.entry(row.resource.as_str()).or_insert(row.id);
+        }
     }
     let mut resources = BTreeMap::new();
     for (resource, row_id) in ordered {

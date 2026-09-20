@@ -133,6 +133,11 @@ fn validate_additional_costs(tables: &Tables) -> Result<(), ConfigError> {
             context.field("resource"),
             "use nonempty dot-separated ASCII name segments",
         )?;
+        require(
+            (1..=i64::from(u32::MAX)).contains(&row.amount),
+            context.field("amount"),
+            "amount must be in 1..=4294967295",
+        )?;
     }
     Ok(())
 }
@@ -242,7 +247,6 @@ fn validate_effects(tables: &Tables) -> Result<(), ConfigError> {
 
 fn validate_modifiers(tables: &Tables) -> Result<(), ConfigError> {
     let mut ids = BTreeSet::new();
-    let mut positions = BTreeSet::new();
     for row in tables.tb_modifier.iter() {
         let context = ConfigLocation::table("Modifier").row(row.id);
         require(
@@ -251,19 +255,9 @@ fn validate_modifiers(tables: &Tables) -> Result<(), ConfigError> {
             "modifier ID must be positive and unique",
         )?;
         require(
-            tables.tb_effect.get(&row.effect_id).is_some(),
-            context.field("effect_id"),
-            "unknown effect",
-        )?;
-        require(
             tables.tb_attribute.get(&row.attribute).is_some(),
             context.field("attribute"),
             "unknown attribute",
-        )?;
-        require(
-            row.order >= 0 && positions.insert((row.effect_id, row.order)),
-            context.field("order"),
-            "order must be nonnegative and unique within the effect",
         )?;
         require(
             formula_parameters_are_finite(row.base, Some(row.per_level)),
@@ -358,7 +352,6 @@ fn validate_targeting(tables: &Tables) -> Result<(), ConfigError> {
 
 fn validate_actions(tables: &Tables) -> Result<(), ConfigError> {
     let mut ids = BTreeSet::new();
-    let mut positions = BTreeSet::new();
     for row in tables.tb_ability_task.iter() {
         let context = ConfigLocation::table("AbilityTask").row(row.id);
         require(
@@ -367,19 +360,9 @@ fn validate_actions(tables: &Tables) -> Result<(), ConfigError> {
             "action ID must be positive and unique",
         )?;
         require(
-            tables.tb_ability.get(&row.ability_id).is_some(),
-            context.field("ability_id"),
-            "unknown ability",
-        )?;
-        require(
             (0..=MAX_CONFIG_TICKS).contains(&row.at_tick),
             context.field("at_tick"),
             "at_tick must be in 0..=1000000; zero means activation startup",
-        )?;
-        require(
-            row.order >= 0 && positions.insert((row.ability_id, row.at_tick, row.order)),
-            context.field("order"),
-            "(ability_id, at_tick, order) must be unique and order nonnegative",
         )?;
         match row.kind {
             ActionKind::ApplyEffect => {

@@ -8,6 +8,7 @@ tests/
 ├── config_test/
 │   ├── runtime_test.rs                 # 默认读取、包校验和业务校验的 feature 边界
 │   ├── compilation_test.rs             # 编译原子性、重试和准备结果一致性
+│   ├── references_test.rs              # 父列表引用、共享修改器、二进制布局和未引用定义校验
 │   └── additional_cost_test.rs         # 额外消耗配置、校验、确定性与实际支付
 ├── gas_test.rs                         # GAS 集成测试 crate 门面
 ├── gas_test/
@@ -258,8 +259,12 @@ manifest 和 GAS 编译结果后才发布；随后可运行配置预览和 `conf
   不要求随机数资源，返回具体原因且不修改 Gameplay 状态。
 - `abilities_test/lifecycle_test.rs`：Active Ability/ASC 移除和替换时的计数、共享阻止标签、任务清理。
 - `effects_test/removal_test.rs`：容器移除/替换撤销旧标签和修饰器，旧句柄不会复活。
-- `config_test/compilation_test.rs`：失败编译保留资源和编号，重试及乱序输入的时间线一致性。
-- `config_test/additional_cost_test.rs`：外部消耗表解码、校验与排序、名称注册和配置技能实际支付。
+- `config_test/compilation_test.rs`：失败编译保留资源和编号，重试及乱序输入的时间线一致性，
+  父列表的任务顺序与显式 EndAbility 约束。
+- `config_test/references_test.rs`：三个父列表的重复和缺失引用、共享修改器的独立顺序、
+  新二进制布局，以及未引用定义在完整业务校验中的自身字段检查。
+- `config_test/additional_cost_test.rs`：外部消耗表解码、父列表顺序与共享、
+  每技能资源累计数量校验、名称注册和配置技能实际支付。
 
 测量 fixture 默认忽略，不以耗时阈值判定普通测试成败：
 

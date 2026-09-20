@@ -23,10 +23,10 @@ pub(crate) enum PreparedTargetScope {
     AllCaptured,
 }
 
-/// One authored action with its checked tick and resolved payload.
-pub(crate) struct PreparedAction<'a> {
-    pub(crate) row: &'a data::AbilityTask,
+/// One authored action with its checked tick, parent-list position, and resolved payload.
+pub(crate) struct PreparedAction {
     pub(crate) tick: u32,
+    pub(crate) order: usize,
     pub(crate) kind: PreparedActionKind,
 }
 
@@ -61,7 +61,7 @@ pub(crate) struct PreparedModifier<'a> {
 /// A short-lived view retaining generated rows and deterministic relation indexes.
 pub(crate) struct PreparedTables<'a> {
     pub(crate) tables: &'a Tables,
-    actions: BTreeMap<i32, Vec<PreparedAction<'a>>>,
+    actions: BTreeMap<i32, Vec<PreparedAction>>,
     additional_costs: BTreeMap<i32, Vec<PreparedAdditionalCost<'a>>>,
     modifiers: BTreeMap<i32, Vec<PreparedModifier<'a>>>,
 }
@@ -71,93 +71,26 @@ impl<'a> PreparedTables<'a> {
         let mut prepared = Self {
             tables,
             actions: BTreeMap::new(),
-            additional_costs: prepare_additional_costs(tables)?,
+            additional_costs: BTreeMap::new(),
             modifiers: BTreeMap::new(),
         };
-        for row in tables.tb_ability_task.iter() {
-            // Orphan rows remain authoring errors; trusted runtime tables ignore unused rows.
-            if tables.tb_ability.get(&row.ability_id).is_none() {
-                continue;
-            }
-            let location = ConfigLocation::table("AbilityTask").row(row.id);
-            let tick = u32::try_from(row.at_tick).map_err(|error| {
-                ConfigError::new(
-                    ConfigErrorKind::InvalidValue,
-                    location.field("at_tick"),
-                    error.to_string(),
-                )
-            })?;
-            let kind = match row.kind {
-                data::ActionKind::EndAbility => PreparedActionKind::EndAbility,
-                data::ActionKind::ApplyEffect => {
-                    let effect_id = row
-                        .effect_id
-                        .filter(|id| tables.tb_effect.get(id).is_some())
-                        .ok_or_else(|| {
-                            ConfigError::new(
-                                ConfigErrorKind::Reference,
-                                location.field("effect_id"),
-                                "ApplyEffect requires a known effect",
-                            )
-                        })?;
-                    let scope = match row.target_scope {
-                        data::TargetScope::Primary => PreparedTargetScope::Primary,
-                        data::TargetScope::AllCaptured => PreparedTargetScope::AllCaptured,
-                        data::TargetScope::None => {
-                            return Err(ConfigError::new(
-                                ConfigErrorKind::InvalidValue,
-                                location.field("target_scope"),
-                                "ApplyEffect needs a target scope",
-                            ));
-                        }
-                    };
-                    PreparedActionKind::ApplyEffect { effect_id, scope }
-                }
-            };
+        for ability in tables.tb_ability.iter() {
             prepared
                 .actions
-                .entry(row.ability_id)
-                .or_default()
-                .push(PreparedAction { row, tick, kind });
+                .insert(ability.id, prepare_actions(tables, ability)?);
+            prepared
+                .additional_costs
+                .insert(ability.id, prepare_additional_costs(tables, ability)?);
         }
-        for actions in prepared.actions.values_mut() {
-            actions.sort_by_key(|action| (action.tick, action.row.order));
-        }
-        for row in tables.tb_modifier.iter() {
-            if tables.tb_effect.get(&row.effect_id).is_none() {
-                continue;
-            }
-            let slope =
-                (row.magnitude_kind == data::MagnitudeKind::LinearLevel).then_some(row.per_level);
-            if !formula_parameters_are_finite(row.base, slope) {
-                return Err(ConfigError::new(
-                    ConfigErrorKind::InvalidValue,
-                    ConfigLocation::table("Modifier")
-                        .row(row.id)
-                        .field("magnitude"),
-                    "used formula parameters must be finite",
-                ));
-            }
-            let magnitude = match row.magnitude_kind {
-                data::MagnitudeKind::Flat => PreparedMagnitude::Flat(row.base),
-                data::MagnitudeKind::LinearLevel => PreparedMagnitude::LinearLevel {
-                    base: row.base,
-                    per_level: row.per_level,
-                },
-            };
+        for effect in tables.tb_effect.iter() {
             prepared
                 .modifiers
-                .entry(row.effect_id)
-                .or_default()
-                .push(PreparedModifier { row, magnitude });
-        }
-        for modifiers in prepared.modifiers.values_mut() {
-            modifiers.sort_by_key(|modifier| modifier.row.order);
+                .insert(effect.id, prepare_modifiers(tables, effect)?);
         }
         Ok(prepared)
     }
 
-    pub(crate) fn actions(&self, ability_id: i32) -> &[PreparedAction<'a>] {
+    pub(crate) fn actions(&self, ability_id: i32) -> &[PreparedAction] {
         self.actions
             .get(&ability_id)
             .map(Vec::as_slice)
@@ -179,34 +112,103 @@ impl<'a> PreparedTables<'a> {
     }
 }
 
-fn prepare_additional_costs(
+fn resolve_reference<'a, T>(
+    id: i32,
+    row: Option<&'a T>,
+    seen: &mut BTreeSet<i32>,
+    location: &ConfigLocation,
+) -> Result<&'a T, ConfigError> {
+    if !seen.insert(id) {
+        return Err(ConfigError::new(
+            ConfigErrorKind::InvalidValue,
+            location,
+            format!("duplicate referenced ID {id}"),
+        ));
+    }
+    row.ok_or_else(|| {
+        ConfigError::new(
+            ConfigErrorKind::Reference,
+            location,
+            format!("unknown referenced ID {id}"),
+        )
+    })
+}
+
+fn prepare_actions(
     tables: &Tables,
-) -> Result<BTreeMap<i32, Vec<PreparedAdditionalCost<'_>>>, ConfigError> {
-    let mut costs: BTreeMap<i32, Vec<PreparedAdditionalCost<'_>>> = BTreeMap::new();
-    let mut positions = BTreeSet::new();
-    let mut totals: BTreeMap<(i32, &str), u32> = BTreeMap::new();
-    for row in tables.tb_ability_additional_cost.iter() {
+    ability: &data::Ability,
+) -> Result<Vec<PreparedAction>, ConfigError> {
+    let mut actions = Vec::with_capacity(ability.task_ids.len());
+    let mut seen = BTreeSet::new();
+    let references = ConfigLocation::table("Ability")
+        .row(ability.id)
+        .field("task_ids");
+    for (order, &id) in ability.task_ids.iter().enumerate() {
+        let row = resolve_reference(id, tables.tb_ability_task.get(&id), &mut seen, &references)?;
+        let location = ConfigLocation::table("AbilityTask").row(row.id);
+        let tick = u32::try_from(row.at_tick).map_err(|error| {
+            ConfigError::new(
+                ConfigErrorKind::InvalidValue,
+                location.field("at_tick"),
+                error.to_string(),
+            )
+        })?;
+        let kind = match row.kind {
+            data::ActionKind::EndAbility => PreparedActionKind::EndAbility,
+            data::ActionKind::ApplyEffect => {
+                let effect_id = row
+                    .effect_id
+                    .filter(|id| tables.tb_effect.get(id).is_some())
+                    .ok_or_else(|| {
+                        ConfigError::new(
+                            ConfigErrorKind::Reference,
+                            location.field("effect_id"),
+                            "ApplyEffect requires a known effect",
+                        )
+                    })?;
+                let scope = match row.target_scope {
+                    data::TargetScope::Primary => PreparedTargetScope::Primary,
+                    data::TargetScope::AllCaptured => PreparedTargetScope::AllCaptured,
+                    data::TargetScope::None => {
+                        return Err(ConfigError::new(
+                            ConfigErrorKind::InvalidValue,
+                            location.field("target_scope"),
+                            "ApplyEffect needs a target scope",
+                        ));
+                    }
+                };
+                PreparedActionKind::ApplyEffect { effect_id, scope }
+            }
+        };
+        actions.push(PreparedAction { tick, order, kind });
+    }
+    actions.sort_by_key(|action| (action.tick, action.order));
+    Ok(actions)
+}
+
+fn prepare_additional_costs<'a>(
+    tables: &'a Tables,
+    ability: &data::Ability,
+) -> Result<Vec<PreparedAdditionalCost<'a>>, ConfigError> {
+    let mut costs = Vec::with_capacity(ability.additional_cost_ids.len());
+    let mut seen = BTreeSet::new();
+    let mut totals: BTreeMap<&str, u32> = BTreeMap::new();
+    let references = ConfigLocation::table("Ability")
+        .row(ability.id)
+        .field("additional_cost_ids");
+    for &id in &ability.additional_cost_ids {
+        let row = resolve_reference(
+            id,
+            tables.tb_ability_additional_cost.get(&id),
+            &mut seen,
+            &references,
+        )?;
         let location = ConfigLocation::table("AbilityAdditionalCost").row(row.id);
-        // Ignoring an orphan requirement could silently make an authored ability free.
-        if tables.tb_ability.get(&row.ability_id).is_none() {
-            return Err(ConfigError::new(
-                ConfigErrorKind::Reference,
-                location.field("ability_id"),
-                "unknown ability",
-            ));
-        }
         if row.resource.trim().is_empty() {
             return Err(ConfigError::new(
                 ConfigErrorKind::InvalidValue,
                 location.field("resource"),
                 "resource must not be blank",
-            ));
-        }
-        if row.order < 0 || !positions.insert((row.ability_id, row.order)) {
-            return Err(ConfigError::new(
-                ConfigErrorKind::InvalidValue,
-                location.field("order"),
-                "order must be nonnegative and unique within the ability",
             ));
         }
         let amount = u32::try_from(row.amount)
@@ -219,7 +221,7 @@ fn prepare_additional_costs(
                     "amount must be in 1..=4294967295",
                 )
             })?;
-        let total = totals.entry((row.ability_id, &row.resource)).or_default();
+        let total = totals.entry(row.resource.as_str()).or_default();
         *total = total.checked_add(amount).ok_or_else(|| {
             ConfigError::new(
                 ConfigErrorKind::InvalidValue,
@@ -227,13 +229,41 @@ fn prepare_additional_costs(
                 "total amount for this ability and resource exceeds u32 capacity",
             )
         })?;
-        costs
-            .entry(row.ability_id)
-            .or_default()
-            .push(PreparedAdditionalCost { row, amount });
-    }
-    for costs in costs.values_mut() {
-        costs.sort_by_key(|cost| cost.row.order);
+        costs.push(PreparedAdditionalCost { row, amount });
     }
     Ok(costs)
+}
+
+fn prepare_modifiers<'a>(
+    tables: &'a Tables,
+    effect: &data::Effect,
+) -> Result<Vec<PreparedModifier<'a>>, ConfigError> {
+    let mut modifiers = Vec::with_capacity(effect.modifier_ids.len());
+    let mut seen = BTreeSet::new();
+    let references = ConfigLocation::table("Effect")
+        .row(effect.id)
+        .field("modifier_ids");
+    for &id in &effect.modifier_ids {
+        let row = resolve_reference(id, tables.tb_modifier.get(&id), &mut seen, &references)?;
+        let slope =
+            (row.magnitude_kind == data::MagnitudeKind::LinearLevel).then_some(row.per_level);
+        if !formula_parameters_are_finite(row.base, slope) {
+            return Err(ConfigError::new(
+                ConfigErrorKind::InvalidValue,
+                ConfigLocation::table("Modifier")
+                    .row(row.id)
+                    .field("magnitude"),
+                "used formula parameters must be finite",
+            ));
+        }
+        let magnitude = match row.magnitude_kind {
+            data::MagnitudeKind::Flat => PreparedMagnitude::Flat(row.base),
+            data::MagnitudeKind::LinearLevel => PreparedMagnitude::LinearLevel {
+                base: row.base,
+                per_level: row.per_level,
+            },
+        };
+        modifiers.push(PreparedModifier { row, magnitude });
+    }
+    Ok(modifiers)
 }

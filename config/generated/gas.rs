@@ -309,6 +309,8 @@ pub struct Ability {
     pub max_level: i32,
     /// Configures cost_effect_id.
     pub cost_effect_id: Option<i32>,
+    /// Configures additional_cost_ids.
+    pub additional_cost_ids: Vec<i32>,
     /// Configures cooldown_effect_id.
     pub cooldown_effect_id: Option<i32>,
     /// Configures asset_tags.
@@ -325,6 +327,8 @@ pub struct Ability {
     pub targeting_id: i32,
     /// Configures allow_multiple_instances.
     pub allow_multiple_instances: bool,
+    /// Configures task_ids.
+    pub task_ids: Vec<i32>,
 }
 
 impl Decode for Ability {
@@ -335,6 +339,8 @@ impl Decode for Ability {
             Decode::decode(buf).map_err(|error| error.context("Ability.max_level"))?;
         let cost_effect_id: Option<i32> =
             Decode::decode(buf).map_err(|error| error.context("Ability.cost_effect_id"))?;
+        let additional_cost_ids: Vec<i32> =
+            Decode::decode(buf).map_err(|error| error.context("Ability.additional_cost_ids"))?;
         let cooldown_effect_id: Option<i32> =
             Decode::decode(buf).map_err(|error| error.context("Ability.cooldown_effect_id"))?;
         let asset_tags: Vec<String> =
@@ -351,11 +357,14 @@ impl Decode for Ability {
             Decode::decode(buf).map_err(|error| error.context("Ability.targeting_id"))?;
         let allow_multiple_instances: bool = Decode::decode(buf)
             .map_err(|error| error.context("Ability.allow_multiple_instances"))?;
+        let task_ids: Vec<i32> =
+            Decode::decode(buf).map_err(|error| error.context("Ability.task_ids"))?;
         Ok(Self {
             id,
             name,
             max_level,
             cost_effect_id,
+            additional_cost_ids,
             cooldown_effect_id,
             asset_tags,
             required_tags,
@@ -364,6 +373,7 @@ impl Decode for Ability {
             block_ability_tags,
             targeting_id,
             allow_multiple_instances,
+            task_ids,
         })
     }
 }
@@ -373,10 +383,6 @@ impl Decode for Ability {
 pub struct AbilityAdditionalCost {
     /// Configures id.
     pub id: i32,
-    /// Configures ability_id.
-    pub ability_id: i32,
-    /// Configures order.
-    pub order: i32,
     /// Configures resource.
     pub resource: String,
     /// Configures amount.
@@ -387,18 +393,12 @@ impl Decode for AbilityAdditionalCost {
     fn decode(buf: &mut ByteBuf) -> Result<Self, DecodeError> {
         let id: i32 =
             Decode::decode(buf).map_err(|error| error.context("AbilityAdditionalCost.id"))?;
-        let ability_id: i32 = Decode::decode(buf)
-            .map_err(|error| error.context("AbilityAdditionalCost.ability_id"))?;
-        let order: i32 =
-            Decode::decode(buf).map_err(|error| error.context("AbilityAdditionalCost.order"))?;
         let resource: String =
             Decode::decode(buf).map_err(|error| error.context("AbilityAdditionalCost.resource"))?;
         let amount: i64 =
             Decode::decode(buf).map_err(|error| error.context("AbilityAdditionalCost.amount"))?;
         Ok(Self {
             id,
-            ability_id,
-            order,
             resource,
             amount,
         })
@@ -410,12 +410,8 @@ impl Decode for AbilityAdditionalCost {
 pub struct AbilityTask {
     /// Configures id.
     pub id: i32,
-    /// Configures ability_id.
-    pub ability_id: i32,
     /// Configures at_tick.
     pub at_tick: i32,
-    /// Configures order.
-    pub order: i32,
     /// Configures kind.
     pub kind: crate::config::generated::gas::ActionKind,
     /// Configures target_scope.
@@ -427,11 +423,8 @@ pub struct AbilityTask {
 impl Decode for AbilityTask {
     fn decode(buf: &mut ByteBuf) -> Result<Self, DecodeError> {
         let id: i32 = Decode::decode(buf).map_err(|error| error.context("AbilityTask.id"))?;
-        let ability_id: i32 =
-            Decode::decode(buf).map_err(|error| error.context("AbilityTask.ability_id"))?;
         let at_tick: i32 =
             Decode::decode(buf).map_err(|error| error.context("AbilityTask.at_tick"))?;
-        let order: i32 = Decode::decode(buf).map_err(|error| error.context("AbilityTask.order"))?;
         let kind: crate::config::generated::gas::ActionKind =
             Decode::decode(buf).map_err(|error| error.context("AbilityTask.kind"))?;
         let target_scope: crate::config::generated::gas::TargetScope =
@@ -440,9 +433,7 @@ impl Decode for AbilityTask {
             Decode::decode(buf).map_err(|error| error.context("AbilityTask.effect_id"))?;
         Ok(Self {
             id,
-            ability_id,
             at_tick,
-            order,
             kind,
             target_scope,
             effect_id,
@@ -497,6 +488,8 @@ pub struct Effect {
     pub asset_tags: Vec<String>,
     /// Configures granted_tags.
     pub granted_tags: Vec<String>,
+    /// Configures modifier_ids.
+    pub modifier_ids: Vec<i32>,
 }
 
 impl Decode for Effect {
@@ -517,6 +510,8 @@ impl Decode for Effect {
             Decode::decode(buf).map_err(|error| error.context("Effect.asset_tags"))?;
         let granted_tags: Vec<String> =
             Decode::decode(buf).map_err(|error| error.context("Effect.granted_tags"))?;
+        let modifier_ids: Vec<i32> =
+            Decode::decode(buf).map_err(|error| error.context("Effect.modifier_ids"))?;
         Ok(Self {
             id,
             name,
@@ -527,6 +522,7 @@ impl Decode for Effect {
             probability,
             asset_tags,
             granted_tags,
+            modifier_ids,
         })
     }
 }
@@ -536,10 +532,6 @@ impl Decode for Effect {
 pub struct Modifier {
     /// Configures id.
     pub id: i32,
-    /// Configures effect_id.
-    pub effect_id: i32,
-    /// Configures order.
-    pub order: i32,
     /// Configures attribute.
     pub attribute: String,
     /// Configures operation.
@@ -555,9 +547,6 @@ pub struct Modifier {
 impl Decode for Modifier {
     fn decode(buf: &mut ByteBuf) -> Result<Self, DecodeError> {
         let id: i32 = Decode::decode(buf).map_err(|error| error.context("Modifier.id"))?;
-        let effect_id: i32 =
-            Decode::decode(buf).map_err(|error| error.context("Modifier.effect_id"))?;
-        let order: i32 = Decode::decode(buf).map_err(|error| error.context("Modifier.order"))?;
         let attribute: String =
             Decode::decode(buf).map_err(|error| error.context("Modifier.attribute"))?;
         let operation: crate::config::generated::gas::ModifierOperation =
@@ -569,8 +558,6 @@ impl Decode for Modifier {
             Decode::decode(buf).map_err(|error| error.context("Modifier.per_level"))?;
         Ok(Self {
             id,
-            effect_id,
-            order,
             attribute,
             operation,
             magnitude_kind,
@@ -1321,6 +1308,7 @@ pub const SCHEMA_DESCRIPTOR: &str = concat!(
     "name:String;",
     "max_level:i32;",
     "cost_effect_id:Option<i32>;",
+    "additional_cost_ids:Vec<i32>;",
     "cooldown_effect_id:Option<i32>;",
     "asset_tags:Vec<String>;",
     "required_tags:Vec<String>;",
@@ -1329,17 +1317,14 @@ pub const SCHEMA_DESCRIPTOR: &str = concat!(
     "block_ability_tags:Vec<String>;",
     "targeting_id:i32;",
     "allow_multiple_instances:bool;",
+    "task_ids:Vec<i32>;",
     "bean:AbilityAdditionalCost;",
     "id:i32;",
-    "ability_id:i32;",
-    "order:i32;",
     "resource:String;",
     "amount:i64;",
     "bean:AbilityTask;",
     "id:i32;",
-    "ability_id:i32;",
     "at_tick:i32;",
-    "order:i32;",
     "kind:crate::gas::ActionKind;",
     "target_scope:crate::gas::TargetScope;",
     "effect_id:Option<i32>;",
@@ -1357,10 +1342,9 @@ pub const SCHEMA_DESCRIPTOR: &str = concat!(
     "probability:f32;",
     "asset_tags:Vec<String>;",
     "granted_tags:Vec<String>;",
+    "modifier_ids:Vec<i32>;",
     "bean:Modifier;",
     "id:i32;",
-    "effect_id:i32;",
-    "order:i32;",
     "attribute:String;",
     "operation:crate::gas::ModifierOperation;",
     "magnitude_kind:crate::gas::MagnitudeKind;",

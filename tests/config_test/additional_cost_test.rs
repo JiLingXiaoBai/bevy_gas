@@ -2,7 +2,7 @@ use super::runtime_test::{app, tables as base_tables};
 use bevy::ecs::system::{SystemParam, SystemParamItem, SystemState};
 use bevy::prelude::*;
 use bevy_gas::config::generated::gas::{
-    AbilityAdditionalCost, TbAbility, TbAbilityAdditionalCost, TbAbilityTask, TbTargeting,
+    AbilityAdditionalCost, TbAbility, TbAbilityAdditionalCost, TbTargeting,
 };
 use bevy_gas::config::generated::{ByteBuf, Tables};
 use bevy_gas::config::{
@@ -29,26 +29,33 @@ fn location(row: &str, field: &str) -> ConfigLocation {
     }
 }
 
-fn cost(id: i32, order: i32, resource: &str, amount: i64) -> AbilityAdditionalCost {
+fn cost(id: i32, resource: &str, amount: i64) -> AbilityAdditionalCost {
     AbilityAdditionalCost {
         id,
-        ability_id: 1,
-        order,
         resource: resource.to_owned(),
         amount,
     }
 }
 
 fn tables(rows: Vec<AbilityAdditionalCost>) -> Tables {
+    let mut ids: Vec<_> = rows.iter().map(|row| row.id).collect();
+    ids.sort_unstable();
+    tables_with_ids(rows, ids)
+}
+
+fn tables_with_ids(rows: Vec<AbilityAdditionalCost>, ids: Vec<i32>) -> Tables {
     let mut tables = base_tables(None);
+    let mut ability = tables.tb_ability.get(&1).unwrap().as_ref().clone();
+    ability.additional_cost_ids = ids;
+    tables.tb_ability = Arc::new(TbAbility::from_rows(vec![ability]).unwrap());
     tables.tb_ability_additional_cost = Arc::new(TbAbilityAdditionalCost::from_rows(rows).unwrap());
     tables
 }
 
 #[test]
 fn generated_cost_table_decodes_long_amount_and_compiles_the_requirement() {
-    // One row: id 7, ability 1, order 0, Inventory.Bomb, and the largest u32 amount.
-    let mut bytes = vec![1, 7, 1, 0, 14];
+    // One row: id 7, Inventory.Bomb, and the largest u32 amount.
+    let mut bytes = vec![1, 7, 14];
     bytes.extend_from_slice(b"Inventory.Bomb");
     bytes.extend_from_slice(&[0xf0, 0xff, 0xff, 0xff, 0xff]);
     let decoded = Tables::new(|name| {
@@ -60,12 +67,10 @@ fn generated_cost_table_decodes_long_amount_and_compiles_the_requirement() {
     })
     .unwrap();
     let row = decoded.tb_ability_additional_cost.get(&7).unwrap();
-    assert_eq!(row.ability_id, 1);
-    assert_eq!(row.order, 0);
     assert_eq!(row.resource, "Inventory.Bomb");
     assert_eq!(row.amount, i64::from(u32::MAX));
 
-    let mut tables = base_tables(None);
+    let mut tables = tables_with_ids(vec![], vec![7]);
     tables.tb_ability_additional_cost = decoded.tb_ability_additional_cost;
     let mut app = app();
     let catalog = compile_catalog(&tables, app.world_mut()).unwrap();
@@ -100,9 +105,9 @@ fn generated_cost_table_decodes_long_amount_and_compiles_the_requirement() {
 #[test]
 fn cost_order_and_name_registration_are_independent_of_input_row_order() {
     let rows = vec![
-        cost(1, 20, "Inventory.Ammo", 1),
-        cost(2, 10, "Inventory.ZBomb", 2),
-        cost(3, 0, "Inventory.ZBomb", 3),
+        cost(1, "Inventory.Ammo", 1),
+        cost(2, "Inventory.ZBomb", 2),
+        cost(3, "Inventory.ZBomb", 3),
     ];
     let mut compiled = Vec::new();
     for reverse in [false, true] {
@@ -114,7 +119,8 @@ fn cost_order_and_name_registration_are_independent_of_input_row_order() {
         if reverse {
             rows.reverse();
         }
-        let catalog = compile_catalog(&tables(rows), app.world_mut()).unwrap();
+        let catalog =
+            compile_catalog(&tables_with_ids(rows, vec![3, 2, 1]), app.world_mut()).unwrap();
         let requirements = catalog
             .ability(AbilityId(1))
             .unwrap()
@@ -137,24 +143,15 @@ fn cost_order_and_name_registration_are_independent_of_input_row_order() {
 fn malformed_costs_are_rejected_with_field_locations_in_every_feature_mode() {
     let mut cases = Vec::new();
     for amount in [i64::MIN, -1, 0, i64::from(u32::MAX) + 1, i64::MAX] {
-        cases.push((vec![cost(1, 0, "Inventory.Bomb", amount)], "1", "amount"));
+        cases.push((vec![cost(1, "Inventory.Bomb", amount)], "1", "amount"));
     }
     for resource in ["", " \t\n"] {
-        cases.push((vec![cost(1, 0, resource, 1)], "1", "resource"));
+        cases.push((vec![cost(1, resource, 1)], "1", "resource"));
     }
-    cases.push((vec![cost(1, -1, "Inventory.Bomb", 1)], "1", "order"));
     cases.push((
         vec![
-            cost(1, 0, "Inventory.Bomb", 1),
-            cost(2, 0, "Inventory.Ammo", 1),
-        ],
-        "2",
-        "order",
-    ));
-    cases.push((
-        vec![
-            cost(1, 0, "Inventory.Bomb", i64::from(u32::MAX)),
-            cost(2, 1, "Inventory.Bomb", 1),
+            cost(1, "Inventory.Bomb", i64::from(u32::MAX)),
+            cost(2, "Inventory.Bomb", 1),
         ],
         "2",
         "amount",
@@ -166,14 +163,6 @@ fn malformed_costs_are_rejected_with_field_locations_in_every_feature_mode() {
         assert_eq!(error.kind(), ConfigErrorKind::InvalidValue);
         assert_eq!(error.location(), &location(row, field));
     }
-
-    let mut missing_ability = cost(1, 0, "Inventory.Bomb", 1);
-    missing_ability.ability_id = 999;
-    let error = compile_catalog(&tables(vec![missing_ability]), app().world_mut())
-        .err()
-        .unwrap();
-    assert_eq!(error.kind(), ConfigErrorKind::Reference);
-    assert_eq!(error.location(), &location("1", "ability_id"));
 }
 
 #[test]
@@ -183,7 +172,7 @@ fn failed_compilation_does_not_publish_resource_names_or_replace_the_catalog() {
     let original_ability = Arc::clone(original.ability(AbilityId(1)).unwrap().definition());
     app.world_mut().insert_resource(original);
     let names_before = app.world().resource::<UniqueNamePool>().clone();
-    let mut invalid = tables(vec![cost(1, 0, "Inventory.Bomb", 1)]);
+    let mut invalid = tables(vec![cost(1, "Inventory.Bomb", 1)]);
     invalid.tb_targeting = Arc::new(TbTargeting::from_rows(vec![]).unwrap());
     assert!(compile_catalog(&invalid, app.world_mut()).is_err());
 
@@ -202,11 +191,8 @@ fn failed_compilation_does_not_publish_resource_names_or_replace_the_catalog() {
         &original_ability
     ));
 
-    let repaired = compile_catalog(
-        &tables(vec![cost(1, 0, "Inventory.Bomb", 1)]),
-        app.world_mut(),
-    )
-    .unwrap();
+    let repaired =
+        compile_catalog(&tables(vec![cost(1, "Inventory.Bomb", 1)]), app.world_mut()).unwrap();
     let mut expected_names = names_before;
     let expected_bomb = expected_names.new_name("Inventory.Bomb").unwrap();
     assert_eq!(
@@ -242,7 +228,7 @@ fn authoring_validation_rejects_malformed_resource_names() {
         "Inventory Bomb",
         "背包.炸弹",
     ] {
-        let error = validate_tables(&tables(vec![cost(1, 0, resource, 1)])).unwrap_err();
+        let error = validate_tables(&tables(vec![cost(1, resource, 1)])).unwrap_err();
         assert_eq!(error.kind(), ConfigErrorKind::Validation);
         assert_eq!(error.location(), &location("1", "resource"));
     }
@@ -251,16 +237,14 @@ fn authoring_validation_rejects_malformed_resource_names() {
 #[cfg(feature = "config-validation")]
 #[test]
 fn inspection_displays_ordered_costs_with_constant_amounts_at_each_level() {
-    let rows = vec![
-        cost(1, 10, "Inventory.Bomb", 2),
-        cost(2, 0, "Inventory.Ammo", 3),
-    ];
-    let report = describe_ability(&tables(rows.clone()), AbilityId(1)).unwrap();
+    let rows = vec![cost(1, "Inventory.Bomb", 2), cost(2, "Inventory.Ammo", 3)];
+    let report =
+        describe_ability(&tables_with_ids(rows.clone(), vec![2, 1]), AbilityId(1)).unwrap();
     let mut reversed = rows.clone();
     reversed.reverse();
     assert_eq!(
         report,
-        describe_ability(&tables(reversed), AbilityId(1)).unwrap()
+        describe_ability(&tables_with_ids(reversed, vec![2, 1]), AbilityId(1)).unwrap()
     );
     let cost_lines: Vec<_> = report
         .lines()
@@ -270,10 +254,11 @@ fn inspection_displays_ordered_costs_with_constant_amounts_at_each_level() {
         cost_lines,
         [
             "Additional cost / order 0: resource=Inventory.Ammo, amount=3",
-            "Additional cost / order 10: resource=Inventory.Bomb, amount=2",
+            "Additional cost / order 1: resource=Inventory.Bomb, amount=2",
         ]
     );
-    let level_two = describe_ability_at_level(&tables(rows), AbilityId(1), 2).unwrap();
+    let level_two =
+        describe_ability_at_level(&tables_with_ids(rows, vec![2, 1]), AbilityId(1), 2).unwrap();
     assert_eq!(
         cost_lines,
         level_two
@@ -373,8 +358,8 @@ fn configured_costs_reach_the_inventory_provider_when_the_granted_ability_activa
         GameplayAbilitySystemPlugin::with_additional_costs::<InventoryProvider>(),
     );
     let mut tables = tables(vec![
-        cost(1, 0, "Inventory.Bomb", 1),
-        cost(2, 1, "Inventory.Bomb", 2),
+        cost(1, "Inventory.Bomb", 1),
+        cost(2, "Inventory.Bomb", 2),
     ]);
     let mut row = tables.tb_ability.get(&1).unwrap().as_ref().clone();
     row.allow_multiple_instances = true;
@@ -485,22 +470,11 @@ fn configured_costs_reach_the_inventory_provider_when_the_granted_ability_activa
 
 #[test]
 fn resource_totals_and_order_positions_are_scoped_to_each_ability() {
-    let mut second_cost = cost(2, 0, "Inventory.Bomb", i64::from(u32::MAX));
-    second_cost.ability_id = 2;
-    let mut tables = tables(vec![
-        cost(1, 0, "Inventory.Bomb", i64::from(u32::MAX)),
-        second_cost,
-    ]);
+    let mut tables = tables(vec![cost(1, "Inventory.Bomb", i64::from(u32::MAX))]);
     let first = tables.tb_ability.get(&1).unwrap().as_ref().clone();
     let mut second = first.clone();
     second.id = 2;
     tables.tb_ability = Arc::new(TbAbility::from_rows(vec![first, second]).unwrap());
-    let first_task = tables.tb_ability_task.get(&1).unwrap().as_ref().clone();
-    let mut second_task = first_task.clone();
-    second_task.id = 2;
-    second_task.ability_id = 2;
-    tables.tb_ability_task =
-        Arc::new(TbAbilityTask::from_rows(vec![first_task, second_task]).unwrap());
     let catalog = compile_catalog(&tables, app().world_mut()).unwrap();
     let first_costs = catalog
         .ability(AbilityId(1))

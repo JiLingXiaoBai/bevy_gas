@@ -179,12 +179,16 @@ fn ability() -> Ability {
         block_ability_tags: vec![],
         targeting_id: 1,
         allow_multiple_instances: false,
+        task_ids: vec![],
+        additional_cost_ids: vec![],
     }
 }
 
 fn timeline_tables(reverse: bool) -> Tables {
     let mut tables = empty_tables();
-    tables.tb_ability = Arc::new(TbAbility::from_rows(vec![ability()]).unwrap());
+    let mut ability = ability();
+    ability.task_ids = vec![3, 1, 2, 4];
+    tables.tb_ability = Arc::new(TbAbility::from_rows(vec![ability]).unwrap());
     tables.tb_targeting = Arc::new(
         TbTargeting::from_rows(vec![Targeting {
             id: 1,
@@ -215,6 +219,7 @@ fn timeline_tables(reverse: bool) -> Tables {
                     probability: 1.0,
                     asset_tags: vec![],
                     granted_tags: vec![],
+                    modifier_ids: vec![],
                 })
                 .collect(),
         )
@@ -223,36 +228,28 @@ fn timeline_tables(reverse: bool) -> Tables {
     let mut actions = vec![
         AbilityTask {
             id: 4,
-            ability_id: 1,
             at_tick: 2,
-            order: 3,
             kind: ActionKind::EndAbility,
             target_scope: TargetScope::None,
             effect_id: None,
         },
         AbilityTask {
             id: 2,
-            ability_id: 1,
             at_tick: 2,
-            order: 1,
             kind: ActionKind::ApplyEffect,
             target_scope: TargetScope::AllCaptured,
             effect_id: Some(2),
         },
         AbilityTask {
             id: 1,
-            ability_id: 1,
             at_tick: 0,
-            order: 0,
             kind: ActionKind::ApplyEffect,
             target_scope: TargetScope::Primary,
             effect_id: Some(1),
         },
         AbilityTask {
             id: 3,
-            ability_id: 1,
             at_tick: 2,
-            order: 2,
             kind: ActionKind::ApplyEffect,
             target_scope: TargetScope::Primary,
             effect_id: Some(3),
@@ -295,10 +292,10 @@ fn authored_order_drives_compiled_tasks_independently_of_input_row_order() {
         };
         assert_eq!(delayed.len(), 3);
         assert!(
-            matches!(&delayed[0], AbilityTaskOnFinishedDef::ApplyGameplayEffectToTargets { effect } if Arc::ptr_eq(effect, catalog.effect(EffectId(2)).unwrap()))
+            matches!(&delayed[0], AbilityTaskOnFinishedDef::ApplyGameplayEffectToTarget { effect } if Arc::ptr_eq(effect, catalog.effect(EffectId(3)).unwrap()))
         );
         assert!(
-            matches!(&delayed[1], AbilityTaskOnFinishedDef::ApplyGameplayEffectToTarget { effect } if Arc::ptr_eq(effect, catalog.effect(EffectId(3)).unwrap()))
+            matches!(&delayed[1], AbilityTaskOnFinishedDef::ApplyGameplayEffectToTargets { effect } if Arc::ptr_eq(effect, catalog.effect(EffectId(2)).unwrap()))
         );
         assert!(matches!(&delayed[2], AbilityTaskOnFinishedDef::EndAbility));
     }
@@ -321,9 +318,9 @@ fn validation_and_inspection_share_the_compiler_timeline_order() {
     assert_eq!(
         actions,
         [
-            "tick 0 / order 0: ApplyEffect to Primary",
-            "tick 2 / order 1: ApplyEffect to AllCaptured",
-            "tick 2 / order 2: ApplyEffect to Primary",
+            "tick 0 / order 1: ApplyEffect to Primary",
+            "tick 2 / order 0: ApplyEffect to Primary",
+            "tick 2 / order 2: ApplyEffect to AllCaptured",
             "tick 2 / order 3: EndAbility",
         ]
     );
@@ -339,27 +336,29 @@ fn configured_abilities_require_one_explicit_final_end_action() {
             .iter()
             .map(|row| row.as_ref().clone())
             .collect();
+        let mut ability = tables.tb_ability.get(&1).unwrap().as_ref().clone();
         match invalid_timeline {
-            "missing" => actions.retain(|action| action.kind != ActionKind::EndAbility),
-            "duplicate" => actions.push(AbilityTask {
-                id: 5,
-                ability_id: 1,
-                at_tick: 3,
-                order: 0,
-                kind: ActionKind::EndAbility,
-                target_scope: TargetScope::None,
-                effect_id: None,
-            }),
+            "missing" => ability.task_ids.retain(|id| *id != 4),
+            "duplicate" => {
+                ability.task_ids.push(5);
+                actions.push(AbilityTask {
+                    id: 5,
+                    at_tick: 3,
+                    kind: ActionKind::EndAbility,
+                    target_scope: TargetScope::None,
+                    effect_id: None,
+                });
+            }
             "early" => {
                 let end = actions
                     .iter_mut()
                     .find(|action| action.kind == ActionKind::EndAbility)
                     .unwrap();
                 end.at_tick = 0;
-                end.order = 1;
             }
             _ => unreachable!(),
         }
+        tables.tb_ability = Arc::new(TbAbility::from_rows(vec![ability]).unwrap());
         tables.tb_ability_task = Arc::new(TbAbilityTask::from_rows(actions).unwrap());
         let error = validate_tables(&tables).unwrap_err();
         assert_eq!(error.kind(), ConfigErrorKind::Validation);

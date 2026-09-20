@@ -42,15 +42,15 @@ pub(super) fn tables(unused_radius: Option<f32>) -> Tables {
             block_ability_tags: vec![],
             targeting_id: 1,
             allow_multiple_instances: false,
+            task_ids: vec![1],
+            additional_cost_ids: vec![],
         }])
         .unwrap(),
     );
     tables.tb_ability_task = Arc::new(
         TbAbilityTask::from_rows(vec![AbilityTask {
             id: 1,
-            ability_id: 1,
             at_tick: 0,
-            order: 0,
             kind: ActionKind::EndAbility,
             target_scope: TargetScope::None,
             effect_id: None,
@@ -149,6 +149,7 @@ fn effect(duration: Option<i32>, period: Option<i32>, probability: f32) -> Effec
         probability,
         asset_tags: vec![],
         granted_tags: vec![],
+        modifier_ids: vec![],
     }
 }
 
@@ -198,12 +199,12 @@ fn modifier_parameter_checks_respect_magnitude_kind_and_feature() {
             }])
             .unwrap(),
         );
-        tables.tb_effect = Arc::new(TbEffect::from_rows(vec![effect(Some(1), None, 1.0)]).unwrap());
+        let mut definition = effect(Some(1), None, 1.0);
+        definition.modifier_ids = vec![1];
+        tables.tb_effect = Arc::new(TbEffect::from_rows(vec![definition]).unwrap());
         tables.tb_modifier = Arc::new(
             TbModifier::from_rows(vec![Modifier {
                 id: 1,
-                effect_id: 1,
-                order: 0,
                 attribute: "Health".to_owned(),
                 operation: ModifierOperation::Add,
                 magnitude_kind,
