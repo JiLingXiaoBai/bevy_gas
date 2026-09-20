@@ -160,7 +160,8 @@ ASC、Active Ability 或 `Commands`。`AbilitySystemParams` 内嵌它并实现 `
 | `GameplayExecutionRequest`                  | `enum`     | ActivateAbility / ApplyGameplayEffect |
 | `AbilityActivationRequest`                  | `struct`   | handle 与共享 `AbilityActivationData` 组成的标准激活输入 |
 | `GameplayEffectApplicationRequest`          | `struct`   | 捕获后的效果应用请求                  |
-| `process_gameplay_execution_queue_system`   | `fn`       | 系统：完整 drain 并按需收敛 Tag 条件  |
+| `process_gameplay_execution_queue_system`   | `fn`       | 系统：使用默认 Provider 完整 drain 并按需收敛 Tag 条件 |
+| `process_gameplay_execution_queue_with_costs_system<P>` | `fn` | 使用游戏 Provider 的 resolver，通过配置后的插件安装 |
 | `gameplay_execution_queue_has_work`         | `fn`       | 统一 FIFO 的运行条件                   |
 
 两个请求类型由 `gameplay_execution` 领域拥有。`ability_system` 与 `gameplay_effects` 门面分别
@@ -207,7 +208,9 @@ ASC、Active Ability 或 `Commands`。`AbilitySystemParams` 内嵌它并实现 `
 | `AbilityChainContext`      | `struct`     | 链追踪（深度 + 循环检测）                             |
 | `AbilityChainError`        | `enum`       | 链验证错误                                            |
 | `AbilityActivationError`   | `enum`       | 激活失败原因                                          |
-| `AbilityCommitError`       | `enum`       | Cost/Cooldown 准备与执行失败原因                      |
+| `AbilityCommitError`       | `enum`       | 属性/额外成本、Cooldown 的准备、执行和补偿失败原因 |
+| `AdditionalCost` | `struct` | 游戏资源 UniqueName + 正整数需求；由 Abilities 领域拥有 |
+| `AdditionalCostError` | `enum` | 外部资源不足、Provider 配置和执行错误 |
 
 ### 技能输入绑定
 
@@ -244,7 +247,9 @@ ASC、Active Ability 或 `Commands`。`AbilitySystemParams` 内嵌它并实现 `
 | `AbilitySystemParams`                     | `SystemParam` | Effect 参数 + Ability 编排状态 |
 | `try_activate_ability_by_handle`          | `fn`          | 独立的同步激活调用路径        |
 | `can_activate_ability` | `fn` | 只读预检，返回具体不可用原因 |
-| `AbilityActivationCheckParams` | `SystemParam` | 只读 ASC 与 Effect 数据 |
+| `AbilityActivationCheckParams<P=()>` | `SystemParam` | 只读 ASC、Effect 与 Provider 数据 |
+| `AdditionalCostProvider` | `trait` | 游戏 SystemParam 对整批外部成本的检查、准备与补偿协议 |
+| `AdditionalCostContext` | `struct` | 外部资源付款 source、level 与可选激活上下文 |
 | `AbilityActivationCheckError` | `enum` | 互斥、标签、冷却和成本预检错误 |
 | `commit_ability`                          | `fn`          | 执行消耗 + 冷却        |
 | `end_ability`                             | `fn`          | 将状态设为 Ending      |

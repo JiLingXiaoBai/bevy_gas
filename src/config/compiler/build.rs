@@ -2,7 +2,7 @@
 
 use super::abilities::compile_abilities;
 use super::effects::compile_effects;
-use super::registration::{register_attributes, register_tags};
+use super::registration::{register_additional_cost_resources, register_attributes, register_tags};
 use super::targeting::compile_targeting;
 #[cfg(feature = "config-validation")]
 use super::validate_prepared;
@@ -45,12 +45,19 @@ pub fn compile_catalog(tables: &Tables, world: &mut World) -> Result<GameplayCat
     // The snapshots serve as both registration preflight and the eventual commit.
     let tags = register_tags(tables, &mut names, &mut tag_manager)?;
     let attributes = register_attributes(tables, &mut names, &mut attribute_manager)?;
+    let additional_cost_resources = register_additional_cost_resources(tables, &mut names)?;
     let effects = compile_effects(&prepared, &tags, &attributes)?;
     let mut targeting = BTreeMap::new();
     for row in tables.tb_targeting.iter() {
         targeting.insert(row.id, Arc::new(compile_targeting(row, &tags)?));
     }
-    let abilities = compile_abilities(&prepared, &tags, &effects, &targeting)?;
+    let abilities = compile_abilities(
+        &prepared,
+        &tags,
+        &effects,
+        &targeting,
+        &additional_cost_resources,
+    )?;
     let catalog = GameplayCatalog {
         abilities,
         effects,

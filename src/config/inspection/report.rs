@@ -6,7 +6,7 @@ use std::fmt::{self, Write};
 
 /// Describes ability `id` at level one after validating the supplied `tables`.
 ///
-/// Returns the resolved effects, targeting rules, and ordered timeline, or an
+/// Returns the resolved effects, external costs, targeting rules, and ordered timeline, or an
 /// error when the tables are invalid or the requested ability does not exist.
 pub fn describe_ability(tables: &Tables, id: AbilityId) -> Result<String, ConfigError> {
     describe_ability_at_level(tables, id, 1)
@@ -14,8 +14,8 @@ pub fn describe_ability(tables: &Tables, id: AbilityId) -> Result<String, Config
 
 /// Describes ability `id` at `level` using the runtime compiler's magnitude formula.
 ///
-/// Returns a report including resolved modifier values, effect timing, targeting,
-/// and the ordered timeline. Invalid tables, IDs, or unsupported levels return an error.
+/// Returns a report including resolved modifier values, external costs, effect timing,
+/// targeting, and the ordered timeline. Invalid tables, IDs, or unsupported levels return an error.
 pub fn describe_ability_at_level(
     tables: &Tables,
     id: AbilityId,
@@ -99,6 +99,14 @@ pub fn describe_ability_at_level(
             writeln!(report, "{role}:").map_err(report_error)?;
             append_effect(&mut report, &prepared, effect_id, level)?;
         }
+    }
+    for cost in prepared.additional_costs(id.0) {
+        writeln!(
+            report,
+            "Additional cost / order {}: resource={}, amount={}",
+            cost.row.order, cost.row.resource, cost.amount
+        )
+        .map_err(report_error)?;
     }
     for action in prepared.actions(id.0) {
         match action.kind {

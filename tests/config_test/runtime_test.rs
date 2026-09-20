@@ -19,14 +19,14 @@ use bevy_gas::{AbilitySystemComponent, GameplayAbilitySystemPlugin};
 use serde_json::{Value, json};
 use std::{fs, path::PathBuf, sync::Arc, time::SystemTime};
 
-fn app() -> App {
+pub(super) fn app() -> App {
     let mut app = App::new();
     app.add_plugins(MinimalPlugins)
         .add_plugins(GameplayAbilitySystemPlugin);
     app
 }
 
-fn tables(unused_radius: Option<f32>) -> Tables {
+pub(super) fn tables(unused_radius: Option<f32>) -> Tables {
     let mut tables = Tables::new(|_| Ok(ByteBuf::new(vec![0]))).unwrap();
     tables.tb_ability = Arc::new(
         TbAbility::from_rows(vec![Ability {

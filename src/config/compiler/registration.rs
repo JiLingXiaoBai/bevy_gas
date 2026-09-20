@@ -1,9 +1,9 @@
-//! Deterministic tag and attribute registration and tag reference resolution.
+//! Deterministic registry construction and tag reference resolution.
 
 use super::{ConfigError, ConfigErrorKind, ConfigLocation, Tables, data};
 use crate::{
     AttributeId, AttributeIdManager, AttributeRegion, GameplayTag, GameplayTagBits,
-    GameplayTagManager, UniqueNamePool, add_bit_with_tag,
+    GameplayTagManager, UniqueName, UniqueNamePool, add_bit_with_tag,
 };
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -94,6 +94,30 @@ pub(super) fn register_attributes(
         attributes.insert(row.name.clone(), id);
     }
     Ok(attributes)
+}
+
+pub(super) fn register_additional_cost_resources<'a>(
+    tables: &'a Tables,
+    names: &mut UniqueNamePool,
+) -> Result<BTreeMap<&'a str, UniqueName>, ConfigError> {
+    let mut ordered = BTreeMap::new();
+    for row in tables.tb_ability_additional_cost.iter() {
+        ordered.entry(row.resource.as_str()).or_insert(row.id);
+    }
+    let mut resources = BTreeMap::new();
+    for (resource, row_id) in ordered {
+        let unique = names.new_name(resource).map_err(|error| {
+            ConfigError::new(
+                ConfigErrorKind::Registration,
+                ConfigLocation::table("AbilityAdditionalCost")
+                    .row(row_id)
+                    .field("resource"),
+                error.to_string(),
+            )
+        })?;
+        resources.insert(resource, unique);
+    }
+    Ok(resources)
 }
 
 pub(super) fn resolve_tags(

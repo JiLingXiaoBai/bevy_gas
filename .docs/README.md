@@ -14,7 +14,10 @@
 第一次阅读 Ability/Effect 时，建议先运行
 [`ability_effect_flow`](../examples/ability_effect_flow.rs)：
 `cargo run --example ability_effect_flow`。它完整展示一次火球从授予、激活到伤害、结束与冷却到期的
-过程，再沿示例中的公共 API 阅读下面的领域文档。
+过程，再沿示例中的公共 API 阅读下面的领域文档。背包道具消耗的完整接入见
+[inventory_bomb](../examples/inventory_bomb.rs) 与 [14 — 扩展系统](./14-extending-the-system.md#接入背包等额外消耗)。
+需要通过 Excel 配置消耗时，参照 [20 — Additional Costs 表配置](./20-gas-configuration.md#additional-costs-表配置)，
+导表后运行 `cargo run --example inventory_bomb -- config/bin`。
 
 | 目标                      | 建议顺序                                                                                                                                                              |
 | ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

@@ -74,7 +74,8 @@ cargo run --example ability_input_bindings
 |---|---|
 | 完整角色组件组合 | `src/gas/ability_system/component.rs` |
 | 逻辑动作与技能 Handle 绑定 | `src/gas/ability_input/bindings.rs` |
-| 固定 tick 阶段与插件 | `src/gas/runtime_plugin.rs` |
+| 固定 tick 阶段与系统安装 | `src/gas/runtime_plugin/runtime.rs` |
+| 基础资源插件与完整插件组合 | `src/gas/runtime_plugin/foundation.rs`、`src/gas/runtime_plugin/group.rs` |
 | 能力定义、激活上下文 | `src/gas/gameplay_abilities/` |
 | Task 定义与完成动作 | `src/gas/gameplay_abilities/ability_task/` |
 | 效果定义、时长、标签与堆叠 | `src/gas/gameplay_effects/gameplay_effect/` |

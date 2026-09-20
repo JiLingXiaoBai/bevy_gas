@@ -5,7 +5,7 @@
 项目在 `config/` 维护 XML 定义与 Excel 数据，在 `tools/luban/` 固定 Luban、Luban.Agent 与 Luban.Mcp 工具链。
 日常通过 `config/export.ps1` 将配置导出为 Rust 代码和二进制数据；工具缓存与配置源文件分开存放。
 Codex 通过 Luban.Mcp 查询表结构、校验和生成配置；Luban.Agent 保留为 MCP 的查询与校验后端。
-当前配置包含七张 GAS 表，提供真实 Excel 火球配置包。
+当前配置包含八张 GAS 表，提供真实 Excel 火球配置包。
 Safe Rust 解码、生成类型和 GAS 适配代码位于根 `bevy_gas` 包的 `config` 模块，始终参与编译；
 默认关闭的 `config-validation` feature 启用配置包校验、完整业务校验和离线工具。加载后构造共享 GAS 定义，
 GAS 领域不反向依赖配置层。
@@ -22,7 +22,7 @@ GAS 领域不反向依赖配置层。
 
 | 路径                                    | 职责                                                                               | Git 管理       |
 | --------------------------------------- | ---------------------------------------------------------------------------------- | -------------- |
-| `config/tables/`                        | 七张 `gas.*.xlsx` 数据表                                                           | 提交           |
+| `config/tables/`                        | 八张 `gas.*.xlsx` 数据表                                                           | 提交           |
 | `config/defines/gas.xml`、`builtin.xml` | GAS 表登记、枚举及 Luban 内置定义                                                  | 提交           |
 | `config/luban.conf`                     | 输入目录、定义文件和导出目标                                                       | 提交           |
 | `config/export.ps1`                     | 项目导表入口，暂存生成、编译、玩法校验后发布                                       | 提交           |
@@ -32,7 +32,7 @@ GAS 领域不反向依赖配置层。
 | `examples/config_fireball.rs`           | 默认可用的火球示例                                                                 | 提交           |
 | `config/LICENSE.Luban`                  | 初始示例文件的上游 MIT 许可证                                                      | 提交           |
 | `config/generated/`                     | 自动生成的 `mod.rs`、`gas.rs` 等 Rust 模块，无独立 Cargo 清单                      | 提交，导表生成 |
-| `config/bin/`                           | 七张 GAS 表的二进制数据及 `manifest.json`                                          | 忽略，导表生成 |
+| `config/bin/`                           | 八张 GAS 表的二进制数据及 `manifest.json`                                          | 忽略，导表生成 |
 | `tools/luban/.cache/`                   | 三种 Luban 工具的下载归档、已安装工具及临时验证产物                                | 忽略           |
 
 首次使用先准备工具链，再导表。以下命令在仓库根目录执行：
@@ -55,7 +55,7 @@ pwsh -NoProfile -File config/export.ps1
 
 `luban.conf` 的路径相对于 `config/`：`dataDir` 指向 `tables`，`schemaFiles` 显式列出
 `defines/builtin.xml` 和 `defines/gas.xml`，两者的 `type` 均为空字符串，按 XML 解析。
-`gas.xml` 统一登记七张 GAS 表与普通枚举；表的行结构继续从对应 Excel 的 `##var`、`##type`
+`gas.xml` 统一登记八张 GAS 表与普通枚举；表的行结构继续从对应 Excel 的 `##var`、`##type`
 表头读取。原三个定义 Excel 已移除，原 `__beans__.xlsx` 没有业务 Bean 定义，不保留空的替代文件。
 当前只有 `all` 目标，包含 `c`、`s`、`e` 分组，管理器为 `Tables`，生成器顶层模块为 `cfg`。
 上游生成器的内置模板仍会在暂存区产生 Cargo 清单与宏包；导表脚本只提取需要的 Rust 模块，

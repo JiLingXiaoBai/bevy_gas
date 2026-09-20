@@ -89,12 +89,12 @@ Modifier 是独立共享领域：Effect 负责把定义求值为 `ModifierSpec`�
 
 ## 新增内置运行时系统
 
-只有 library 内建且必须参与 GAS 固定管线的系统，才加入
-`GameplayAbilitySystemRuntimePlugin::build()`：
+只有 library 内建且必须参与 GAS 固定管线的系统，才加入 Runtime 的共享安装流程：
 
 1. 将实现放在 owning domain；
 2. 从领域门面只公开确实属于用户 API 的 system；
-3. 在 `src/gas/runtime_plugin.rs` 注册到语义正确的 `GameplayAbilitySystemSet`；
+3. 在 `src/gas/runtime_plugin/runtime.rs` 的 `install_runtime()` 中注册到语义正确的
+   `GameplayAbilitySystemSet`；
 4. 使用 `.before()` / `.after()` 或 `.chain()` 明确跨系统可见性；
 5. 只有运行条件不改变 Gameplay 语义时才添加 `run_if`；
 6. 添加运行完整 `FixedUpdate` 的集成测试，而不仅是 `RunSystemOnce`。
@@ -136,6 +136,64 @@ app.add_systems(
 - Ability 激活、commit、生命周期和 `Commands` 使用 `AbilitySystemParams`；
 - 请求生产系统通常只声明 `ResMut<GameplayExecutionQueue>`；
 - 不要为了调用一个 Effect API 就让 Effect 模块重新依赖完整 ASC/Ability 查询。
+
+## 接入背包等额外消耗
+
+属性消耗仍使用 `GameplayAbility::with_cost(...)`。额外成本用游戏自己的 `UniqueName` 标识，
+通过 `AdditionalCost::new(resource, positive_amount)?` 创建，再由
+`with_additional_costs(...)` 写入技能定义。名称只标识资源，不保存数量；实际余额由背包等
+Component 或 Resource 唯一持有。
+
+完整可运行示例见 [`inventory_bomb`](../examples/inventory_bomb.rs)：
+`cargo run --example inventory_bomb`。它演示背包炸弹作为额外成本接入技能流程。
+导表后运行 `cargo run --example inventory_bomb -- config/bin`，同一 Provider 会处理从
+Excel 编译的技能 1002。表格字段与导表步骤见
+[20 — Additional Costs 表配置](./20-gas-configuration.md#additional-costs-表配置)。
+
+游戏适配器在 `#[derive(SystemParam)]` 背包查询类型的 `'static` 实例上实现
+`AdditionalCostProvider`，如 `InventoryCosts<'static, 'static>`。协议接收一次技能的完整成本
+切片及 `AdditionalCostContext`，后者包含付款 `source`、技能 `level` 和可选激活上下文。
+预检和独立 Commit 没有激活上下文；付款方始终是 source，不由技能目标决定。
+
+| 成员 | 职责 |
+| ---- | ---- |
+| `ReadOnly` | 预检使用的 `ReadOnlySystemParam`，提供与运行时一致的只读余额规则 |
+| `Receipt` | 成功准备后持有的补偿数据，不能借用 ECS 查询或在 Drop 中自动退款 |
+| `check` / `check_readonly` | 不修改状态，检查整批成本，供运行时准备与 UI/AI 预览使用 |
+| `prepare` | 重新验证并同步临时扣除整批资源；返回错误时必须保持外部状态原样 |
+| `rollback` | GAS 后续属性成本或冷却执行失败时，恢复 Receipt 描述的外部资源 |
+
+整批处理是适配器的一项关键契约：例如两个条目分别要一颗炸弹，只有一颗时必须拒绝。
+应在写入前完成未知资源、数量合计溢出、库存和所有游戏规则的检查。涉及多个物品堆叠时，
+按稳定格子或物品 ID 顺序选择，Receipt 记录实际扣除位置；不要依赖 HashMap 遍历顺序。
+`prepare` 返回成功后的 Receipt 只存活于同步 Commit 内，正常丢弃表示付款确认；它不是跨
+tick 预留，也不会跟随 Active Ability 保存。
+
+```rust
+app.add_plugins(
+    GameplayAbilitySystemPlugin::with_additional_costs::<InventoryCosts>(),
+);
+```
+
+队列 resolver 会使用此 Provider；直接调用的系统声明 `AbilitySystemParams<InventoryCosts>`，
+UI/AI 声明 `AbilityActivationCheckParams<InventoryCosts>`。同步、队列和链式激活以及独立
+`commit_ability()` 共用支付流程。一个游戏可以让一个 Provider 内部组合背包、耐久等多种查询，
+统一验证整批规则；GAS 不需要保存 trait object 或访问整个可变 World。
+
+Provider 只能访问它负责的外部资源，不能重复借用 `AbilitySystemParams` 已可变访问的 GAS
+Component/Resource，也不得重入 GAS、修改 GAS 状态或执行不可撤回的外部操作。
+扣费不能放入 `Commands`、Observer 或消息回调：第一个请求的支付必须立即对同 tick 后续
+请求可见，否则最后一颗炸弹可能被重复使用。额外成本只读预检仍是状态快照，不能省略真实提交
+中的重检查。
+
+默认 `()` Provider 遇到非空需求返回 `AdditionalCostError::MissingProvider`，避免漏配后
+免费释放技能。库存不足和游戏规则拒绝属于正常 rejection；缺少 Provider、未知资源、
+算术或补偿失败属于配置/运行时错误。补偿失败保留原始 Commit 错误，便于诊断双重失败。
+
+只对 Commit 期间已准备的外部成本执行补偿，GAS 已有的属性、冷却和取消旧技能的副作用不保证
+整体回滚。付款成功后的 startup 失败、技能结束、后续取消或未命中均不退款。需要出手时付款、
+跨 tick 预留或命中后消耗的玩法，还需单独设计生命周期协议；当前实现只支持激活时支付。
+Luban 表暂不配置额外成本，使用 Rust API 构造定义，配置边界见 [20 — 配置接入](./20-gas-configuration.md)。
 
 ## 新增 AbilityTask 类型
 

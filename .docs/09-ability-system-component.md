@@ -21,6 +21,12 @@ src/gas/
     │   ├── startup.rs
     │   └── execution.rs
     ├── commit.rs
+    ├── commit/
+    │   ├── additional_cost.rs
+    │   ├── error.rs
+    │   ├── affordability.rs
+    │   ├── planning.rs
+    │   └── execution.rs
     ├── lifecycle.rs
     └── lifecycle/
         ├── instances.rs
@@ -35,10 +41,19 @@ src/gas/
 | `activation/validation.rs` | 快速预检和完整激活要求检查 |
 | `activation/startup.rs` | 启动 startup tasks |
 | `activation/execution.rs` | 同步入口与 batch 内激活顺序 |
-| `commit.rs` | Cost/Cooldown Plan 的准备、验证和执行 |
+| `commit.rs` | Commit 门面，显式导出外部成本协议、错误、公开入口与内部准备/执行入口 |
+| `commit/additional_cost.rs` | 外部成本协议的叶子实现，定义 SystemParam 适配协议与支付上下文 |
+| `commit/error.rs` | Commit 错误及拒绝分类 |
+| `commit/affordability.rs` | 属性成本的只读预检与支付能力预演，只访问 Effect 参数 |
+| `commit/planning.rs` | 属性/冷却 Plan 准备及外部成本检查，不持有支付 Receipt |
+| `commit/execution.rs` | Plan 重验证与执行、同步调用内的外部支付及失败补偿 |
 | `lifecycle.rs`、`lifecycle/` | 实例登记/释放、状态迁移、Cleanup 与组件丢弃 Observer |
 
 这些文件的私有函数是实现细节；公共入口由 `ability_system.rs` 显式重导出。
+`AdditionalCostProvider` 和 `AdditionalCostContext` 归属 Commit 协议，由叶子实现文件
+`commit/additional_cost.rs` 定义，经 `commit.rs` 和 `ability_system.rs` 门面显式重导出，公共导入
+路径仍为 `bevy_gas::gas::ability_system`。外部成本的数据定义保留在
+`gameplay_abilities/additional_cost`，不随运行时协议迁移。
 
 ## Actor 与 World 的两层组合
 
@@ -124,7 +139,8 @@ Effect 领域使用更窄的 SystemParam：
 
 ```rust
 #[derive(SystemParam)]
-pub struct AbilitySystemParams<'w, 's> {
+pub struct AbilitySystemParams<'w, 's, P: AdditionalCostProvider = ()> {
+    pub additional_costs: StaticSystemParam<'w, 's, P>,
     pub commands: Commands<'w, 's>,
     pub effects: EffectSystemParams<'w, 's>,
     pub asc_query: Query<'w, 's, &'static mut AbilitySystemComponent>,
@@ -144,6 +160,12 @@ pub struct AbilitySystemParams<'w, 's> {
 管道，不应由游戏代码直接读写。它补足 `Commands::spawn()` 尚未 flush 时同一 Gameplay drain
 中的 Active Ability 可见性。
 
+额外成本使用 `AbilitySystemParams<P>` 中的 `StaticSystemParam<P>` 同步访问游戏资源，
+`AbilityActivationCheckParams<P>` 则嵌入 `P::ReadOnly`。省略 `P` 时仍使用兼容的 `()` 默认值。
+配置了自定义 Provider 后，直接激活、独立 Commit 与预检系统也应声明同一个 `P`；生命周期
+入口可使用相同参数。外部访问不得与内嵌 GAS 可变查询冲突，背包状态由游戏自己的 Component
+或 Resource 持有。接入示例及约束见 [14 — 扩展系统](./14-extending-the-system.md#接入背包等额外消耗)。
+
 `AbilitySystemParams` 不持有 `GameplayExecutionQueue`。生产请求的系统应单独声明
 `ResMut<GameplayExecutionQueue>`；这也避免只调用 Effect 查询的系统被 ASC 访问无谓串行化。
 
@@ -157,7 +179,7 @@ pub fn try_activate_ability_by_handle(
     targets: impl Into<AbilityActivationTargets>,
     handle: AbilitySpecHandle,
     activation_context: AbilityActivationContext,
-    params: &mut AbilitySystemParams,
+    params: &mut AbilitySystemParams<'_, '_, impl AdditionalCostProvider>,
 ) -> Result<(), AbilityActivationError>;
 ```
 
@@ -168,20 +190,21 @@ pub fn try_activate_ability_by_handle(
 ### 快速预检
 
 ```rust
-pub fn can_activate_ability(
+pub fn can_activate_ability<P: AdditionalCostProvider>(
     source: Entity,
     target: Entity,
     ability: &Arc<GameplayAbility>,
     level: u32,
-    params: &AbilityActivationCheckParams,
+    params: &AbilityActivationCheckParams<'_, '_, P>,
 ) -> Result<(), AbilityActivationCheckError>;
 ```
 
-`AbilityActivationCheckParams` 只包含只读 ASC 查询和 `EffectReadOnlyParams`，没有 Commands、
-随机数资源或可变 Gameplay 查询。错误区分技能互斥、阻止标签、缺失标签、冷却和具体成本错误。
+`AbilityActivationCheckParams<P>` 包含只读 ASC 查询、`EffectReadOnlyParams` 与 `P::ReadOnly`，
+没有 Commands、随机数资源或可变 Gameplay 查询。错误区分技能互斥、阻止标签、缺失标签、
+冷却和具体属性或额外成本错误。
 
-该函数只检查标签/Cooldown 与数值 Cost，不检查技能是否已授予、Handle、技能链、多实例、取消
-和 startup tasks，因此不是最终授权。Cost 计算上下文使用传入 `target`，但实际 Commit 把 Cost
+该函数只检查标签/Cooldown、数值 Cost 与整批 Additional Costs，不检查技能是否已授予、
+Handle、技能链、多实例、取消和 startup tasks，因此不是最终授权。Cost 计算上下文使用传入 `target`，但实际 Commit 把 Cost
 应用到 `source`。来源缺少 `GameplayTagContainer` 时，required、blocked 和 cooldown tag
 检查会跳过。这里的 `target` 只是独立 Cost 预检的 Modifier 计算输入，不会创建激活请求，也不
 构成第二份 `AbilityActivationTargets`。
@@ -189,15 +212,17 @@ pub fn can_activate_ability(
 ### 独立 Commit
 
 ```rust
-pub fn commit_ability(
+pub fn commit_ability<P: AdditionalCostProvider>(
     source: Entity,
     ability: &Arc<GameplayAbility>,
     level: u32,
-    params: &mut AbilitySystemParams,
+    params: &mut AbilitySystemParams<'_, '_, P>,
 ) -> Result<(), AbilityCommitError>;
 ```
 
-它准备并预验证 Cost/Cooldown Plan，然后先执行 Cost、再执行 Cooldown，不创建活跃技能实例。
+它准备并预验证 Cost/Cooldown Plan 和整批 Additional Costs，再同步准备外部成本、执行属性
+Cost 和 Cooldown，不创建活跃技能实例。属性或冷却执行失败时补偿已准备的外部成本；补偿
+失败通过 `AbilityCommitError::AdditionalCostRollback` 同时保留原 Commit 错误与补偿错误。外部成本语义见 [07 — 技能](./07-gameplay-abilities.md#additional-costs)。
 Cost 必须是只含 Add Modifier 的 Instant Effect。支付检查按定义顺序在临时属性上逐笔执行
 与实际扣费相同的 base 修改和聚合计算；同一属性的后续条目接着上一步结果计算。每个成本幅度、
 每一步的 base 和 current 必须有限，且每一步 current 必须非负。base 不额外要求非负，是否可支付
@@ -222,13 +247,13 @@ granted tags 或 Effect 抑制状态，应显式调用 `resolve_active_effect_ta
 pub fn end_ability(
     source: Entity,
     active_handle: ActiveAbilityHandle,
-    params: &mut AbilitySystemParams,
+    params: &mut AbilitySystemParams<'_, '_, impl AdditionalCostProvider>,
 ) -> bool;
 
 pub fn cancel_ability(
     source: Entity,
     active_handle: ActiveAbilityHandle,
-    params: &mut AbilitySystemParams,
+    params: &mut AbilitySystemParams<'_, '_, impl AdditionalCostProvider>,
 ) -> bool;
 ```
 
@@ -325,6 +350,7 @@ tick 重复激活。
 | `tests/gas_test/runtime_paths_test.rs` | Bundle 显式组合、插件阶段和同/下一 tick 边界 |
 | `tests/gas_test/abilities_test/activation_test.rs` | 激活要求、多实例和阻止标签 |
 | `tests/gas_test/abilities_test/commit_test.rs` | Cost/Cooldown 准备与执行 |
+| `tests/gas_test/abilities_test/additional_cost_test.rs` | 自定义 ECS Provider、只读预检、批量支付与补偿 |
 | `tests/gas_test/abilities_test/lifecycle_test.rs` | Cancel、Cleanup、活跃计数与规格清除 |
 | `tests/gas_test/abilities_test/chaining_test.rs` | pending overlay 和 deferred 父技能取消 |
 

@@ -2,9 +2,10 @@
 
 ## 插件一览
 
-插件组合与 `FixedUpdate` 调度实现在 `src/gas/runtime_plugin.rs`。该实现模块是 crate 内部模块；
-公开类型由 `bevy_gas::gas` 和 crate root 显式重导出，其中常用的 Plugin Group、Runtime
-Plugin 与 SystemSet 也位于 `bevy_gas::prelude`。
+`src/gas/runtime_plugin.rs` 是插件门面，具体实现位于同名目录：`foundation.rs` 初始化基础
+资源，`runtime.rs` 拥有 `FixedUpdate` 调度与 resolver 注册，`group.rs` 组合默认和配置后的
+Plugin Group。这些实现模块保持 crate 内部可见；公开类型由 `bevy_gas::gas` 和 crate root
+显式重导出，其中常用的 Plugin Group、Runtime Plugin 与 SystemSet 也位于 `bevy_gas::prelude`。
 
 | 插件 | 类型 | 安装内容 |
 | --- | --- | --- |
@@ -40,6 +41,19 @@ fn register_initial_tags(mut register: GameplayTagRegister) {
 Effect。它也不会初始化 `UniqueNamePool`。因此通常应安装完整 Plugin Group；确需自定义组合时，
 必须显式安装等价的基础插件或 Resource，注册 Tag/Attribute 名称时还要提供
 `UniqueNamePool`。
+
+需要从背包或其他游戏资源支付额外成本时，用配置后的插件替换默认安装：
+
+```rust
+app.add_plugins(GameplayAbilitySystemPlugin::with_additional_costs::<InventoryCosts>());
+```
+
+这里的 `InventoryCosts` 是游戏实现的 `AdditionalCostProvider`，以 `'static` 的 SystemParam
+类型配置；完整示例见 [`inventory_bomb`](../examples/inventory_bomb.rs)。自定义基础插件组合时，
+可改用 `GameplayAbilitySystemRuntimePlugin::with_additional_costs::<InventoryCosts>()`。
+默认插件使用 `()` Provider，遇到非空额外成本返回 `MissingProvider`；不会忽略道具成本。
+一个 World 只安装一套 GAS Runtime，不同时添加默认和自定义版本。插件不会替游戏初始化背包
+Resource 或挂载背包 Component。
 
 插件只安装 Resource 和调度，不会自动为游戏实体插入 GAS Component。完整 Gameplay Actor
 应显式生成 `GameplayAbilitySystemBundle`；纯 Tags 或 Attributes 实体只需插入对应 Component：
@@ -95,7 +109,7 @@ RecalculateAttributes
 | `RequestProducers` | 游戏层自定义系统 | 当前 tick 的公共 Gameplay 请求生产阶段 |
 | `Targeting` | `process_targeting_request_queue_system`（`run_if`） | 消费目标请求并可继续产生技能激活请求 |
 | `PreGameplayConvergence` | `update_active_effect_tag_requirements_system` | 在统一 FIFO 前收敛外部 Tag 变化 |
-| `GameplayResolve` | `process_gameplay_execution_queue_system`（`run_if`） | 按跨类型 FIFO 完整消费 Effect 与 Ability 请求 |
+| `GameplayResolve` | 默认 `process_gameplay_execution_queue_system`，自定义 `process_gameplay_execution_queue_with_costs_system<P>`（`run_if`） | 按跨类型 FIFO 完整消费 Effect 与 Ability 请求 |
 | `UpdateEffectTagRequirements` | `update_active_effect_tag_requirements_system` | Gameplay 执行后再次收敛 |
 | `Cleanup` | `cleanup_finished_abilities_system` | 清理 `Ending` / `Cancelled` 技能实例 |
 | `RecalculateAttributes` | `recalculate_attribute_sets_system` | 重算 dirty hot/cold 属性槽位 |

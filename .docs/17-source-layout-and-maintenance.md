@@ -90,6 +90,10 @@ src/
 └── gas/
     ├── prelude.rs
     ├── runtime_plugin.rs
+    ├── runtime_plugin/
+    │   ├── foundation.rs
+    │   ├── runtime.rs
+    │   └── group.rs
     ├── settings.rs
     ├── gameplay_tags.rs
     ├── gameplay_tags/
@@ -139,6 +143,9 @@ src/
     ├── gameplay_abilities.rs
     ├── gameplay_abilities/
     │   ├── gameplay_ability.rs
+    │   ├── additional_cost.rs
+    │   ├── additional_cost/
+    │   │   └── definition.rs
     │   ├── gameplay_ability_spec.rs
     │   ├── activation_data.rs
     │   ├── activation_context.rs
@@ -161,6 +168,12 @@ src/
     │   ├── component.rs
     │   ├── params.rs
     │   ├── commit.rs
+    │   ├── commit/
+    │   │   ├── additional_cost.rs
+    │   │   ├── error.rs
+    │   │   ├── affordability.rs
+    │   │   ├── planning.rs
+    │   │   └── execution.rs
     │   ├── lifecycle.rs
     │   ├── lifecycle/
     │   │   ├── instances.rs
@@ -237,13 +250,13 @@ src/
 | `loading/files.rs`                             | 调用 `read_package`，将同次读取的字节移交生成表解码器            |
 | `inspection.rs`、`inspection/report.rs`        | feature 启用时的完整校验与技能文本预览，不承担文件读取           |
 | `compiler/build.rs`                            | 注册表快照上的编译编排，成功提交注册表并返回完整 catalog              |
-| `compiler/registration.rs`                     | 标签/属性的确定顺序登记、现有注册状态检查与标签引用解析          |
+| `compiler/registration.rs`                     | 标签/属性/外部资源名称的确定顺序登记、注册状态检查与标签引用解析          |
 | `compiler/effects.rs`、`compiler/targeting.rs` | 效果与修改器、目标管线的运行时定义构建，以及必要构建检查         |
-| `compiler/abilities.rs`                        | 技能定义、共享效果引用和有序任务时间线                           |
+| `compiler/abilities.rs`                        | 技能定义、共享效果引用、额外消耗与有序任务时间线                           |
 | `compiler/magnitude.rs`、`compiler/numeric.rs` | 线性幅度求值及运行时计算器、编译与校验共用的数值纯函数           |
 | `compiler/validation.rs`                       | 仅在 feature 启用时执行的完整制作规则校验                        |
 
-`compiler/preparation.rs` 借用原始行，集中解析动作、幅度和关系排序，校验、编译和报告共用。
+`compiler/preparation.rs` 借用原始行，集中解析动作、幅度、额外消耗和关系排序，校验、编译和报告共用。
 编译器在三个注册表的私有快照上构建；返回 Err 保留原 World，成功才提交完整快照。
 共用数值判断不改变校验策略：运行时必要检查始终执行，制作限制和全等级预演仍由 feature 控制。
 `ConfigError` 属于配置领域公共错误，读取或授予代码无需通过 compiler 获取它。
@@ -259,7 +272,7 @@ src/
 | `src/config.rs`             | 配置门面，显式重导出编译、加载与授予接口，声明生成模块，按 feature 重导出摘要、完整校验和离线工具 |
 | `src/gas/<domain>.rs`       | 声明私有实现子模块，显式维护该领域的 `pub use` / `pub(crate) use`                                 |
 | `src/gas/prelude.rs`        | 只重导出高频 Plugin、Component、定义和 SystemParam                                                |
-| `src/gas/runtime_plugin.rs` | Plugin 组合、Resource 初始化和 `FixedUpdate` 阶段排序                                             |
+| `src/gas/runtime_plugin.rs` | 插件门面，显式重导出基础插件、Runtime、SystemSet 与 Plugin Group                                  |
 | `src/gas/settings.rs`       | 编译期容量和递归安全上限                                                                          |
 
 公开路径分三层：
@@ -275,6 +288,16 @@ src/
 项才属于领域公共表面。私有文件名可以调整，但不得在没有迁移方案时改变已公开的类型和函数路径。
 
 ## 领域内部所有权
+
+### Runtime Plugins
+
+以下实现由 `runtime_plugin.rs` 门面组织，公开类型仍由 GAS 聚合门面和 crate root 显式重导出。
+
+| 文件 | 主要所有权 |
+| ---- | ---------- |
+| `runtime_plugin/foundation.rs` | Tag、UniqueName 与 Random 基础资源插件 |
+| `runtime_plugin/runtime.rs` | Runtime Plugin、SystemSet、共享资源和系统安装，以及默认/配置 resolver 注册 |
+| `runtime_plugin/group.rs` | 默认与配置 Plugin Group 的插件组合 |
 
 ### Tags、Attributes 与 Modifiers
 
@@ -330,6 +353,7 @@ commit 和生命周期编排的流程：
 | 文件                                        | 主要所有权                                                                     |
 | ------------------------------------------- | ------------------------------------------------------------------------------ |
 | `gameplay_ability.rs`                       | AbilityTags、startup task、cost/cooldown Effect 定义                           |
+| `gameplay_abilities/additional_cost/definition.rs` | 正整数外部资源需求与结构化错误；定义不保存余额 |
 | `gameplay_ability_spec.rs`                  | 授予 Handle、level 和 active count                                             |
 | `activation_data.rs`                        | 唯一组合 source、targets 与传播 context 的不可变激活值                         |
 | `ability_chain.rs`、`activation_context.rs` | 请求与运行实例共用的链保护、传播上下文，以及 Ability → Effect payload 转换     |
@@ -342,12 +366,25 @@ commit 和生命周期编排的流程：
 | `ability_system/component.rs`               | ASC 规格存储和显式 `GameplayAbilitySystemBundle`                               |
 | `ability_system/params.rs`                  | `AbilitySystemParams` 和同 batch pending overlay                               |
 | `ability_system/activation/*`               | 错误、只读预检、startup task 和同步/batch 激活                                      |
-| `ability_system/commit.rs`                  | cost/cooldown prepare、逐笔支付条件检查和执行                                  |
+| `ability_system/commit.rs`                  | Commit 门面，公开外部成本协议、错误与入口并维护内部准备/执行边界 |
+| `ability_system/commit/additional_cost.rs` | 外部成本协议的叶子实现，定义游戏 SystemParam 的整批检查、同步扣除、补偿协议与上下文 |
+| `ability_system/commit/error.rs`            | Commit 错误、显示信息与拒绝分类 |
+| `ability_system/commit/affordability.rs`    | 属性成本的只读预检、数值有限性和支付能力预演 |
+| `ability_system/commit/planning.rs`         | 属性/冷却 Plan 准备及外部成本检查，不持有支付 Receipt |
+| `ability_system/commit/execution.rs`        | Commit 入口、Plan 重验证与执行、局部外部支付及失败补偿 |
 | `ability_system/lifecycle.rs`、`lifecycle/` | 实例登记与幂等释放、状态迁移、Cleanup 和 Discard Observer |
 | `ability_input/bindings.rs`                 | 游戏逻辑动作到同实体 ASC 的技能 Handle 映射、稳定遍历和绑定错误                |
 
 `AbilitySystemParams` 内嵌 `EffectSystemParams`，再增加 `Commands`、ASC、来源快照、活跃 Ability
-查询和内部 pending overlay。Effect 实现不得反向导入 Ability System。
+查询、内部 pending overlay 与可选的 `AdditionalCostProvider`。外部成本定义由
+`gameplay_abilities/additional_cost.rs` 门面公开；ECS 适配协议与支付上下文归属 Commit，集中在
+叶子实现文件 `ability_system/commit/additional_cost.rs` 中。`AdditionalCostProvider` 和
+`AdditionalCostContext` 经 `commit.rs` 和 `ability_system.rs` 门面显式重导出，公共导入路径
+仍为 `bevy_gas::gas::ability_system`。背包实现在游戏侧，Effect 实现不得反向导入 Ability System。
+
+`commit/affordability.rs` 仅通过 `EffectReadOnlyParams` / `EffectSystemParams` 访问 Effect 数据，
+不依赖完整 Ability 参数或外部 Provider。`planning.rs` 保存未支付的计划；`execution.rs` 将
+支付上下文与 Receipt 配对保存在同步提交调用内，负责执行失败时的外部补偿。
 
 `ability_input.rs` 门面显式重导出 `ability_input/bindings.rs` 中的组件与错误类型，公开路径
 仍为 `bevy_gas::gas::ability_input`；`bindings` 是私有实现模块。
@@ -409,7 +446,9 @@ commit 和生命周期编排的流程：
 tests/
 ├── config_test.rs
 ├── config_test/
-│   └── runtime_test.rs
+│   ├── runtime_test.rs
+│   ├── compilation_test.rs
+│   └── additional_cost_test.rs
 ├── gas_test.rs
 ├── gas_test/
 │   ├── ability_input_test.rs
@@ -429,6 +468,7 @@ tests/
 │   ├── abilities_test.rs
 │   └── abilities_test/
 │       ├── activation_test.rs
+│       ├── additional_cost_test.rs
 │       ├── chaining_test.rs
 │       ├── commit_test.rs
 │       ├── lifecycle_test.rs
@@ -466,7 +506,7 @@ tests/
 | ASC 激活/commit/lifecycle  | `ability_system/`                                | `abilities_test/*`                            | 09       |
 | 输入动作绑定、重绑和清理   | `ability_input/bindings.rs`                      | `ability_input_test.rs`                       | 18       |
 | 目标管线与队列             | `gameplay_targeting/`                            | `gameplay_targeting_test.rs`                  | 15       |
-| 统一 FIFO 与阶段可见性     | `gameplay_execution/`、`runtime_plugin.rs`       | `queues_test.rs`、`runtime_paths_test.rs`     | 02、16   |
+| 统一 FIFO 与阶段可见性     | `gameplay_execution/`、`runtime_plugin/runtime.rs`       | `queues_test.rs`、`runtime_paths_test.rs`     | 02、16   |
 | 公共导出/prelude           | 各门面、`src/gas.rs`、`src/lib.rs`、`prelude.rs` | 全目标编译/rustdoc                            | 11、17   |
 
 ## 何时继续拆文件

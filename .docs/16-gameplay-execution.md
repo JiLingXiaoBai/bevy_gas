@@ -159,7 +159,13 @@ pub fn process_gameplay_execution_queue_system(
 }
 ```
 
-内部 drain 是 `pub(crate)` 实现，不是游戏层应直接调用的公共 API。
+内部 drain 是私有实现，不是游戏层应直接调用的公共 API。默认入口使用 `()` Provider，
+配置 `GameplayAbilitySystemPlugin::with_additional_costs::<P>()` 后，运行时安装
+`process_gameplay_execution_queue_with_costs_system::<P>`，以相同 FIFO、启动动作顺序与结果协议
+同步支付游戏资源。不要同时注册两个 resolver；业务系统应相对
+`GameplayAbilitySystemSet::GameplayResolve` 排序，避免依赖某个 resolver 函数的身份。直接激活和链式子技能使用传入的同一
+`AbilitySystemParams<P>`；外部扣费对后续请求立即可见。具体适配协议见
+[14 — 扩展系统](./14-extending-the-system.md#接入背包等额外消耗)。
 
 ## FixedUpdate 阶段契约
 

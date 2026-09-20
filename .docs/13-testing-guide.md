@@ -7,7 +7,8 @@ tests/
 ├── config_test.rs                      # 配置领域集成测试门面
 ├── config_test/
 │   ├── runtime_test.rs                 # 默认读取、包校验和业务校验的 feature 边界
-│   └── compilation_test.rs             # 编译原子性、重试和准备结果一致性
+│   ├── compilation_test.rs             # 编译原子性、重试和准备结果一致性
+│   └── additional_cost_test.rs         # 额外消耗配置、校验、确定性与实际支付
 ├── gas_test.rs                         # GAS 集成测试 crate 门面
 ├── gas_test/
 │   ├── ability_input_test.rs            # Logical input bindings and fixed-tick buffering
@@ -23,6 +24,7 @@ tests/
 │   ├── abilities_test/
 │   │   ├── activation_test.rs                # 激活条件与实例策略
 │   │   ├── commit_test.rs                    # Cost 与 Cooldown
+│   │   ├── additional_cost_test.rs           # 外部成本预检、批量支付、补偿与激活入口
 │   │   ├── lifecycle_test.rs                 # 取消、结束与清理
 │   │   ├── deferred_lifecycle_test.rs        # 延迟ASC移除/替换与startup命令交错
 │   │   ├── tasks_test.rs                     # WaitTicks 与任务结束
@@ -39,6 +41,7 @@ examples/
 ├── ability_input_bindings.rs           # Buffered input and slot rebinding without a window
 ├── ability_effect_flow.rs              # 无窗口的完整技能、伤害与冷却时间线
 ├── config_fireball.rs                  # 默认可用的二进制配置火球示例
+├── inventory_bomb.rs                   # 背包炸弹与法力共同支付；同 tick 请求争用最后一颗
 └── tag_registration.rs                 # 完整 App 中的标签注册
 ```
 
@@ -78,6 +81,9 @@ cargo test --all-features --test config_test
 # Input binding and buffering integration tests
 cargo test --test gas_test ability_input_test
 
+# External-resource costs through custom ECS access
+cargo test --test gas_test abilities_test::additional_cost_test
+
 # One nested behavior module
 cargo test --test gas_test effects_test::requirements_test
 
@@ -94,6 +100,9 @@ cargo test --test gas_test -- --list
 # Compile or run the checked example
 cargo run --example ability_effect_flow
 cargo run --example ability_input_bindings
+cargo run --example inventory_bomb
+# After exporting the configuration package
+cargo run --example inventory_bomb -- config/bin
 cargo check --example tag_registration
 cargo run --example tag_registration
 ```
@@ -235,6 +244,7 @@ manifest 和 GAS 编译结果后才发布；随后可运行配置预览和 `conf
 | Requirement/免疫 | 抑制、恢复、移除、固定点收敛与 fail-closed                           |
 | 技能             | 激活、Cost、Cooldown、阻止/取消标签与实例策略                        |
 | 技能任务/链      | startup、WaitTicks、完成动作、深度与循环检测                         |
+| 额外成本         | 只读预检、同名批量需求、同 tick 可见性、各入口支付、失败补偿与取消不退款 |
 | Targeting        | 管线校验、稳定排序、多目标 continuation                              |
 | 统一 FIFO        | Ability/Effect 跨类型顺序、完整 drain、阶段边界                      |
 | 组件组合         | Bundle 四组件齐全，Tag/Attribute 独立存在                            |
@@ -249,6 +259,7 @@ manifest 和 GAS 编译结果后才发布；随后可运行配置预览和 `conf
 - `abilities_test/lifecycle_test.rs`：Active Ability/ASC 移除和替换时的计数、共享阻止标签、任务清理。
 - `effects_test/removal_test.rs`：容器移除/替换撤销旧标签和修饰器，旧句柄不会复活。
 - `config_test/compilation_test.rs`：失败编译保留资源和编号，重试及乱序输入的时间线一致性。
+- `config_test/additional_cost_test.rs`：外部消耗表解码、校验与排序、名称注册和配置技能实际支付。
 
 测量 fixture 默认忽略，不以耗时阈值判定普通测试成败：
 

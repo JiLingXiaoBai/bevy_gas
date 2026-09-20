@@ -13,6 +13,9 @@ src/gas/
 ├── gameplay_abilities.rs
 └── gameplay_abilities/
     ├── gameplay_ability.rs
+    ├── additional_cost.rs
+    ├── additional_cost/
+    │   └── definition.rs
     ├── gameplay_ability_spec.rs
     ├── activation_data.rs
     ├── activation_context.rs
@@ -32,6 +35,7 @@ src/gas/
 | 文件 | 职责 |
 | ---- | ---- |
 | `gameplay_ability.rs` | 不可变技能定义与 `AbilityTags` |
+| `additional_cost/definition.rs` | 游戏资源的正整数消耗定义和结构化错误 |
 | `gameplay_ability_spec.rs` | 某个 ASC 已授予技能的等级和活跃计数 |
 | `activation_data.rs` | 一次激活共享的 source、targets 与传播 context 不可变值 |
 | `ability_chain.rs` | 链 ID、深度限制和重复 Handle 检查 |
@@ -52,13 +56,15 @@ pub struct GameplayAbility {
     startup_tasks: Vec<AbilityTaskDef>,
     cooldown: Option<Arc<GameplayEffect>>,
     cost: Option<Arc<GameplayEffect>>,
+    additional_costs: Vec<AdditionalCost>,
     allow_multiple_instances: bool,
 }
 ```
 
 通过 `GameplayAbility::default().with_*()` 具名配置，或通过
 `GameplayAbility::new(tags, startup_tasks, cooldown, cost, allow_multiple_instances)`
-创建定义，再通过 Getter 只读访问。定义通常放入 `Arc`，同一份定义可被多个
+创建定义，再通过 Getter 只读访问。原 `new(...)` 签名保留，额外成本默认为空，通过
+`with_additional_costs(...)` 配置。定义通常放入 `Arc`，同一份定义可被多个
 `GameplayAbilitySpec` 共享。
 
 默认定义没有标签、任务、消耗或冷却，`allow_multiple_instances` 为 `false`。默认激活会保持
@@ -86,6 +92,22 @@ let ability = GameplayAbility::default()
 同 tick 的有序动作使用一个 `AbilityTaskOnFinishedDef::Batch`；它在首个 EndAbility 处停止。
 startup Instant 的效果与链式激活在下一动作之前同步结算；运行时任务仍把效果和激活请求写入
 FIFO，已入队请求不会因 EndAbility 撤回。任务顺序与边界见 [08 — 技能任务](./08-ability-tasks.md)。
+
+### Additional Costs
+
+属性 Cost 继续使用 Instant、Add 类型的 GameplayEffect；背包物品、耐久等游戏资源通过
+`with_additional_costs(Vec<AdditionalCost>)` 声明。两种成本可以同时使用。
+`AdditionalCost::new(resource, amount)` 接收游戏注册的 `UniqueName` 和正整数 `u32` 数量，
+数量为零返回 `AdditionalCostError::InvalidAmount`。`get_additional_costs()` 只读访问完整列表，
+builder 替换整个列表；同名条目不会自动去重，Provider 必须按整批需求判断是否足够。
+
+定义只描述需求，不持有库存、支付状态或可变回调。游戏通过 `AdditionalCostProvider` 显式声明
+背包等 ECS 查询，预检查与真实提交均由同一适配器处理；默认 `()` Provider 拒绝非空额外成本。
+Excel 可通过 `gas.TbAbilityAdditionalCost` 配置，见 [20 — 表配置](./20-gas-configuration.md#additional-costs-表配置)。完整 Provider 接入见 [14 — 扩展系统](./14-extending-the-system.md#接入背包等额外消耗)。
+
+第一版在激活 Commit 内支付：外部成本临时扣除后，属性成本与冷却执行成功就确认支付；
+执行失败调用适配器补偿。补偿范围只覆盖外部成本，不把既有 Effect 流程变成全事务。
+startup 效果失败、未命中、结束或后续取消都不退款，也没有跨 tick 预留或出手时支付。
 
 ### 旧字段迁移
 
@@ -245,7 +267,7 @@ pub fn try_activate_ability_by_handle(
     targets: impl Into<AbilityActivationTargets>,
     handle: AbilitySpecHandle,
     activation_context: AbilityActivationContext,
-    params: &mut AbilitySystemParams,
+    params: &mut AbilitySystemParams<'_, '_, impl AdditionalCostProvider>,
 ) -> Result<(), AbilityActivationError>;
 ```
 
@@ -264,12 +286,13 @@ pub fn try_activate_ability_by_handle(
 1. 验证可选技能链上下文与请求 Handle。
 2. 查询来源 ASC 和已授予规格，检查多实例限制。
 3. 检查 ASC 阻止标签、来源 required/blocked tag 和 cooldown granted tag。
-4. 准备 Cost 与 Cooldown Effect Plan，并确认 Cost 可支付。
+4. 检查整批 Additional Costs，再准备 Cost 与 Cooldown Effect Plan，确认属性 Cost 可支付。
 5. 预验证本技能需要写入的阻止标签。
 6. 取消身份标签匹配 `cancel_abilities_with_tags` 的活跃技能。
 7. 写入阻止标签、递增 `active_count`，通过 `Commands` 创建 `ActiveGameplayAbility`，同时写入
    pending overlay。
-8. 执行已准备的 Cost 与 Cooldown；失败时回滚新技能的启动 bookkeeping。
+8. 重验证支付条件并同步准备整批 Additional Costs，再执行已准备的属性 Cost 与 Cooldown；
+   后续 Commit 失败时补偿外部成本，并回滚新技能的启动 bookkeeping。
 9. 收敛 Commit 产生的 Requirement 变化。
 10. 按定义顺序启动 startup tasks；`Instant` 的效果立即结算，链式子技能先完成自己的 startup，
     再继续父技能；`WaitTicks` 通过 Commands 创建任务实体。遇到 `Instant EndAbility` 时立即
@@ -284,8 +307,8 @@ startup 使用迭代执行栈处理嵌套 Batch 与链式激活，不通过 Rust
 已经取消的旧技能；Commit 也不提供数据库式的全部副作用回滚。
 
 `AbilityActivationError::is_rejection()` 将正常玩法拒绝与结构性错误区分开：多实例限制、激活
-条件和可恢复的 Cost/Cooldown 拒绝属于 rejection；缺少 ASC/规格、无效链、标签容量和执行错误
-属于运行时或配置错误。
+条件和可恢复的 Cost/Cooldown/Additional Costs 拒绝属于 rejection；缺少 Provider、未知资源、
+缺少 ASC/规格、无效链、标签容量和执行或补偿错误属于运行时或配置错误。
 
 ## 活跃实例与生命周期
 
@@ -334,6 +357,7 @@ Active ──► Ending ──► Cleanup/despawn
 | -------- | -------- |
 | `tests/gas_test/abilities_test/activation_test.rs` | 多实例、required/blocked tag、阻止标签和缺失规格 |
 | `tests/gas_test/abilities_test/commit_test.rs` | Cost、Cooldown、准备失败与 startup 效果容错 |
+| `tests/gas_test/abilities_test/additional_cost_test.rs` | 外部资源批量支付、拒绝、补偿和各激活入口 |
 | `tests/gas_test/abilities_test/chaining_test.rs` | 循环/深度保护、上下文继承和 pending 父技能取消 |
 | `tests/gas_test/abilities_test/lifecycle_test.rs` | 标签取消、活跃计数、清除规格和清理幂等性 |
 | `tests/gas_test/runtime_paths_test.rs` | 插件阶段、startup `Instant` 与 Bundle 组合 |

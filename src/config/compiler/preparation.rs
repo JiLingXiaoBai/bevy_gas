@@ -4,7 +4,7 @@
 use super::magnitude::evaluate_linear;
 use super::numeric::formula_parameters_are_finite;
 use super::{ConfigError, ConfigErrorKind, ConfigLocation, Tables, data};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// Runtime-relevant action semantics, independent of ECS registry IDs.
 #[derive(Clone, Copy)]
@@ -28,6 +28,12 @@ pub(crate) struct PreparedAction<'a> {
     pub(crate) row: &'a data::AbilityTask,
     pub(crate) tick: u32,
     pub(crate) kind: PreparedActionKind,
+}
+
+/// One external-resource requirement with a checked runtime quantity.
+pub(crate) struct PreparedAdditionalCost<'a> {
+    pub(crate) row: &'a data::AbilityAdditionalCost,
+    pub(crate) amount: u32,
 }
 
 /// Magnitude parameters actually used by the runtime.
@@ -56,6 +62,7 @@ pub(crate) struct PreparedModifier<'a> {
 pub(crate) struct PreparedTables<'a> {
     pub(crate) tables: &'a Tables,
     actions: BTreeMap<i32, Vec<PreparedAction<'a>>>,
+    additional_costs: BTreeMap<i32, Vec<PreparedAdditionalCost<'a>>>,
     modifiers: BTreeMap<i32, Vec<PreparedModifier<'a>>>,
 }
 
@@ -64,6 +71,7 @@ impl<'a> PreparedTables<'a> {
         let mut prepared = Self {
             tables,
             actions: BTreeMap::new(),
+            additional_costs: prepare_additional_costs(tables)?,
             modifiers: BTreeMap::new(),
         };
         for row in tables.tb_ability_task.iter() {
@@ -156,10 +164,76 @@ impl<'a> PreparedTables<'a> {
             .unwrap_or_default()
     }
 
+    pub(crate) fn additional_costs(&self, ability_id: i32) -> &[PreparedAdditionalCost<'a>] {
+        self.additional_costs
+            .get(&ability_id)
+            .map(Vec::as_slice)
+            .unwrap_or_default()
+    }
+
     pub(crate) fn modifiers(&self, effect_id: i32) -> &[PreparedModifier<'a>] {
         self.modifiers
             .get(&effect_id)
             .map(Vec::as_slice)
             .unwrap_or_default()
     }
+}
+
+fn prepare_additional_costs(
+    tables: &Tables,
+) -> Result<BTreeMap<i32, Vec<PreparedAdditionalCost<'_>>>, ConfigError> {
+    let mut costs: BTreeMap<i32, Vec<PreparedAdditionalCost<'_>>> = BTreeMap::new();
+    let mut positions = BTreeSet::new();
+    let mut totals: BTreeMap<(i32, &str), u32> = BTreeMap::new();
+    for row in tables.tb_ability_additional_cost.iter() {
+        let location = ConfigLocation::table("AbilityAdditionalCost").row(row.id);
+        // Ignoring an orphan requirement could silently make an authored ability free.
+        if tables.tb_ability.get(&row.ability_id).is_none() {
+            return Err(ConfigError::new(
+                ConfigErrorKind::Reference,
+                location.field("ability_id"),
+                "unknown ability",
+            ));
+        }
+        if row.resource.trim().is_empty() {
+            return Err(ConfigError::new(
+                ConfigErrorKind::InvalidValue,
+                location.field("resource"),
+                "resource must not be blank",
+            ));
+        }
+        if row.order < 0 || !positions.insert((row.ability_id, row.order)) {
+            return Err(ConfigError::new(
+                ConfigErrorKind::InvalidValue,
+                location.field("order"),
+                "order must be nonnegative and unique within the ability",
+            ));
+        }
+        let amount = u32::try_from(row.amount)
+            .ok()
+            .filter(|amount| *amount > 0)
+            .ok_or_else(|| {
+                ConfigError::new(
+                    ConfigErrorKind::InvalidValue,
+                    location.field("amount"),
+                    "amount must be in 1..=4294967295",
+                )
+            })?;
+        let total = totals.entry((row.ability_id, &row.resource)).or_default();
+        *total = total.checked_add(amount).ok_or_else(|| {
+            ConfigError::new(
+                ConfigErrorKind::InvalidValue,
+                location.field("amount"),
+                "total amount for this ability and resource exceeds u32 capacity",
+            )
+        })?;
+        costs
+            .entry(row.ability_id)
+            .or_default()
+            .push(PreparedAdditionalCost { row, amount });
+    }
+    for costs in costs.values_mut() {
+        costs.sort_by_key(|cost| cost.row.order);
+    }
+    Ok(costs)
 }

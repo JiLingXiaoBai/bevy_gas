@@ -2,7 +2,7 @@
 
 ## 范围与目录
 
-首版支持标签、属性、效果、修改器、技能、动作时间线和目标规则七张表。
+支持标签、属性、效果、修改器、技能、额外消耗、动作时间线和目标规则八张表。
 配置使用固定 Luban 5.0.0 的 `rust-bin + bin + --strict`，经安全读取和业务编译后形成
 `GameplayCatalog` Resource。配置接入位于同一个 `bevy_gas` 包的 `config` 模块，
 运行时接口和生成代码始终参与编译；GAS 领域代码不依赖生成的配置类型。
@@ -11,19 +11,19 @@
 | 路径                           | 职责                                                                   |
 | ------------------------------ | ---------------------------------------------------------------------- |
 | `config/tables/gas.*.xlsx`     | 策划维护的数据、Luban 字段类型与说明                                   |
-| `config/defines/gas.xml`       | 七张 GAS 表的登记与普通枚举定义                                        |
+| `config/defines/gas.xml`       | 八张 GAS 表的登记与普通枚举定义                                        |
 | `config/defines/builtin.xml`   | Luban 内置定义                                                         |
 | `config/templates/rust-bin/`   | 项目维护的安全 Rust 模板                                               |
 | `src/config.rs`、`src/config/` | 配置门面，以及解码、校验、GAS 编译、加载和包校验实现                   |
 | `src/config/decoding/`         | 仅使用标准库的 Safe Rust、Result 二进制解码实现                        |
 | `config/generated/`            | 自动生成的 `mod.rs`、`gas.rs` 等 Rust 模块，包含 DTO、表索引与结构描述 |
-| `config/bin/`                  | 导出配置包，包括七张 GAS 表的 bytes 与 manifest.json；Git 忽略         |
+| `config/bin/`                  | 导出配置包，包括八张 GAS 表的 bytes 与 manifest.json；Git 忽略         |
 | `src/bin/gas_config.rs`        | 启用 `config-validation` 后可用的配置预览与导表校验 CLI                |
 | `examples/config_fireball.rs`  | 默认可编译运行的无窗口火球示例                                         |
 | `tools/luban/.cache/export/`   | 每次导表的临时单包项目、验证产物与发布备份                             |
 
-导表产物包含上述七张 GAS 表的七个 `.bytes` 文件和 `manifest.json`。
-默认运行时只需部署七个 `.bytes` 文件；启用 `config-validation` 的加载器还要求匹配的清单。
+导表产物包含上述八张 GAS 表的八个 `.bytes` 文件和 `manifest.json`。
+默认运行时只需部署八个 `.bytes` 文件；启用 `config-validation` 的加载器还要求匹配的清单。
 `src/config.rs` 通过外部路径加载 `config/generated/mod.rs`，公开为
 `bevy_gas::config::generated`；生成目录不维护独立 Cargo 包。
 
@@ -31,7 +31,7 @@
 启用时执行完整校验和文本报告。`ConfigError`、`ConfigErrorKind`、`ConfigLocation`
 由配置领域共用的 `error` 模块拥有。编译器按准备、注册、效果、目标、技能时间线拆分：
 `PreparedTables` 借用生成行，统一解析实际使用的动作和幅度参数，建立已排序的技能动作、
-效果修改器索引；编译、完整校验和预览共用这一视图，不重复扫描和解释同一关系。
+效果修改器和额外成本索引；编译、完整校验和预览共用这一视图，不重复扫描和解释同一关系。
 生成 DTO 与 GAS 运行时类型仍然分离，feature 行为与配置协议保持不变。文件归属见
 [17 — 源码布局与维护边界](./17-source-layout-and-maintenance.md#配置模块内部职责)。
 
@@ -97,6 +97,7 @@ Luban 的结构校验和 Rust 的玩法校验是连续两层，不能互相替�
 | gas.TbEffect        | id   | 持续、周期、概率、asset/granted 标签                  |
 | gas.TbModifier      | id   | effect_id、order、属性、操作、Flat/LinearLevel 参数   |
 | gas.TbAbility       | id   | 等级、标签、消耗、冷却、目标规则、实例策略            |
+| gas.TbAbilityAdditionalCost | id | ability_id、order、resource、amount，按技能配置额外消耗 |
 | gas.TbAbilityTask   | id   | ability_id、at_tick、order、动作、目标范围、effect_id |
 | gas.TbTargeting     | id   | 选择、标签/距离过滤、排序与数量上限                   |
 
@@ -159,7 +160,11 @@ DurationTicks 必须提供正整数持续时间，Infinite 不填写 duration_ti
 period_ticks 留空表示无周期，有值时必须为正；execute_on_applied 只用于周期效果。
 
 成本必须 Instant、Add、概率 1、非周期，每个属性只能有一条修改器，且全等级成本为负。
-不消耗资源使用空 cost_effect_id。冷却必须正持续时间、非空 granted tags、概率 1、
+不消耗属性资源使用空 cost_effect_id。背包等额外消耗填写 `gas.TbAbilityAdditionalCost`，
+编译器自动构造 `AdditionalCost` 并写入技能定义，见下方 Additional Costs 表配置。
+`cost_effect_id` 只表示属性 Effect 成本，不能把物品 ID 填入该列；两类成本可以同时使用。
+
+冷却必须正持续时间、非空 granted tags、概率 1、
 无周期且无属性修改器。冷却检查使用 granted tags，不使用 asset tags。
 
 动作按 `(at_tick, order)` 排序，三元组 `(ability_id, at_tick, order)` 必须唯一。
@@ -185,6 +190,66 @@ TbAbilityTask 中 at_tick=0、kind=ApplyEffect、target_scope=AllCaptured 的动
 ApplyEffect 的 Primary/AllCaptured 分别使用激活时捕获的主目标/全部目标。
 命中时重新抓取、独立 Self 动作、地面点空目标、弹体和跨技能配置动作尚未开放。
 真实弹体可由游戏层通过现有 EmitEvent、Targeting 和统一效果队列扩展。
+
+## Additional Costs 表配置
+
+在 `config/tables/gas.ability_additional_cost.xlsx` 中配置一行外部资源需求，
+表登记为 `gas.TbAbilityAdditionalCost`。无需为没有额外消耗的技能填写占位行。
+
+| 字段 | 类型与约束 | 含义 |
+| ---- | ---------- | ---- |
+| `id` | `int`，主键唯一 | 消耗配置行 ID |
+| `ability_id` | `int#ref=gas.TbAbility` | 需要支付的技能 ID |
+| `order` | 非负 `int`，同技能内唯一 | 成本列表的确定顺序，不依赖 Excel 行顺序 |
+| `resource` | 非空资源名称，如 `Inventory.Bomb` | 游戏 Provider 识别的稳定名称，不是 GameplayTag |
+| `amount` | `long`，范围 `1..=4294967295` | 固定消耗数量，编译时安全转换为运行时 `u32` |
+
+样例行：
+
+| id | ability_id | order | resource | amount |
+| -- | ---------- | ----- | -------- | ------ |
+| 10021 | 1002 | 1 | Inventory.Bomb | 1 |
+
+技能 1002（InventoryBomb）还通过 `cost_effect_id=2001` 消耗 20 Mana，无冷却，
+启动时仅执行 EndAbility。这个样例验证支付流程，不生成弹体。
+同技能有多种成本时添加多行；同资源的重复行保留在列表中，Provider 必须整批合计检查，
+配置编译器提前拒绝合计超出 `u32` 的配置。当前数量固定，不随技能等级变化。
+
+必需检查在默认构建中也执行：技能引用存在、数量在范围内、资源名非空白、order 非负且
+同技能内不重复、重复资源数量合计不溢出。完整 `config-validation` 还校验资源名为
+点分的 ASCII 字母、数字或下划线段。失败报告包含表名、配置行 ID 和字段。
+
+编译器在现有 `UniqueNamePool` 的私有快照内按名称顺序注册资源键，全部构建成功后才发布。
+失败不会留下部分注册项。游戏 Provider 使用同一个 World 的名称池解析相同名称，例如
+`new_name("Inventory.Bomb")`，映射到自己的物品 ID 或背包数据；不要保存名称池的数字索引到表中。
+表格不创建背包，也不自动安装 Provider；名称格式校验不代表游戏存在对应道具，未知资源仍由 Provider 拒绝。运行时仍需：
+
+```rust
+app.add_plugins(
+    GameplayAbilitySystemPlugin::with_additional_costs::<InventoryCosts>(),
+);
+```
+
+`InventoryCosts` 是游戏实现的 `AdditionalCostProvider`，实际检查、扣减和补偿
+`context.source` 的库存。默认 Provider 遇到非空成本会拒绝激活。实现参考
+[`inventory_bomb.rs`](../examples/inventory_bomb.rs) 和
+[14 — 扩展系统](./14-extending-the-system.md#接入背包等额外消耗)。
+
+修改表格后，在仓库根目录执行：
+
+```powershell
+pwsh -NoProfile -File config/export.ps1
+cargo run --features config-validation --bin gas-config -- inspect config/bin 1002
+cargo run --example inventory_bomb -- config/bin
+```
+
+示例从配置目录加载技能 1002，在同一个 tick 提交两次请求；起始一颗炸弹和 40 Mana，
+最终一次成功、一次因库存不足拒绝，剩余零颗炸弹和 20 Mana。省略目录参数时仍运行原有
+纯 Rust 定义示例（起始 20 Mana、每次消耗 10 Mana）。
+
+新增表改变生成的表集合和包 schema：旧配置包必须重新导出，并与新生成的 Rust 模块一起
+部署。即使项目不使用额外消耗，也需部署导出的空 `gas_tbabilityadditionalcost.bytes`；
+旧的七表包不能直接由新版本读取。无需额外添加物品表或把资源登记为 GAS 标签。
 
 ## 加载、注册与授予
 
@@ -292,9 +357,12 @@ cargo build
 两种构建均通过 `tests/config_test.rs` 加载 `tests/config_test/` 中的测试。
 这些测试自建表数据和临时配置包，不依赖导表生成的 `config/bin/`。
 配置变更使用完整导表验证候选 Rust 模块、真实二进制包和 GAS 语义，再运行上面的
-配置预览与火球示例检查实际行为。修改 Excel、schema 或模板后，必须重新导表并同步提交
+配置预览、火球与表驱动炸弹示例检查实际行为。修改 Excel、schema 或模板后，必须重新导表并同步提交
 源文件和生成 Rust 模块；不手动修改 manifest 来掩盖结构或数据变化。
 根目录 `target/` 是可删除的构建缓存，后续 Cargo 命令会重新创建。
+
+额外消耗配置回归测试位于 `tests/config_test/additional_cost_test.rs`，覆盖生成数据解码、
+顺序和资源身份、非法配置、注册原子性，以及配置技能通过游戏 Provider 实际支付。
 
 有关工具安装和 MCP 的细节见 [19 — Luban 工具链](./19-luban-toolchain.md)。
 

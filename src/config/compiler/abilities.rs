@@ -1,4 +1,4 @@
-//! Ability definitions and their ordered startup task timelines.
+//! Ability definitions, external-resource requirements, and ordered startup timelines.
 
 use super::effects::resolve_effect;
 use super::registration::resolve_tags;
@@ -7,8 +7,8 @@ use super::{
     PreparedActionKind, PreparedTables, PreparedTargetScope,
 };
 use crate::{
-    AbilityTags, AbilityTaskDef, AbilityTaskOnFinishedDef, GameplayAbility, GameplayEffect,
-    GameplayTag, TargetingDefinition,
+    AbilityTags, AbilityTaskDef, AbilityTaskOnFinishedDef, AdditionalCost, GameplayAbility,
+    GameplayEffect, GameplayTag, TargetingDefinition, UniqueName,
 };
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -18,6 +18,7 @@ pub(super) fn compile_abilities(
     tags: &BTreeMap<String, GameplayTag>,
     effects: &BTreeMap<EffectId, Arc<GameplayEffect>>,
     targeting: &BTreeMap<i32, Arc<TargetingDefinition>>,
+    additional_cost_resources: &BTreeMap<&str, UniqueName>,
 ) -> Result<BTreeMap<AbilityId, CompiledAbility>, ConfigError> {
     let mut abilities = BTreeMap::new();
     for row in prepared.tables.tb_ability.iter() {
@@ -30,6 +31,11 @@ pub(super) fn compile_abilities(
         let mut definition = GameplayAbility::default()
             .with_tags(ability_tags)
             .with_startup_tasks(compile_tasks(prepared, row.id, effects)?)
+            .with_additional_costs(compile_additional_costs(
+                prepared,
+                row.id,
+                additional_cost_resources,
+            )?)
             .with_allow_multiple_instances(row.allow_multiple_instances);
         if let Some(id) = row.cost_effect_id {
             definition = definition.with_cost(resolve_effect(id, effects)?);
@@ -76,6 +82,37 @@ pub(super) fn compile_abilities(
         );
     }
     Ok(abilities)
+}
+
+fn compile_additional_costs(
+    prepared: &PreparedTables,
+    ability_id: i32,
+    resources: &BTreeMap<&str, UniqueName>,
+) -> Result<Vec<AdditionalCost>, ConfigError> {
+    prepared
+        .additional_costs(ability_id)
+        .iter()
+        .map(|cost| {
+            let location = ConfigLocation::table("AbilityAdditionalCost").row(cost.row.id);
+            let resource = resources
+                .get(cost.row.resource.as_str())
+                .copied()
+                .ok_or_else(|| {
+                    ConfigError::new(
+                        ConfigErrorKind::Reference,
+                        location.field("resource"),
+                        "unresolved registered resource",
+                    )
+                })?;
+            AdditionalCost::new(resource, cost.amount).map_err(|error| {
+                ConfigError::new(
+                    ConfigErrorKind::InvalidValue,
+                    location.field("amount"),
+                    error.to_string(),
+                )
+            })
+        })
+        .collect()
 }
 
 fn compile_tasks(
