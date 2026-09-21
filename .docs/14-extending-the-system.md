@@ -146,9 +146,8 @@ Component 或 Resource 唯一持有。
 
 完整可运行示例见 [`inventory_bomb`](../examples/inventory_bomb.rs)：
 `cargo run --example inventory_bomb`。它演示背包炸弹作为额外成本接入技能流程。
-导表后运行 `cargo run --example inventory_bomb -- config/bin`，同一 Provider 会处理从
-Excel 编译的技能 1002。表格字段与导表步骤见
-[20 — Additional Costs 表配置](./20-gas-configuration.md#additional-costs-表配置)。
+游戏配置层也可以构造相同的 `AdditionalCost` 定义，复用同一个 Provider；数据结构与编译映射由
+游戏维护，见 [19 — 外部配置集成](./19-external-configuration.md)。
 
 游戏适配器在 `#[derive(SystemParam)]` 背包查询类型的 `'static` 实例上实现
 `AdditionalCostProvider`，如 `InventoryCosts<'static, 'static>`。协议接收一次技能的完整成本
@@ -193,7 +192,7 @@ Component/Resource，也不得重入 GAS、修改 GAS 状态或执行不可撤�
 只对 Commit 期间已准备的外部成本执行补偿，GAS 已有的属性、冷却和取消旧技能的副作用不保证
 整体回滚。付款成功后的 startup 失败、技能结束、后续取消或未命中均不退款。需要出手时付款、
 跨 tick 预留或命中后消耗的玩法，还需单独设计生命周期协议；当前实现只支持激活时支付。
-Luban 表暂不配置额外成本，使用 Rust API 构造定义，配置边界见 [20 — 配置接入](./20-gas-configuration.md)。
+外部配置工程通过上述 Rust API 接入额外成本，不改变同步支付与补偿协议。
 
 ## 新增 AbilityTask 类型
 

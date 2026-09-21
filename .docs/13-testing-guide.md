@@ -4,12 +4,6 @@
 
 ```text
 tests/
-├── config_test.rs                      # 配置领域集成测试门面
-├── config_test/
-│   ├── runtime_test.rs                 # 默认读取、包校验和业务校验的 feature 边界
-│   ├── compilation_test.rs             # 编译原子性、重试和准备结果一致性
-│   ├── references_test.rs              # 父列表引用、共享修改器、二进制布局和未引用定义校验
-│   └── additional_cost_test.rs         # 额外消耗配置、校验、确定性与实际支付
 ├── gas_test.rs                         # GAS 集成测试 crate 门面
 ├── gas_test/
 │   ├── ability_input_test.rs            # Logical input bindings and fixed-tick buffering
@@ -41,7 +35,6 @@ tests/
 examples/
 ├── ability_input_bindings.rs           # Buffered input and slot rebinding without a window
 ├── ability_effect_flow.rs              # 无窗口的完整技能、伤害与冷却时间线
-├── config_fireball.rs                  # 默认可用的二进制配置火球示例
 ├── inventory_bomb.rs                   # 背包炸弹与法力共同支付；同 tick 请求争用最后一颗
 └── tag_registration.rs                 # 完整 App 中的标签注册
 ```
@@ -51,8 +44,7 @@ examples/
 也不单独创建顶层测试目标。例如，输入绑定属于 GAS，其测试位于
 `tests/gas_test/ability_input_test.rs`。`randoms_test.rs` 和 `unique_names_test.rs` 则分别
 对应 crate 顶层的 `randoms` 和 `unique_names` 领域，保留独立测试目标。
-配置属于 crate 顶层 `config` 领域，集成测试放在 `tests/config_test/`，
-由 `tests/config_test.rs` 声明和加载。
+游戏配置的编译、数据校验和资源加载测试在对应游戏工程中维护。
 
 领域内部的测试按外部行为拆分，不镜像私有实现文件，也不要求叶子测试文件递归套用门面结构。
 移动私有函数不应迫使测试目录改名；新增行为时应放入最接近其 Gameplay 语义的模块。
@@ -74,10 +66,6 @@ cargo test
 
 # GAS integration-test crate
 cargo test --test gas_test
-
-# Configuration runtime and full authoring validation
-cargo test --test config_test
-cargo test --all-features --test config_test
 
 # Input binding and buffering integration tests
 cargo test --test gas_test ability_input_test
@@ -102,8 +90,6 @@ cargo test --test gas_test -- --list
 cargo run --example ability_effect_flow
 cargo run --example ability_input_bindings
 cargo run --example inventory_bomb
-# After exporting the configuration package
-cargo run --example inventory_bomb -- config/bin
 cargo check --example tag_registration
 cargo run --example tag_registration
 ```
@@ -210,26 +196,12 @@ handle/spec、管理器和系统函数应从 `bevy_gas::gas::<domain>` 或 crate
 `examples/tag_registration.rs` 当前使用 crate-root 兼容导入，验证既有根路径；知识库示例优先
 使用精简 prelude，专项 API 则展示领域门面路径。
 
-## 配置运行时与 feature 验证
+## 外部游戏的配置验证
 
-项目只维护根 `bevy_gas` 包，配置功能位于 `src/config.rs` 和 `src/config/`，
-生成代码、解码、加载、GAS 编译和授予接口始终参与编译。默认关闭的 `config-validation`
-启用包校验、完整业务校验和离线工具；`config_fireball` 示例在默认构建中可用，CLI 仍需该 feature。
-
-根目录执行 `cargo test` 和 `cargo test --all-features`，分别验证默认读取，
-以及启用 feature 的包校验与完整业务校验。
-配置测试通过 `tests/config_test.rs` 加载 `tests/config_test/runtime_test.rs`，自建表数据和临时包，
-不依赖 `config/bin/` 或本机 Luban 工具。测试应覆盖共有的 I/O 大小限制、解码、引用、数值和注册状态约束，
-以及关闭 feature 时直接读表、忽略缺失或无效清单，启用时要求有效清单与匹配 schema/摘要的差异。
-业务规则还需覆盖关闭 feature 时跳过、启用时拒绝的情况。
-GAS 核心任务测试仍归属 `tests/gas_test/`；
-`cargo clippy --all-targets --all-features -- -D warnings` 同时检查运行时、完整校验、CLI 和示例。
-
-修改 Excel、schema 或模板后，执行 `pwsh -NoProfile -File config/export.ps1`。
-导表在临时单包项目中用候选生成模块编译启用 `config-validation` 的 CLI，校验真实 bytes、
-manifest 和 GAS 编译结果后才发布；随后可运行配置预览和 `config_fireball` 示例验证玩法。
-源表与生成 Rust 模块应同步提交，不能只更新清单来掩盖结构或数据变化。命令与包约定见
-[20 — 技能配置](./20-gas-configuration.md)。
+本库测试直接使用公开 GAS API 构造技能与效果，不依赖外部游戏的数据包或生成工具。
+配套游戏起始模板 `bevy_gas_template` 拥有自己的配置测试，并通过真实游戏数据验证对本库的调用。
+更新 GAS 公共接口时，应同时执行受影响游戏的构建与玩法回归；库的单元测试不能替代游戏的
+结构映射、包加载和完整场景验收。接入边界见 [19 — 外部配置集成](./19-external-configuration.md)。
 
 ## 关键测试领域
 
@@ -259,12 +231,6 @@ manifest 和 GAS 编译结果后才发布；随后可运行配置预览和 `conf
   不要求随机数资源，返回具体原因且不修改 Gameplay 状态。
 - `abilities_test/lifecycle_test.rs`：Active Ability/ASC 移除和替换时的计数、共享阻止标签、任务清理。
 - `effects_test/removal_test.rs`：容器移除/替换撤销旧标签和修饰器，旧句柄不会复活。
-- `config_test/compilation_test.rs`：失败编译保留资源和编号，重试及乱序输入的时间线一致性，
-  父列表的任务顺序与显式 EndAbility 约束。
-- `config_test/references_test.rs`：三个父列表的重复和缺失引用、共享修改器的独立顺序、
-  新二进制布局，以及未引用定义在完整业务校验中的自身字段检查。
-- `config_test/additional_cost_test.rs`：外部消耗表解码、父列表顺序与共享、
-  每技能资源累计数量校验、名称注册和配置技能实际支付。
 
 测量 fixture 默认忽略，不以耗时阈值判定普通测试成败：
 

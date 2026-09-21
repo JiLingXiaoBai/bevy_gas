@@ -290,5 +290,5 @@ ASC、Active Ability 或 `Commands`。`AbilitySystemParams` 内嵌它并实现 `
 | `EffectRequirementDiagnostics` | Resource | 默认关闭的收敛观测开关与累计指标 |
 | `EffectRequirementMetrics` | struct | 扫描、快照、转换、循环和耗时计数 |
 
-配置错误从 `bevy_gas::config` 导入：`ConfigError`、`ConfigErrorKind`、`ConfigLocation`。
-使用 `kind()`、`location()` 判断类别和位置；`message()` / Display 用于展示。
+游戏配置的加载与编译错误由游戏工程定义，接入边界见
+[19 — 外部配置集成](./19-external-configuration.md)。GAS 执行错误使用上表的运行时类型。

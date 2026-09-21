@@ -43,23 +43,13 @@ fn spawn_gameplay_actor(mut commands: Commands) {
 
 详细流程与日志输出说明见 [示例运行说明](./.docs/12-usage-patterns.md#完整可运行示例)。
 
-## 配置工具
+## 外部配置
 
-`config/` 维护 Excel 数据表和结构定义，通过固定版本的 `tools/luban/` 工具链导出
-Rust 配置代码到 `config/generated/`、二进制到 `config/bin/`。当前使用官方 MiniTemplate
-示例验证流程，Rust 配置读取与 GAS 接入仍待实现。
+游戏项目负责自己的数据表、结构定义、生成代码、加载与配置校验，并通过公开 API 构造
+共享的 GAS 定义。配套游戏起始模板
+[bevy_gas_template](../bevy_gas_template/README.md) 包含独立配置工程，并通过 `../bevy_gas` 本地 path 依赖本库。
 
-工具支持 Windows x64，需要 PowerShell 7.2+、PATH 中的 .NET Runtime 8+ 和 7-Zip。
-在仓库根目录执行：
-
-```powershell
-pwsh -NoProfile -File tools/luban/setup.ps1
-pwsh -NoProfile -File config/export.ps1
-```
-
-首次准备后，日常导表只需执行 `config/export.ps1`。工具链同时固定 Luban.Agent 与
-Luban.Mcp 5.0.0；Codex 可通过项目 MCP 配置查询表结构、校验和生成配置。
-配置路径、MCP 启用方式与升级约定见 [Luban 配置工程与工具链](./.docs/19-luban-toolchain.md)。
+接入步骤与库和游戏的职责划分见 [外部配置集成](./.docs/19-external-configuration.md)。
 
 ## 文档
 

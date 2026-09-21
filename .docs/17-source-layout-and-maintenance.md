@@ -42,50 +42,12 @@ pub use bindings::{AbilityInputBindingError, AbilityInputBindings};
 ```text
 src/
 ├── lib.rs
-├── bin/
-│   └── gas_config.rs
 ├── randoms.rs
 ├── randoms/
 │   └── random.rs
 ├── unique_names.rs
 ├── unique_names/
 │   └── unique_name.rs
-├── config.rs
-├── config/
-│   ├── error.rs
-│   ├── error/
-│   │   └── definition.rs
-│   ├── catalog.rs
-│   ├── catalog/
-│   │   ├── definitions.rs
-│   │   └── grants.rs
-│   ├── compiler.rs
-│   ├── compiler/
-│   │   ├── build.rs
-│   │   ├── registration.rs
-│   │   ├── preparation.rs
-│   │   ├── effects.rs
-│   │   ├── targeting.rs
-│   │   ├── abilities.rs
-│   │   ├── magnitude.rs
-│   │   ├── numeric.rs
-│   │   └── validation.rs
-│   ├── decoding.rs
-│   ├── decoding/
-│   │   ├── buffer.rs
-│   │   ├── error.rs
-│   │   └── values.rs
-│   ├── loading.rs
-│   ├── loading/
-│   │   └── files.rs
-│   ├── inspection.rs
-│   ├── inspection/
-│   │   └── report.rs
-│   ├── package.rs
-│   └── package/
-│       ├── files.rs
-│       ├── hashes.rs
-│       └── manifest.rs
 ├── gas.rs
 └── gas/
     ├── prelude.rs
@@ -208,70 +170,21 @@ src/
 `examples/tag_registration.rs`；独立输入绑定示例位于 `examples/ability_input_bindings.rs`。
 集成测试布局见本文后半部分。
 
-## 配置工程与工具目录
+## 外部游戏配置
 
-`config/` 拥有配置输入和项目导表入口，`tools/luban/` 拥有 Luban、Luban.Agent 与 Luban.Mcp 的版本、准备和启动逻辑。
-详细路径、日常命令及示例来源见 [19 — Luban 配置工程与工具链](./19-luban-toolchain.md)。
+数据表、结构定义、生成代码、配置加载和校验由游戏工程维护。本库只提供共享 Gameplay
+定义、ECS 状态和运行时公共接口，不反向引用游戏生成类型。
+配套游戏起始模板 `bevy_gas_template` 展示完整接入；配置所有权与调用流程见
+[19 — 外部配置集成](./19-external-configuration.md)。
 
-| 路径                                     | 维护边界                                                                                    |
-| ---------------------------------------- | ------------------------------------------------------------------------------------------- |
-| `config/tables/`、`config/defines/`      | 人工维护的 Excel 数据及结构定义，纳入 Git                                                   |
-| `config/luban.conf`、`config/export.ps1` | 项目输入和输出约定、严格导表入口，纳入 Git                                                  |
-| `config/templates/rust-bin/`             | 手写 Rust 生成模板，纳入 Git；模板变更后重新导表                                            |
-| `config/generated/`                      | 自动生成的 `mod.rs`、`gas.rs` 等 Rust 模块，纳入 Git，不手动修改                            |
-| `src/config.rs`、`src/config/`           | 默认提供二进制读取、解码和 GAS 编译；feature 控制哈希、清单与包校验、完整业务校验和离线工具 |
-| `config/bin/`                            | 自动生成的二进制，Git 忽略，不放手写文件                                                    |
-| `tools/luban/`                           | 工具链锁文件、Luban 生成器入口、MCP 服务入口和本机 .NET 环境检查脚本                        |
-| `tools/luban/.cache/`                    | 可重新下载的三种 Luban 工具归档、已安装工具及临时验证产物，Git 忽略                         |
-
-`.codex/config.toml` 保存项目级 Luban MCP 注册与启用工具列表，纳入 Git；
-`tools/luban/mcp.ps1` 由 Codex 启动 stdio 服务，Agent 包作为该服务的查询和校验后端。
-
-配置源文件或结构定义变更后，应重新导表并将相关生成代码放在同一次提交中。
 仓库只维护根 `Cargo.toml`；`target/` 是 Git 忽略的构建缓存，删除后由 Cargo 重新创建。
-
-`src/lib.rs` 使用 `pub mod config;` 无条件暴露配置入口。
-`src/config.rs` 是门面，声明 `error`、`decoding`、`compiler`、`catalog`、`loading` 和 `package`，
-以及受 `config-validation` 控制的 `inspection`，并通过外部路径加载
-`config/generated/mod.rs` 为 `generated` 模块。
-默认关闭的 `config-validation` 控制包哈希、清单解析与校验、完整业务校验和离线工具。
-默认 `read_package` 只按生成表名单读取受大小限制的 `.bytes`，不要求或检查清单；
-解码和运行时必要构建约束仍保留，配置运行时与生成模块不受 feature 控制。
-配置层将表数据转换为共享 GAS 定义，`src/gas/` 不反向引用生成表类型。
-手写解码、GAS 适配和模板始终位于生成目录之外；游戏资源部署由使用本库的游戏负责。
-
-### 配置模块内部职责
-
-以下路径相对于 `src/config/`：
-
-| 文件                                           | 主要所有权                                                       |
-| ---------------------------------------------- | ---------------------------------------------------------------- |
-| `error.rs`、`error/definition.rs`              | 配置领域共用的 `ConfigError`，加载、包读取、编译和授予直接依赖它 |
-| `loading/files.rs`                             | 调用 `read_package`，将同次读取的字节移交生成表解码器            |
-| `inspection.rs`、`inspection/report.rs`        | feature 启用时的完整校验与技能文本预览，不承担文件读取           |
-| `compiler/build.rs`                            | 注册表快照上的编译编排，成功提交注册表并返回完整 catalog              |
-| `compiler/registration.rs`                     | 标签/属性/外部资源名称的确定顺序登记、注册状态检查与标签引用解析          |
-| `compiler/effects.rs`、`compiler/targeting.rs` | 效果与修改器、目标管线的运行时定义构建，以及必要构建检查         |
-| `compiler/abilities.rs`                        | 技能定义、共享效果引用、额外消耗与有序任务时间线                           |
-| `compiler/magnitude.rs`、`compiler/numeric.rs` | 线性幅度求值及运行时计算器、编译与校验共用的数值纯函数           |
-| `compiler/validation.rs`                       | 仅在 feature 启用时执行的完整制作规则校验                        |
-
-`compiler/preparation.rs` 借用原始行，按 Ability 的 `task_ids`、`additional_cost_ids` 和 Effect 的
-`modifier_ids` 解析有序关系，集中处理动作、幅度和额外消耗，校验、编译和报告共用。
-父列表内检查重复 ID 与缺失引用，跨父允许复用定义；任务按 tick 排序，同 tick 保留父列表顺序。
-编译器在三个注册表的私有快照上构建；返回 Err 保留原 World，成功才提交完整快照。
-共用数值判断不改变校验策略：运行时必要检查始终执行，制作限制和全等级预演仍由 feature 控制。
-`ConfigError` 属于配置领域公共错误，读取或授予代码无需通过 compiler 获取它。
-内部实现移动不改变 `bevy_gas::config::{ConfigError, load_tables, compile_catalog}`，
-以及 feature 启用时的 `describe_ability`、`describe_ability_at_level` 等公开路径。
 
 ## 顶层门面和公开路径
 
 | 文件                        | 职责                                                                                              |
 | --------------------------- | ------------------------------------------------------------------------------------------------- |
-| `src/lib.rs`                | crate 文档、`gas` 与 `config` 命名空间、Random/UniqueName 和 crate-root 兼容重导出                |
+| `src/lib.rs`                | crate 文档、`gas` 命名空间、Random/UniqueName 和 crate-root 兼容重导出                |
 | `src/gas.rs`                | 声明 GAS 领域模块并显式聚合公共 API                                                               |
-| `src/config.rs`             | 配置门面，显式重导出编译、加载与授予接口，声明生成模块，按 feature 重导出摘要、完整校验和离线工具 |
 | `src/gas/<domain>.rs`       | 声明私有实现子模块，显式维护该领域的 `pub use` / `pub(crate) use`                                 |
 | `src/gas/prelude.rs`        | 只重导出高频 Plugin、Component、定义和 SystemParam                                                |
 | `src/gas/runtime_plugin.rs` | 插件门面，显式重导出基础插件、Runtime、SystemSet 与 Plugin Group                                  |
@@ -282,9 +195,6 @@ src/
 1. `bevy_gas::prelude::*`：常规接入；
 2. `bevy_gas::gas::gameplay_effects::GameplayEffect` 这类领域路径：完整领域 API；
 3. `bevy_gas::GameplayEffect` 这类 crate-root 路径：保留的显式兼容重导出。
-
-配置 API 使用 `bevy_gas::config` 路径，不进入 GAS prelude；生成 DTO 位于
-`bevy_gas::config::generated`。
 
 门面禁止 `pub use *`。新增实现文件中的 `pub` 项不会自动成为 crate API；只有被门面明确重导出的
 项才属于领域公共表面。私有文件名可以调整，但不得在没有迁移方案时改变已公开的类型和函数路径。
@@ -446,12 +356,6 @@ commit 和生命周期编排的流程：
 
 ```text
 tests/
-├── config_test.rs
-├── config_test/
-│   ├── runtime_test.rs
-│   ├── compilation_test.rs
-│   ├── references_test.rs
-│   └── additional_cost_test.rs
 ├── gas_test.rs
 ├── gas_test/
 │   ├── ability_input_test.rs
@@ -484,8 +388,7 @@ tests/
 `tests/gas_test/`，由 `tests/gas_test.rs` 声明和加载；新增 GAS 子模块不新建顶层测试目标。
 因此输入绑定测试使用 `tests/gas_test/ability_input_test.rs`。`randoms_test.rs` 和
 `unique_names_test.rs` 对应 crate 顶层的独立领域，可以保留独立测试目标。
-`config` 同样属于 crate 顶层领域，其集成测试通过 `tests/config_test.rs` 加载
-`tests/config_test/`，分别验证默认构建和 `--all-features` 下的读取、包校验与业务校验边界。
+游戏配置编译和加载的集成测试归属对应游戏工程，本库保留 GAS 公共接口与运行时行为测试。
 
 领域内部按外部行为拆分测试，不要求镜像私有源码文件，也不要求叶子测试文件递归套用门面结构。
 具体命名和运行命令见 [13 — 测试指南](./13-testing-guide.md)。
@@ -553,4 +456,3 @@ cargo doc --no-deps --all-features
 - `gameplay_effects/active_gameplay_effect/diagnostics.rs` 拥有默认关闭的收敛观测。
 - `ability_system/lifecycle/instances.rs` 拥有实例登记与释放；`transitions.rs` 隔离 live/pending
   状态更新；`cleanup.rs` 拥有 Cleanup 和组件丢弃 Observer。
-- `compiler/preparation.rs` 拥有借用表数据的规范化视图；配置错误结构化类别和位置属于 `config/error`。

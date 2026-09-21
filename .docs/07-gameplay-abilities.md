@@ -103,7 +103,9 @@ builder 替换整个列表；同名条目不会自动去重，Provider 必须按
 
 定义只描述需求，不持有库存、支付状态或可变回调。游戏通过 `AdditionalCostProvider` 显式声明
 背包等 ECS 查询，预检查与真实提交均由同一适配器处理；默认 `()` Provider 拒绝非空额外成本。
-Excel 可通过 `gas.TbAbilityAdditionalCost` 配置，见 [20 — 表配置](./20-gas-configuration.md#additional-costs-表配置)。完整 Provider 接入见 [14 — 扩展系统](./14-extending-the-system.md#接入背包等额外消耗)。
+游戏配置层可将自己的资源 ID 和数量转换为 `AdditionalCost`，边界见
+[19 — 外部配置集成](./19-external-configuration.md)。完整 Provider 接入见
+[14 — 扩展系统](./14-extending-the-system.md#接入背包等额外消耗)。
 
 第一版在激活 Commit 内支付：外部成本临时扣除后，属性成本与冷却执行成功就确认支付；
 执行失败调用适配器补偿。补偿范围只覆盖外部成本，不把既有 Effect 流程变成全事务。

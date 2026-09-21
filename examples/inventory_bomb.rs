@@ -1,10 +1,9 @@
 //! Headless example: two requests share one inventory bomb and only one can pay.
-//! Pass a configuration directory to load ability 1002 from the Excel-authored catalog.
+//! Defines the ability in Rust and verifies FIFO payment without external configuration.
 
 use bevy::ecs::system::{RunSystemOnce, SystemParam, SystemParamItem, SystemState};
 use bevy::log::LogPlugin;
 use bevy::prelude::*;
-use bevy_gas::config::{AbilityId, compile_catalog, load_tables};
 use bevy_gas::{
     AbilityActivationCheckParams, AbilityActivationContext, AbilityTaskDef,
     AbilityTaskOnFinishedDef, AdditionalCost, AdditionalCostContext, AdditionalCostError,
@@ -15,7 +14,6 @@ use bevy_gas::{
     can_activate_ability,
 };
 use bevy_gas::{UniqueName, UniqueNamePool};
-use std::env;
 use std::error::Error;
 use std::sync::Arc;
 
@@ -151,49 +149,36 @@ fn main() -> Result<(), Box<dyn Error>> {
         .get_resource_mut::<UniqueNamePool>()
         .ok_or("missing unique-name pool")?
         .new_name("Inventory.Bomb")?;
-    let (mana, ability, initial_mana, expected_mana) = if let Some(directory) = env::args().nth(1) {
-        let tables = load_tables(directory)?;
-        let catalog = compile_catalog(&tables, app.world_mut())?;
-        let mana = catalog.attribute("Mana").ok_or("sample requires Mana")?;
-        let ability = Arc::clone(
-            catalog
-                .ability(AbilityId(1002))
-                .ok_or("sample requires configured ability 1002")?
-                .definition(),
-        );
-        app.world_mut().insert_resource(catalog);
-        (mana, ability, 40.0, 20.0)
-    } else {
-        let mana = app
-            .world_mut()
-            .run_system_once(|mut register: AttributeIdRegister| {
-                register.request_or_register_attribute_id("Mana", AttributeRegion::Hot)
-            })
-            .map_err(|error| format!("attribute registration system failed: {error}"))??;
+    let mana = app
+        .world_mut()
+        .run_system_once(|mut register: AttributeIdRegister| {
+            register.request_or_register_attribute_id("Mana", AttributeRegion::Hot)
+        })
+        .map_err(|error| format!("attribute registration system failed: {error}"))??;
 
-        let mana_cost = Arc::new(GameplayEffect::new(
-            vec![Modifier::new(
-                mana,
-                ModifierOperation::Add,
-                ModifierMagnitude::Flat(-10.0),
-            )],
-            EffectDurationTicks::Instant,
-            None,
-            1.0,
-            StackingPolicy::non_stacking(),
-            EffectTags::new(Vec::new(), Vec::new()),
-        ));
-        let ability = Arc::new(
-            GameplayAbility::default()
-                .with_cost(mana_cost)
-                .with_additional_costs(vec![AdditionalCost::new(bomb, 1)?])
-                .with_allow_multiple_instances(true)
-                .with_startup_tasks(vec![AbilityTaskDef::instant(
-                    AbilityTaskOnFinishedDef::EndAbility,
-                )]),
-        );
-        (mana, ability, 20.0, 10.0)
-    };
+    let mana_cost = Arc::new(GameplayEffect::new(
+        vec![Modifier::new(
+            mana,
+            ModifierOperation::Add,
+            ModifierMagnitude::Flat(-10.0),
+        )],
+        EffectDurationTicks::Instant,
+        None,
+        1.0,
+        StackingPolicy::non_stacking(),
+        EffectTags::new(Vec::new(), Vec::new()),
+    ));
+    let ability = Arc::new(
+        GameplayAbility::default()
+            .with_cost(mana_cost)
+            .with_additional_costs(vec![AdditionalCost::new(bomb, 1)?])
+            .with_allow_multiple_instances(true)
+            .with_startup_tasks(vec![AbilityTaskDef::instant(
+                AbilityTaskOnFinishedDef::EndAbility,
+            )]),
+    );
+    let initial_mana = 20.0;
+    let expected_mana = 10.0;
     let mut bundle = GameplayAbilitySystemBundle::default();
     let manager = app
         .world()
