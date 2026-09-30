@@ -19,9 +19,11 @@ pub use active_gameplay_effect::{
     update_active_effect_tag_requirements_system,
 };
 pub(crate) use active_gameplay_effect::{
-    ActiveEffectRequirementSync, ActiveEffectStorageRegistry, apply_gameplay_effect_in_batch,
-    execute_gameplay_effect_plan_in_batch, preview_instant_effect_modifiers,
-    resolve_active_effect_tag_requirements_if_dirty, validate_gameplay_effect_plan,
+    ActiveEffectRequirementSync, ActiveEffectStorageRegistry,
+    active_effect_requirements_need_update, apply_gameplay_effect_in_batch,
+    execute_gameplay_effect_plan_in_batch, invalidate_effect_requirements_on_tag_discard,
+    preview_instant_effect_modifiers, resolve_active_effect_tag_requirements_if_dirty,
+    validate_gameplay_effect_plan,
 };
 pub use effect_system_params::{EffectReadOnlyParams, EffectSystemParams};
 pub use gameplay_effect::{

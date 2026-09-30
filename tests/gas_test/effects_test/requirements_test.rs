@@ -1,5 +1,11 @@
 use super::*;
+use bevy::ecs::lifecycle::Remove;
+use bevy::prelude::{App, Entity, FixedUpdate, IntoScheduleConfigs, On, Query, Res};
 use bevy_gas::gameplay_effects::EffectRequirementDiagnostics;
+use bevy_gas::{
+    ActiveEffectHandle, EffectSystemParams, GameplayAbilitySystemSet, GameplayTagManager,
+    resolve_active_effect_tag_requirements,
+};
 
 #[test]
 fn application_requirements_builder_checks_source_and_target_tags() {
@@ -867,6 +873,31 @@ fn measure_requirement_convergence() {
             metrics.effect_snapshots,
             metrics.elapsed.as_secs_f64() * 1000.0,
         );
+
+        run_fixed_update(&mut app);
+        run_fixed_update(&mut app);
+        app.world_mut()
+            .resource_mut::<EffectRequirementDiagnostics>()
+            .reset();
+        let started = std::time::Instant::now();
+        for _ in 0..ITERATIONS {
+            run_fixed_update(&mut app);
+        }
+        let elapsed = started.elapsed();
+        let metrics = app
+            .world()
+            .resource::<EffectRequirementDiagnostics>()
+            .metrics();
+        assert_eq!(metrics.convergence_calls, 0);
+        assert_eq!(metrics.signature_effect_visits, 0);
+        assert_eq!(metrics.decision_effect_visits, 0);
+        eprintln!(
+            "idle_fixed_update effects={effects} ticks={ITERATIONS} convergence_calls={} signature_visits={} decision_visits={} elapsed_ms={:.3}",
+            metrics.convergence_calls,
+            metrics.signature_effect_visits,
+            metrics.decision_effect_visits,
+            elapsed.as_secs_f64() * 1000.0,
+        );
     }
 }
 
@@ -937,4 +968,238 @@ fn convergence_diagnostics_are_optional_and_count_real_transitions() {
             .convergence_calls,
         0,
     );
+}
+
+fn source_requirement_fixture() -> (App, GameplayTag, Entity, Entity, ActiveEffectHandle) {
+    let mut app = test_app();
+    let power = register_attribute(&mut app, "GuardedPower");
+    let enabled = register_tag(&mut app, "State.GuardedSourceEnabled");
+    let source = app.world_mut().spawn(GameplayTagContainer::default()).id();
+    let target = spawn_attribute_set(&mut app, power, 100.0);
+    add_tag_to_entity(&mut app, source, enabled);
+    let effect = Arc::new(GameplayEffect::new(
+        vec![add_modifier(power, 10.0)],
+        EffectDurationTicks::Infinite,
+        None,
+        1.0,
+        StackingPolicy::non_stacking(),
+        EffectTags::new(Vec::new(), Vec::new()).with_ongoing_requirements(
+            TagRequirements::new(vec![enabled], Vec::new()).unwrap(),
+            TagRequirements::default(),
+        ),
+    ));
+    assert!(apply_effect(&mut app, target, source, effect));
+    let handle = active_effect_handles(&app, target)[0];
+    run_fixed_update(&mut app);
+    run_fixed_update(&mut app);
+    (app, enabled, source, target, handle)
+}
+
+fn assert_effect_inhibited(app: &App, target: Entity, handle: ActiveEffectHandle, inhibited: bool) {
+    assert_eq!(
+        app.world()
+            .get::<ActiveGameplayEffects>(target)
+            .unwrap()
+            .get(handle)
+            .unwrap()
+            .is_inhibited(),
+        inhibited,
+    );
+}
+
+#[test]
+fn idle_fixed_ticks_skip_requirement_work_even_while_effect_timers_advance() {
+    for with_empty_tags in [false, true] {
+        let mut app = test_app();
+        let power = register_attribute(&mut app, "IdlePower");
+        let target = spawn_attribute_set(&mut app, power, 100.0);
+        if with_empty_tags {
+            app.world_mut()
+                .entity_mut(target)
+                .insert(GameplayTagContainer::default());
+        }
+        let effect = Arc::new(GameplayEffect::new(
+            vec![add_modifier(power, 1.0)],
+            EffectDurationTicks::Infinite,
+            Some(EffectPeriodTicks::new(ModifierMagnitude::Flat(1.0), false)),
+            1.0,
+            StackingPolicy::non_stacking(),
+            empty_effect_tags(),
+        ));
+        for _ in 0..16 {
+            assert!(apply_effect(&mut app, target, target, Arc::clone(&effect)));
+        }
+        run_fixed_update(&mut app);
+        run_fixed_update(&mut app);
+        app.world_mut()
+            .resource_mut::<EffectRequirementDiagnostics>()
+            .set_enabled(true);
+        for _ in 0..8 {
+            run_fixed_update(&mut app);
+        }
+        let metrics = app
+            .world()
+            .resource::<EffectRequirementDiagnostics>()
+            .metrics();
+        assert_eq!(metrics.convergence_calls, 0);
+        assert_eq!(metrics.signature_effect_visits, 0);
+        assert_eq!(metrics.decision_effect_visits, 0);
+        assert_eq!(current_value(&mut app, target, power), 260.0);
+    }
+}
+
+#[test]
+fn scheduled_requirements_track_external_tags_and_durable_component_discard() {
+    let (mut app, enabled, source, target, handle) = source_requirement_fixture();
+    app.world_mut()
+        .resource_mut::<EffectRequirementDiagnostics>()
+        .set_enabled(true);
+    remove_tag_from_entity(&mut app, source, enabled);
+    run_fixed_update(&mut app);
+    assert_effect_inhibited(&app, target, handle, true);
+    assert_eq!(
+        app.world()
+            .resource::<EffectRequirementDiagnostics>()
+            .metrics()
+            .transitions,
+        1,
+    );
+    add_tag_to_entity(&mut app, source, enabled);
+    run_fixed_update(&mut app);
+    assert_effect_inhibited(&app, target, handle, false);
+
+    app.world_mut()
+        .entity_mut(source)
+        .insert(GameplayTagContainer::default());
+    run_fixed_update(&mut app);
+    assert_effect_inhibited(&app, target, handle, true);
+    add_tag_to_entity(&mut app, source, enabled);
+    run_fixed_update(&mut app);
+    assert_effect_inhibited(&app, target, handle, false);
+
+    app.world_mut()
+        .entity_mut(source)
+        .remove::<GameplayTagContainer>();
+    // Frame maintenance must not erase invalidation before the next fixed tick.
+    for _ in 0..3 {
+        app.world_mut().clear_trackers();
+    }
+    run_fixed_update(&mut app);
+    assert_effect_inhibited(&app, target, handle, true);
+    app.world_mut()
+        .entity_mut(source)
+        .insert(GameplayTagContainer::default());
+    add_tag_to_entity(&mut app, source, enabled);
+    run_fixed_update(&mut app);
+    assert_effect_inhibited(&app, target, handle, false);
+
+    app.world_mut().despawn(source);
+    for _ in 0..3 {
+        app.world_mut().clear_trackers();
+    }
+    run_fixed_update(&mut app);
+    assert_effect_inhibited(&app, target, handle, true);
+}
+
+#[test]
+fn scheduled_requirement_guards_observe_changes_on_both_sides_of_resolver() {
+    for (producer_phase, consumer_phase) in [
+        (
+            GameplayAbilitySystemSet::RequestProducers,
+            GameplayAbilitySystemSet::GameplayResolve,
+        ),
+        (
+            GameplayAbilitySystemSet::GameplayResolve,
+            GameplayAbilitySystemSet::Cleanup,
+        ),
+    ] {
+        let (mut app, enabled, source, target, handle) = source_requirement_fixture();
+        app.add_systems(
+            FixedUpdate,
+            (move |mut tags: Query<&mut GameplayTagContainer>,
+                   manager: Res<GameplayTagManager>| {
+                tags.get_mut(source)
+                    .unwrap()
+                    .remove_tag(&enabled, &manager)
+                    .unwrap();
+            })
+            .in_set(producer_phase),
+        );
+        app.add_systems(
+            FixedUpdate,
+            (move |effects: Query<&ActiveGameplayEffects>| {
+                assert!(
+                    effects
+                        .get(target)
+                        .unwrap()
+                        .get(handle)
+                        .unwrap()
+                        .is_inhibited()
+                );
+            })
+            .in_set(consumer_phase),
+        );
+        run_fixed_update(&mut app);
+    }
+}
+
+#[test]
+fn periodic_failure_converges_removed_tags_before_ability_tasks() {
+    let (mut app, enabled, source, target, handle) = source_requirement_fixture();
+    remove_tag_from_entity(&mut app, source, enabled);
+    let power = register_attribute(&mut app, "PeriodicSourcePower");
+    let attributes = attribute_set(&app, power, 1.0);
+    app.world_mut()
+        .entity_mut(source)
+        .insert((attributes, ActiveGameplayEffects::default()));
+    let effect = Arc::new(GameplayEffect::new(
+        vec![add_modifier(power, 1.0)],
+        EffectDurationTicks::Infinite,
+        Some(EffectPeriodTicks::new(ModifierMagnitude::Flat(1.0), false)),
+        1.0,
+        StackingPolicy::non_stacking(),
+        effect_tags(Vec::new(), vec![enabled]),
+    ));
+    assert!(apply_effect(&mut app, source, source, effect));
+    run_fixed_update(&mut app);
+    run_fixed_update(&mut app);
+    assert_effect_inhibited(&app, target, handle, false);
+    app.world_mut().entity_mut(source).remove::<AttributeSet>();
+    app.add_systems(
+        FixedUpdate,
+        (move |effects: Query<&ActiveGameplayEffects>| {
+            assert!(
+                effects
+                    .get(target)
+                    .unwrap()
+                    .get(handle)
+                    .unwrap()
+                    .is_inhibited()
+            );
+        })
+        .in_set(GameplayAbilitySystemSet::AbilityTasks),
+    );
+    run_fixed_update(&mut app);
+    assert!(active_effect_handles(&app, source).is_empty());
+}
+
+#[test]
+fn tag_removal_invalidation_survives_synchronous_observer_convergence() {
+    let (mut app, _, source, target, handle) = source_requirement_fixture();
+    app.add_observer(
+        |event: On<Remove, GameplayTagContainer>, mut params: EffectSystemParams| {
+            // Remove observers run before the old component becomes unavailable.
+            assert!(params.tag_container_query.get(event.entity).is_ok());
+            resolve_active_effect_tag_requirements(&mut params);
+        },
+    );
+    app.world_mut()
+        .entity_mut(source)
+        .remove::<GameplayTagContainer>();
+    assert_effect_inhibited(&app, target, handle, false);
+    for _ in 0..3 {
+        app.world_mut().clear_trackers();
+    }
+    run_fixed_update(&mut app);
+    assert_effect_inhibited(&app, target, handle, true);
 }

@@ -26,7 +26,8 @@ pub use removal::{
     remove_active_effects_with_tags,
 };
 pub(crate) use requirements::{
-    ActiveEffectRequirementSync, resolve_active_effect_tag_requirements_if_dirty,
+    ActiveEffectRequirementSync, active_effect_requirements_need_update,
+    invalidate_effect_requirements_on_tag_discard, resolve_active_effect_tag_requirements_if_dirty,
 };
 pub use requirements::{
     resolve_active_effect_tag_requirements, update_active_effect_tag_requirements_system,

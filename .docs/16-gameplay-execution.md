@@ -319,6 +319,15 @@ spawn。较早请求创建的效果会立即参与后续请求的堆叠、免疫
 source Tag 依赖，会在下一个请求执行前达到稳定状态。startup Instant 直接应用效果后也执行
 相同的 dirty Requirement 收敛，使下一 startup 动作能看到稳定的标签状态。
 
+Runtime Plugin 保留四个 Requirement 边界：duration 之后、period 之后、
+`PreGameplayConvergence` 和 `UpdateEffectTagRequirements`。各处独立检测
+`GameplayTagContainer` 的 Bevy change tick，并检查内部 dirty 标志；无变化时不构造效果签名，
+也不扫描效果作决策。标签组件移除、替换和 source/target despawn 通过 discard observer 持久
+标脏，不依赖短期 removal 事件缓存，因此跳过数个 FixedUpdate 也不会丢失变化。discard 时
+立即标脏，并排队在组件实际移除后再次标脏，防止用户生命周期 observer 在旧标签仍可见时同步
+收敛并清除 dirty，导致最终移除被漏掉。仅效果计时器
+推进不触发该守卫；同步 API 和显式收敛调用不受系统注册条件影响。
+
 Requirement 每一轮先基于同一快照收集决策，再按稳定的实体和槽位顺序提交。非收敛循环会
 确定性 fail-closed，移除参与循环的效果，而不是跨 tick 保留不稳定中间态。
 

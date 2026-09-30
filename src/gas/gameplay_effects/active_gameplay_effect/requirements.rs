@@ -8,6 +8,7 @@ use super::planning::GameplayEffectApplicationError;
 use super::state::{ActiveEffectHandle, ActiveGameplayEffect, ActiveGameplayEffects};
 use crate::attributes::{AttributeIdManager, AttributeSet};
 use crate::gameplay_tags::{GameplayTagContainer, GameplayTagManager, TagRequirements};
+use bevy::ecs::lifecycle::Discard;
 use bevy::prelude::*;
 use std::time::Instant;
 
@@ -159,6 +160,30 @@ pub(crate) fn resolve_active_effect_tag_requirements_if_dirty(params: &mut Effec
     if params.active_effect_requirement_sync.take_dirty() {
         resolve_active_effect_tag_requirements(params);
     }
+}
+
+/// Detects changes independently at each scheduled convergence boundary.
+pub(crate) fn active_effect_requirements_need_update(
+    sync: Res<ActiveEffectRequirementSync>,
+    changed_tags: Query<(), Changed<GameplayTagContainer>>,
+) -> bool {
+    sync.dirty || !changed_tags.is_empty()
+}
+
+/// Retains invalidation even when no fixed tick runs before removal events expire.
+pub(crate) fn invalidate_effect_requirements_on_tag_discard(
+    _event: On<Discard, GameplayTagContainer>,
+    mut sync: ResMut<ActiveEffectRequirementSync>,
+    mut commands: Commands,
+) {
+    sync.mark_dirty();
+    // Lifecycle observers can converge while the old tags are still visible and clear dirty.
+    // Observer commands flush after removal, restoring invalidation for the completed change.
+    commands.queue(|world: &mut World| {
+        if let Some(mut sync) = world.get_resource_mut::<ActiveEffectRequirementSync>() {
+            sync.mark_dirty();
+        }
+    });
 }
 
 /// Bevy system wrapper for [`resolve_active_effect_tag_requirements`].

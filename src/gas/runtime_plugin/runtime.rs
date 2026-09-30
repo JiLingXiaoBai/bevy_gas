@@ -6,6 +6,7 @@ use crate::attributes::{AttributeIdManager, recalculate_attribute_sets_system};
 use crate::gameplay_abilities::tick_ability_tasks_system;
 use crate::gameplay_effects::{
     ActiveEffectRequirementSync, ActiveEffectStorageRegistry, EffectRequirementDiagnostics,
+    active_effect_requirements_need_update, invalidate_effect_requirements_on_tag_discard,
     tick_effect_duration_system, tick_effect_period_system,
     update_active_effect_tag_requirements_system,
 };
@@ -95,6 +96,7 @@ fn install_runtime(app: &mut App) {
         .init_resource::<EffectRequirementDiagnostics>()
         .init_resource::<PendingActiveGameplayAbilities>()
         .init_resource::<TargetingRequestQueue>()
+        .add_observer(invalidate_effect_requirements_on_tag_discard)
         .add_observer(cleanup_discarded_active_ability)
         .add_observer(cleanup_discarded_ability_system)
         .configure_sets(
@@ -122,9 +124,11 @@ fn install_runtime(app: &mut App) {
             FixedUpdate,
             (
                 tick_effect_duration_system,
-                update_active_effect_tag_requirements_system,
+                update_active_effect_tag_requirements_system
+                    .run_if(active_effect_requirements_need_update),
                 tick_effect_period_system,
-                update_active_effect_tag_requirements_system,
+                update_active_effect_tag_requirements_system
+                    .run_if(active_effect_requirements_need_update),
             )
                 .chain()
                 .in_set(GameplayAbilitySystemSet::EffectTicks),
@@ -142,11 +146,13 @@ fn install_runtime(app: &mut App) {
         .add_systems(
             FixedUpdate,
             update_active_effect_tag_requirements_system
+                .run_if(active_effect_requirements_need_update)
                 .in_set(GameplayAbilitySystemSet::PreGameplayConvergence),
         )
         .add_systems(
             FixedUpdate,
             update_active_effect_tag_requirements_system
+                .run_if(active_effect_requirements_need_update)
                 .in_set(GameplayAbilitySystemSet::UpdateEffectTagRequirements),
         )
         .add_systems(
