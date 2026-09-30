@@ -18,6 +18,7 @@ tests/
 │   ├── abilities_test.rs                     # Ability 行为测试门面
 │   ├── abilities_test/
 │   │   ├── activation_test.rs                # 激活条件与实例策略
+│   │   ├── grant_exhaustion_test.rs           # 私有句柄耗尽单元测试（由库加载）
 │   │   ├── commit_test.rs                    # Cost 与 Cooldown
 │   │   ├── additional_cost_test.rs           # 外部成本预检、批量支付、补偿与激活入口
 │   │   ├── lifecycle_test.rs                 # 取消、结束与清理
@@ -46,6 +47,36 @@ examples/
 对应 crate 顶层的 `randoms` 和 `unique_names` 领域，保留独立测试目标。
 游戏配置的编译、数据校验和资源加载测试在对应游戏工程中维护。
 
+### 测试正文与加载声明
+
+所有测试正文（测试函数、断言和测试专用 helper）必须放在 `tests/` 对应领域目录，
+不得内联到 `src/` 文件中，即使使用 `#[cfg(test)]` 包裹也不例外。
+
+默认通过 `tests/` 内的集成测试入口声明和加载测试，不在 `src/` 中保留测试模块声明。
+**唯一例外：测试确实需要直接访问私有字段，且无法仅通过公开 API 合理验证该边界时，**
+才允许在所属 `src/` 实现文件中保留以下形式的加载声明：
+
+```rust
+#[cfg(test)]
+#[path = "../../../tests/gas_test/abilities_test/grant_exhaustion_test.rs"]
+mod grant_exhaustion_test;
+```
+
+声明中的路径应按所属实现文件的位置计算。这个例外只允许保留加载声明，具体测试代码仍必须
+放在 `tests/` 中；不能仅因测试属于纯算法或单元测试，就在 `src/` 中添加测试声明或正文。
+不要为绕过私有访问限制而公开字段或增加公开的测试 setter。
+
+例如，`abilities_test/grant_exhaustion_test.rs` 需要直接设置 ASC 私有计数器，检查最后一个
+编号仍可用、失败不修改规格或索引，以及清除技能后不会复用编号。它由
+`src/gas/ability_system/component.rs` 加载，仍属于库单元测试，不在集成测试门面中重复声明。
+`cargo test` 或 `cargo test --lib grant_exhaustion_test` 会运行它，
+`cargo test --test gas_test` 不包含它。这些测试中的 `unwrap()` 是成功断言，不属于运行时代码。
+
+`tests/gas_test.rs` 是独立测试 crate 的根文件，其 `mod support_test;` 默认查找
+`tests/support_test.rs` 或 `tests/support_test/mod.rs`，不会自动进入 `tests/gas_test/`。
+因此当前顶层声明上的 `#[path = "gas_test/..."]` 必须保留；普通子模块与 crate 根文件的路径
+解析规则不能混用。
+
 领域内部的测试按外部行为拆分，不镜像私有实现文件，也不要求叶子测试文件递归套用门面结构。
 移动私有函数不应迫使测试目录改名；新增行为时应放入最接近其 Gameplay 语义的模块。
 跨领域执行顺序、Bundle 组合和公共导入路径优先放在 `runtime_paths_test.rs` 或
@@ -63,6 +94,9 @@ examples/
 ```bash
 # All unit, integration, and doc tests
 cargo test
+
+# Private ability-grant exhaustion unit tests
+cargo test --lib grant_exhaustion_test
 
 # GAS integration-test crate
 cargo test --test gas_test
@@ -114,6 +148,24 @@ cargo build
 
 运行时代码禁止 `unwrap()`、`expect()` 和 `panic!()`。集成测试中的 `unwrap()` / `expect()`
 可作为“此步骤必须成功”的断言；不要把测试 helper 中的写法复制到 `src/` 或 example。
+
+## 自动检查
+
+[GitHub Actions workflow](../.github/workflows/ci.yml) 在 push、pull request 和手动触发时使用
+Windows runner 与 stable Rust，依次执行：
+
+```bash
+cargo fmt --check
+cargo clippy --all-targets --all-features -- -D warnings
+cargo test --all-features
+cargo build
+```
+
+Clippy 编译全部测试与示例；CI 不启动窗口示例。依赖构建缓存只用于缩短运行时间，检查本身
+仍逐次执行。当前仅覆盖 Windows；本地通过不能替代 workflow 的实际运行结果。
+
+性能测量继续作为显式运行的 ignored 测试维护；不因 CI 机器的负载变化设置固定耗时门禁。
+修改热路径时，应在相同构建配置与机器上比较扫描计数和耗时，再判断收益。
 
 ## 测试 App 与 Fixture
 
@@ -198,7 +250,7 @@ handle/spec、管理器和系统函数应从 `bevy_gas::gas::<domain>` 或 crate
 
 ## 外部游戏的配置验证
 
-本库测试直接使用公开 GAS API 构造技能与效果，不依赖外部游戏的数据包或生成工具。
+本库的集成测试直接使用公开 GAS API 构造技能与效果，不依赖外部游戏的数据包或生成工具。
 配套游戏起始模板 `bevy_gas_template` 拥有自己的配置测试，并通过真实游戏数据验证对本库的调用。
 更新 GAS 公共接口时，应同时执行受影响游戏的构建与玩法回归；库的单元测试不能替代游戏的
 结构映射、包加载和完整场景验收。接入边界见 [19 — 外部配置集成](./19-external-configuration.md)。
@@ -235,7 +287,7 @@ handle/spec、管理器和系统函数应从 `bevy_gas::gas::<domain>` 或 crate
 测量 fixture 默认忽略，不以耗时阈值判定普通测试成败：
 
 ```bash
-cargo test --test gas_test effects_test::requirements_test::measure_requirement_convergence -- --ignored --nocapture --test-threads=1
+cargo test --release --test gas_test effects_test::requirements_test::measure_requirement_convergence -- --ignored --nocapture --test-threads=1
 ```
 
 比较相同构建配置、场景和机器下的扫描次数、完整快照次数与时间；观测结果不参与结算。

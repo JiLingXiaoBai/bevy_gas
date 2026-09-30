@@ -378,6 +378,7 @@ tests/
 │       ├── additional_cost_test.rs
 │       ├── chaining_test.rs
 │       ├── commit_test.rs
+│       ├── grant_exhaustion_test.rs       # 访问私有字段的库单元测试，由源码声明加载
 │       ├── lifecycle_test.rs
 │       └── tasks_test.rs
 ├── randoms_test.rs
@@ -393,8 +394,16 @@ tests/
 领域内部按外部行为拆分测试，不要求镜像私有源码文件，也不要求叶子测试文件递归套用门面结构。
 具体命名和运行命令见 [13 — 测试指南](./13-testing-guide.md)。
 
-`support_test.rs` 只保存 App/注册/builder/tick/query 等共享 fixture，不隐藏业务断言。需要 World、
-调度顺序、公开 API 或跨模块可见性的场景使用集成测试；纯算法和私有不变量可以就近写单元测试。
+`support_test.rs` 只保存 App/注册/builder/tick/query 等共享 fixture，不隐藏业务断言。
+所有测试正文（测试函数、断言和测试专用 helper）必须放在 `tests/` 对应领域目录，
+禁止内联到 `src/` 文件中，包括 `#[cfg(test)]` 模块内部。
+
+测试默认由 `tests/` 内的集成测试入口声明和加载。只有测试确实需要直接访问私有字段、
+且无法仅通过公开 API 合理验证该边界时，才允许在所属 `src/` 实现文件中保留
+`#[cfg(test)]`、`#[path]` 和 `mod` 加载声明，指向 `tests/` 中的具体测试文件。
+此类测试仍是库单元测试，不在集成测试门面重复加载；纯算法或单元测试身份本身不构成例外。
+具体示例见 [13 — 测试指南](./13-testing-guide.md#测试正文与加载声明)。
+
 `tests/` 下所有文件的文件名主干和所有子目录名统一以 `_test` 结尾；重命名时必须同步更新模块
 声明、`#[path]`、导入路径、文档导航和 Cargo 集成测试目标名。
 
