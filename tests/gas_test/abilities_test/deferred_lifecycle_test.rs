@@ -20,7 +20,7 @@ fn assert_deferred_asc_discard_cleans_activations(replace: bool) {
     ));
     let handle = give_ability(&mut app, owner, Arc::clone(&definition));
     let mut replacement = AbilitySystemComponent::default();
-    let replacement_handle = replacement.give_ability(definition, 2);
+    let replacement_handle = replacement.give_ability(definition, 2).unwrap();
     let mut replacement = Some(replacement);
     let context = AbilityActivationContext::direct(owner, AbilityChainContext::root(handle, 1));
 

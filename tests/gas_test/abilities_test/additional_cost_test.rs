@@ -239,7 +239,8 @@ fn direct_activation_charges_the_owner_once_and_preserves_context() {
         .world_mut()
         .get_mut::<AbilitySystemComponent>(source)
         .unwrap()
-        .give_ability(Arc::new(item_ability(bomb, 2)), 4);
+        .give_ability(Arc::new(item_ability(bomb, 2)), 4)
+        .unwrap();
 
     assert_eq!(
         activate_with_inventory(&mut app, source, target, handle),

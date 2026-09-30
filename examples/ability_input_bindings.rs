@@ -45,8 +45,8 @@ fn main() -> ExampleResult<()> {
 
     let definition = Arc::new(GameplayAbility::default().with_allow_multiple_instances(true));
     let mut actor = GameplayAbilitySystemBundle::default();
-    let first = actor.ability_system.give_ability(definition.clone(), 1);
-    let second = actor.ability_system.give_ability(definition, 2);
+    let first = actor.ability_system.give_ability(definition.clone(), 1)?;
+    let second = actor.ability_system.give_ability(definition, 2)?;
     let mut bindings = AbilityInputBindings::default();
     bindings.bind(Action::Slot(0), first);
     bindings.bind(Action::Slot(1), second);

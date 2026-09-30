@@ -37,6 +37,7 @@ GameplayResolve：验证并执行技能
 
 ```rust
 use bevy::prelude::*;
+use bevy_gas::gas::ability_system::AbilityGrantError;
 use bevy_gas::gas::gameplay_abilities::{AbilityTaskDef, AbilityTaskOnFinishedDef};
 use bevy_gas::prelude::*;
 use std::sync::Arc;
@@ -47,12 +48,12 @@ enum PlayerAction {
     Slot(u8),
 }
 
-fn spawn_player(mut commands: Commands) {
+fn spawn_player(mut commands: Commands) -> Result<(), AbilityGrantError> {
     let mut ability_system = AbilitySystemComponent::default();
     let fireball = Arc::new(GameplayAbility::default().with_startup_tasks(vec![
         AbilityTaskDef::instant(AbilityTaskOnFinishedDef::EndAbility),
     ]));
-    let handle = ability_system.give_ability(fireball, 1);
+    let handle = ability_system.give_ability(fireball, 1)?;
 
     let mut bindings = AbilityInputBindings::<PlayerAction>::default();
     let _ = bindings.bind(PlayerAction::Slot(0), handle);
@@ -65,6 +66,7 @@ fn spawn_player(mut commands: Commands) {
         },
         bindings,
     ));
+    Ok(())
 }
 ```
 
@@ -186,10 +188,10 @@ if ability_system.clear_ability(handle) {
 
 ## 迁移与验证
 
-现有调用迁移为：
+现有调用迁移为（外围函数返回可接收 `AbilityGrantError` 的 `Result`）：
 
 ```rust
-let handle = ability_system.give_ability(ability, level);
+let handle = ability_system.give_ability(ability, level)?;
 let _ = bindings.bind(PlayerAction::Slot(0), handle);
 ```
 

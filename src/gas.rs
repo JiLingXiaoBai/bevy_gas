@@ -16,10 +16,10 @@ pub mod settings;
 pub use ability_input::{AbilityInputBindingError, AbilityInputBindings};
 pub use ability_system::{
     AbilityActivationCheckError, AbilityActivationCheckParams, AbilityActivationError,
-    AbilityCommitError, AbilitySystemComponent, AbilitySystemParams, AdditionalCostContext,
-    AdditionalCostProvider, GameplayAbilitySystemBundle, PendingActiveGameplayAbilities,
-    can_activate_ability, cancel_ability, cleanup_finished_abilities_system, commit_ability,
-    end_ability, try_activate_ability_by_handle,
+    AbilityCommitError, AbilityGrantError, AbilitySystemComponent, AbilitySystemParams,
+    AdditionalCostContext, AdditionalCostProvider, GameplayAbilitySystemBundle,
+    PendingActiveGameplayAbilities, can_activate_ability, cancel_ability,
+    cleanup_finished_abilities_system, commit_ability, end_ability, try_activate_ability_by_handle,
 };
 pub use attributes::{
     ATTRIBUTE_SET_SIZE, Aggregator, AttributeId, AttributeIdError, AttributeIdManager,

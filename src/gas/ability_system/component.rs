@@ -6,12 +6,32 @@ use crate::gameplay_effects::ActiveGameplayEffects;
 use crate::gameplay_tags::GameplayTagContainer;
 use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
+use std::error::Error;
+use std::fmt;
 use std::sync::Arc;
+
+/// Failure to grant an ability specification to an ability-system component.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AbilityGrantError {
+    /// Every owner-local `u32` handle has already been allocated.
+    HandleExhausted,
+}
+
+impl fmt::Display for AbilityGrantError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::HandleExhausted => write!(f, "ability specification handles are exhausted"),
+        }
+    }
+}
+
+impl Error for AbilityGrantError {}
 
 /// Stores the abilities granted to one gameplay entity.
 #[derive(Component, Default)]
 pub struct AbilitySystemComponent {
-    next_ability_handle: u32,
+    // The extra range represents exhaustion without reusing any u32 handle.
+    next_ability_handle: u64,
     abilities: Vec<GameplayAbilitySpec>,
     ability_indices: HashMap<AbilitySpecHandle, usize>,
     blocked_ability_tags: GameplayTagContainer,
@@ -37,14 +57,28 @@ pub struct GameplayAbilitySystemBundle {
 
 impl AbilitySystemComponent {
     /// Grants the shared `ability` definition at `level` and returns its owner-local handle.
-    pub fn give_ability(&mut self, ability: Arc<GameplayAbility>, level: u32) -> AbilitySpecHandle {
-        let handle = AbilitySpecHandle::new(self.next_ability_handle);
-        self.next_ability_handle = self.next_ability_handle.wrapping_add(1);
+    ///
+    /// Handles increase from zero through `u32::MAX` and are never reused by this component,
+    /// including after [`Self::clear_ability`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`AbilityGrantError::HandleExhausted`] without changing the component when every
+    /// handle has already been allocated.
+    pub fn give_ability(
+        &mut self,
+        ability: Arc<GameplayAbility>,
+        level: u32,
+    ) -> Result<AbilitySpecHandle, AbilityGrantError> {
+        let value = u32::try_from(self.next_ability_handle)
+            .map_err(|_| AbilityGrantError::HandleExhausted)?;
+        let handle = AbilitySpecHandle::new(value);
+        self.next_ability_handle += 1;
         let index = self.abilities.len();
         self.abilities
             .push(GameplayAbilitySpec::new(handle, ability, level));
         self.ability_indices.insert(handle, index);
-        handle
+        Ok(handle)
     }
 
     pub fn clear_ability(&mut self, handle: AbilitySpecHandle) -> bool {
@@ -98,3 +132,7 @@ impl AbilitySystemComponent {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "../../../tests/gas_test/abilities_test/grant_exhaustion_test.rs"]
+mod grant_exhaustion_test;

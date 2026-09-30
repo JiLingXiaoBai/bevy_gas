@@ -243,6 +243,8 @@ ASC、Active Ability 或 `Commands`。`AbilitySystemParams` 内嵌它并实现 `
 | 项                                        | 类型          | 说明                   |
 | ----------------------------------------- | ------------- | ---------------------- |
 | `AbilitySystemComponent`                  | `Component`   | 每实体 ASC             |
+| `AbilityGrantError` | `enum` | `give_ability()` 的 Handle 耗尽错误；失败不修改 ASC |
+| `AbilitySystemComponent::give_ability` | `fn` | 返回 `Result<AbilitySpecHandle, AbilityGrantError>`；编号不回绕或复用 |
 | `GameplayAbilitySystemBundle`             | `Bundle`      | 显式组合完整 GAS Actor 组件 |
 | `AbilitySystemParams`                     | `SystemParam` | Effect 参数 + Ability 编排状态 |
 | `try_activate_ability_by_handle`          | `fn`          | 独立的同步激活调用路径        |

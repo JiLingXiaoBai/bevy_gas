@@ -250,6 +250,7 @@ pub fn give_ability(
         .get_mut::<AbilitySystemComponent>()
         .unwrap()
         .give_ability(ability, 1)
+        .unwrap()
 }
 
 pub fn run_effect_duration_tick(app: &mut App) {

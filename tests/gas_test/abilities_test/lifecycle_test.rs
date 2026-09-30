@@ -284,8 +284,8 @@ fn ability_spec_preserves_granted_level_and_clear_rebuilds_indices() {
         false,
     ));
 
-    let first_handle = asc.give_ability(first, 2);
-    let second_handle = asc.give_ability(second, 3);
+    let first_handle = asc.give_ability(first, 2).unwrap();
+    let second_handle = asc.give_ability(second, 3).unwrap();
 
     assert_eq!(asc.find_ability_spec(first_handle).unwrap().get_level(), 2);
     assert_eq!(asc.find_ability_spec(second_handle).unwrap().get_level(), 3);
@@ -433,7 +433,7 @@ fn replacing_an_asc_terminates_its_old_instances_without_touching_new_grants() {
     let old_handle = give_ability(&mut app, owner, Arc::clone(&definition));
     assert!(activate_ability(&mut app, owner, owner, old_handle));
     let mut replacement = AbilitySystemComponent::default();
-    let new_handle = replacement.give_ability(definition, 2);
+    let new_handle = replacement.give_ability(definition, 2).unwrap();
     app.world_mut().entity_mut(owner).insert(replacement);
     app.world_mut().flush();
     assert_eq!(active_ability_count(&mut app), 0);

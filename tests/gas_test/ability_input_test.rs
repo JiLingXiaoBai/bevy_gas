@@ -70,7 +70,9 @@ fn rebinding_and_removal_preserve_other_actions_and_iteration_order() {
 #[test]
 fn resolution_distinguishes_unbound_actions_from_revoked_abilities() {
     let mut asc = AbilitySystemComponent::default();
-    let ability = asc.give_ability(Arc::new(GameplayAbility::default()), 1);
+    let ability = asc
+        .give_ability(Arc::new(GameplayAbility::default()), 1)
+        .unwrap();
     let mut bindings = AbilityInputBindings::<Action>::default();
 
     assert_eq!(
@@ -98,13 +100,13 @@ fn each_actor_can_bind_one_shared_definition_to_a_different_action() {
     let mut world = World::new();
     let ability = Arc::new(GameplayAbility::default());
     let mut first_asc = AbilitySystemComponent::default();
-    let first_handle = first_asc.give_ability(ability.clone(), 1);
+    let first_handle = first_asc.give_ability(ability.clone(), 1).unwrap();
     let mut first_bindings = AbilityInputBindings::<Action>::default();
     first_bindings.bind(Action::Primary, first_handle);
     let first_actor = world.spawn((first_asc, first_bindings)).id();
 
     let mut second_asc = AbilitySystemComponent::default();
-    let second_handle = second_asc.give_ability(ability.clone(), 5);
+    let second_handle = second_asc.give_ability(ability.clone(), 5).unwrap();
     let mut second_bindings = AbilityInputBindings::<Action>::default();
     second_bindings.bind(Action::Secondary, second_handle);
     let second_actor = world.spawn((second_asc, second_bindings)).id();
@@ -177,10 +179,13 @@ fn buffered_input_survives_frames_without_ticks_and_is_consumed_once() {
         );
 
     let mut actor = GameplayAbilitySystemBundle::default();
-    let handle = actor.ability_system.give_ability(
-        Arc::new(GameplayAbility::default().with_allow_multiple_instances(true)),
-        1,
-    );
+    let handle = actor
+        .ability_system
+        .give_ability(
+            Arc::new(GameplayAbility::default().with_allow_multiple_instances(true)),
+            1,
+        )
+        .unwrap();
     let mut bindings = AbilityInputBindings::<Action>::default();
     bindings.bind(Action::Primary, handle);
     let source = app.world_mut().spawn((actor, bindings)).id();

@@ -16,7 +16,8 @@
 3. 构造 `Modifier`、`GameplayEffect`、`GameplayAbility` 和 `TargetingDefinition`，
    通过 `Arc` 共享定义；游戏的 Resource 保存稳定配置 ID 到定义的映射。
 4. 创建 `GameplayAbilitySystemBundle`，初始化属性，再通过
-   `AbilitySystemComponent::give_ability()` 授予技能，保存返回的 `AbilitySpecHandle`。
+   `AbilitySystemComponent::give_ability()` 授予技能，处理 `AbilityGrantError` 后保存成功返回的
+   `AbilitySpecHandle`；耗尽时不会回绕或复用旧编号。
 5. 游戏系统在 `GameplayAbilitySystemSet::RequestProducers` 产生目标或激活请求，
    由公开 `TargetingRequestQueue`、`GameplayExecutionQueue` 进入固定 tick 运行时。
 

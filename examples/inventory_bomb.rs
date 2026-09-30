@@ -187,7 +187,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     bundle
         .attributes
         .initialize_attribute(manager, mana, initial_mana, None)?;
-    let handle = bundle.ability_system.give_ability(Arc::clone(&ability), 1);
+    let handle = bundle
+        .ability_system
+        .give_ability(Arc::clone(&ability), 1)?;
     let source = app
         .world_mut()
         .spawn((

@@ -99,7 +99,7 @@ pub fn give_ability(
     &mut self,
     ability: Arc<GameplayAbility>,
     level: u32,
-) -> AbilitySpecHandle;
+) -> Result<AbilitySpecHandle, AbilityGrantError>;
 
 pub fn clear_ability(&mut self, handle: AbilitySpecHandle) -> bool;
 pub fn get_ability_specs(&self) -> &[GameplayAbilitySpec];
@@ -108,7 +108,11 @@ pub fn find_ability_spec(&self, handle: AbilitySpecHandle)
 pub fn get_blocked_ability_tags(&self) -> &GameplayTagContainer;
 ```
 
-- Handle 从 ASC 局部的递增 `u32` 分配。
+- Handle 从 ASC 局部的 0 单调分配至 `u32::MAX`，不会回绕；清除技能也不回收编号。
+  最后一个编号可正常授予，之后的授予返回 `AbilityGrantError::HandleExhausted`，不修改规格、
+  索引或活跃状态。内部用更宽的计数器表示耗尽状态，公开 Handle 仍为 `u32`。
+- `give_ability()` 现在返回 `Result`。原先直接使用返回 Handle 的调用应改为
+  `let handle = ability_system.give_ability(ability, level)?;`，或显式处理授予失败。
 - `clear_ability()` 在 Handle 不存在或规格仍有活跃实例时返回 `false`。
 - 输入绑定通过同实体的 `AbilityInputBindings<Action>` 显式附加，不属于 ASC 或默认 Bundle。
   `clear_ability()` 成功后，由调用方执行 `bindings.unbind_ability(handle)` 清除该技能的所有

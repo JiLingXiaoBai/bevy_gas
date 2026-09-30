@@ -184,6 +184,8 @@ fn make_fireball_damage(
 能力的 startup WaitTicks 从同一激活时刻开始并行计时；startup Instant 则按定义顺序同步结算：
 
 ```rust
+use bevy_gas::gas::ability_system::AbilityGrantError;
+
 fn make_fireball_ability(
     damage_effect: Arc<GameplayEffect>,
     cooldown_effect: Arc<GameplayEffect>,
@@ -217,7 +219,7 @@ fn make_fireball_ability(
 fn grant_fireball(
     ability_system: &mut AbilitySystemComponent,
     ability: Arc<GameplayAbility>,
-) -> AbilitySpecHandle {
+) -> Result<AbilitySpecHandle, AbilityGrantError> {
     ability_system.give_ability(ability, 1)
 }
 ```
