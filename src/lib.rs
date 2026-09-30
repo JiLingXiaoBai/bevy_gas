@@ -57,4 +57,3 @@ pub use gas::{
 };
 pub use randoms::Random;
 pub use unique_names::{UniqueName, UniqueNameError, UniqueNamePool};
-extern crate core;
