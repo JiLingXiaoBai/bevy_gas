@@ -13,7 +13,9 @@ use bevy::prelude::*;
 pub struct EffectSystemParams<'w, 's> {
     /// Registered gameplay tags used to validate and build hierarchical tag bitsets.
     pub tag_manager: Res<'w, GameplayTagManager>,
-    /// Deterministic random source used by probabilistic effect application.
+    /// Shared random stream used by probabilistic effect preparation.
+    /// Repeatable results require the same dependency version, seed, and draw order.
+    /// Mutable access does not order callers or producers feeding the gameplay FIFO.
     pub random_gen: ResMut<'w, Random>,
     /// Registered attribute IDs and their physical storage locations.
     pub attribute_id_manager: Res<'w, AttributeIdManager>,

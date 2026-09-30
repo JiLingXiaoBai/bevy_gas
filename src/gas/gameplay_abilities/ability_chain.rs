@@ -54,6 +54,7 @@ impl fmt::Display for AbilityChainError {
 
 impl Error for AbilityChainError {}
 
+/// Tracks one activation path, counting child-activation edges from a depth-zero root.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AbilityChainContext {
     chain_id: u64,
@@ -62,8 +63,10 @@ pub struct AbilityChainContext {
 }
 
 impl AbilityChainContext {
+    /// Maximum number of child-activation edges from the root.
     pub const MAX_DEPTH: u8 = GameplayAbilitySystemSettings::ABILITY_CHAIN_MAX_DEPTH;
 
+    /// Creates the root path for `handle` and `chain_id`, with depth zero.
     pub fn root(handle: AbilitySpecHandle, chain_id: u64) -> Self {
         Self {
             chain_id,
@@ -72,6 +75,8 @@ impl AbilityChainContext {
         }
     }
 
+    /// Returns a child path for `handle`, or an error if it repeats a handle or exceeds the limit.
+    /// A path at [`Self::MAX_DEPTH`] is valid but cannot be extended.
     pub fn next(&self, handle: AbilitySpecHandle) -> Result<Self, AbilityChainError> {
         if self.depth >= Self::MAX_DEPTH {
             return Err(AbilityChainError::DepthExceeded {
@@ -97,6 +102,8 @@ impl AbilityChainContext {
         })
     }
 
+    /// Validates that this path ends at `handle` without repetition or excessive depth.
+    /// Returns an error for an empty path, a mismatched handle, a cycle, or depth above the limit.
     pub fn validate_for_handle(&self, handle: AbilitySpecHandle) -> Result<(), AbilityChainError> {
         let Some(&current_handle) = self.visited.last() else {
             return Err(AbilityChainError::EmptyChain {
@@ -129,14 +136,17 @@ impl AbilityChainContext {
         Ok(())
     }
 
+    /// Returns the identifier assigned to the root activation.
     pub fn get_chain_id(&self) -> u64 {
         self.chain_id
     }
 
+    /// Returns the number of child-activation edges from the root.
     pub fn get_depth(&self) -> u8 {
         self.depth
     }
 
+    /// Returns the visited handles in activation order, including the root.
     pub fn get_visited(&self) -> &[AbilitySpecHandle] {
         &self.visited
     }

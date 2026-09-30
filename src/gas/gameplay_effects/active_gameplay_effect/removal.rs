@@ -12,7 +12,8 @@ use bevy::prelude::*;
 
 /// Removes an active effect and cleans up its modifiers and granted tags.
 ///
-/// Returns `Ok(false)` for a stale or missing handle.
+/// Returns `Ok(false)` for a stale or missing handle from the same World as `params`.
+/// Handles from other Worlds are outside this API's scope and may match unrelated effects.
 ///
 /// # Errors
 ///

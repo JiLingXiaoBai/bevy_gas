@@ -278,7 +278,10 @@ pub(super) fn map_attribute_set_error(
     }
 }
 
-/// Validates an effect application and builds an execution plan without mutation.
+/// Validates an effect application and builds a plan without modifying gameplay components.
+///
+/// Probabilistic applications advance the shared random stream before tag, immunity, and
+/// structural checks. A rejected application can therefore consume a random draw.
 ///
 /// # Errors
 ///

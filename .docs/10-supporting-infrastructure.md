@@ -77,7 +77,12 @@ pub struct Random {
 
 在相同依赖版本、相同种子和相同调用顺序下可复现随机序列。不要把不同系统对同一全局
 `Random` 的未排序访问当作确定性契约；若调用顺序具有 Gameplay 语义，应通过 SystemSet
-排序，或为独立流程使用独立种子的随机状态。
+排序，或为独立流程使用独立种子的随机状态。统一 FIFO 只保留实际入队顺序，不会自动排序
+多个生产者；这些生产者同样需要 `.chain()`、`.before()` 或 `.after()`。
+
+概率应用的 Prepare 阶段会推进随机流，但不修改 Gameplay Component。当前契约是在概率
+校验后先掷骰，再检查标签、免疫与其他条件；被拒绝的申请也可能消耗随机数。调整这一顺序会
+改变错误优先级与相同种子下的后续结果，不能作为透明优化处理。
 
 Gameplay Effect 在概率应用前先验证概率范围，再通过 `EffectSystemParams` 中的
 `ResMut<Random>` 掷骰。`Random` 由 `RandomPlugin` 初始化，完整
@@ -103,6 +108,9 @@ impl GameplayAbilitySystemSettings {
 `ATTRIBUTE_SET_SIZE` 必须等于 hot 与 cold 容量之和。调整容量会改变固定数组、boxed cold
 存储和 Tag 位集的编译期布局，需要重新编译并运行完整测试；这不是运行时配置，也不应在不同
 客户端之间出现不一致。
+
+`ABILITY_CHAIN_MAX_DEPTH` 按根节点之后的激活边数计数：根深度为 0，上限为 8 时允许
+一条路径包含根技能和最多 8 个后代技能。处于上限的链仍然有效，但不能继续调用 `next()` 扩展。
 
 `GameplayExecutionQueue` 与 `TargetingRequestQueue` 都不设置每 tick 消费上限：前者在
 `GameplayResolve` 按 Ability/Effect 跨类型 FIFO 完整 drain，后者在 `Targeting` 阶段完整

@@ -154,6 +154,12 @@ pub struct GameplayAbilitySpec {
 }
 ```
 
+`AbilitySystemComponent::give_ability(ability, level)` 返回
+`Result<AbilitySpecHandle, AbilityGrantError>`。Handle 属于授予它的 ASC，在该组件生命周期内
+从 0 单调分配至 `u32::MAX`；清除技能不会回收编号。最后一个编号仍可正常授予，此后返回
+`AbilityGrantError::HandleExhausted`，不改变已有规格或索引，也不会回绕。
+调用方应使用 `?` 或显式处理失败，再将成功取得的 Handle 交给输入绑定或激活队列。
+
 `GameplayAbilitySpec::new(handle, ability, level)` 只接收授予 Handle、共享定义和等级。
 `active_count` 用于多实例检查；仍有活跃实例时，ASC 不允许清除对应规格。规格不保存输入编号或
 按下状态；逻辑动作与 Handle 的映射由独立的
@@ -242,8 +248,9 @@ impl AbilityChainContext {
 
 `GameplayExecutionQueue::new_root_chain(handle)` 是常规根链入口，它按入队顺序分配队列局部
 chain ID。`next()` 拒绝重复 Handle，并限制深度不超过
-`GameplayAbilitySystemSettings::ABILITY_CHAIN_MAX_DEPTH`。消费激活请求时还会用
-`validate_for_handle()` 检查上下文末尾 Handle 与请求 Handle 是否一致。
+`GameplayAbilitySystemSettings::ABILITY_CHAIN_MAX_DEPTH`。深度按根技能之后的链式边数计数：
+根深度为 0，默认最大深度 8 允许根技能加 8 个后继技能。`next()` 校验增加一条边后是否越界，
+`validate_for_handle()` 则校验当前深度，并检查上下文末尾 Handle 与请求 Handle 是否一致。
 
 ## 两种激活入口
 

@@ -4,6 +4,10 @@ use crate::modifiers::ModifierSourceId;
 use bevy::prelude::*;
 
 /// Stable generational handle for an active effect stored on its target.
+///
+/// Handles are scoped to the World that created them. Independent Worlds can allocate identical
+/// values; callers must not use a handle with another World's effect parameters. Within its
+/// originating World, container identities and slot generations reject stale handles.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ActiveEffectHandle {
     target: Entity,
@@ -222,6 +226,7 @@ impl ActiveGameplayEffects {
             return None;
         }
         let effect = slot.effect.take()?;
+        // Retire exhausted slots so their oldest handles can never become valid again.
         if slot.generation < u32::MAX {
             slot.generation += 1;
             self.free_slots.push(handle.slot);

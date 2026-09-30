@@ -238,6 +238,8 @@ duration 和 period getter。单条效果通过 Effects API 移除。整体容�
 每次 ECS 安装容器都会获得新的 `storage_id`，移动取出的容器不会迁移活跃效果。
 `ActiveEffectHandle::new(target, storage_id, slot, generation)` 及对应 getter 暴露句柄信息。
 替换前后的相同 slot/generation 具有不同 storage_id，旧句柄不会指向新效果。
+句柄只在创建它的 World 内有效：storage_id 在每个 World 内分配，不包含全局 World 身份。
+不同 World 可以产生相同的句柄数值，不能把一个 World 的句柄传给另一个 World 的 Effects API。
 效果转换出的 ModifierSourceId 属于运行时域；调用方通过 ModifierSourceId::new 创建的来源
 位于独立域，数值字段相同也不会在移除或替换效果时被误删。
 整体替换 Tags 与 ActiveEffects 时，清理只影响旧标签值，不会扣除新标签组件自己的引用。正常代码应保存 API 返回或遍历得到的 handle，而不是猜测槽位。
@@ -300,6 +302,11 @@ Instant 效果也会验证 `granted_tags`，但不会持久授予它们；因此
 
 ### Prepare 与 Execute
 
+Prepare 不修改 gameplay 组件，但会推进共享 `Random` 的状态；它不是无副作用的只读预览。
+有效概率小于 1 时会在后续条件检查之前掷骰，因此最终被标签、免疫或结构检查拒绝的申请也可能
+消耗一次抽取。重放要求依赖版本、种子与完整调用顺序一致；共享可变资源本身不规定系统顺序，
+使用 FIFO 时仍需固定多个请求生产者的入队顺序。这里保留现有判定和掷骰顺序。
+
 Prepare 的顺序是：
 
 1. 验证概率并掷骰；
@@ -361,6 +368,20 @@ duration，但会暂停 period current tick。
 之后流水线依次运行 AbilityTasks、RequestProducers、Targeting、PreGameplayConvergence、
 GameplayResolve、UpdateEffectTagRequirements、Cleanup 和 RecalculateAttributes。
 
+四个 Requirement 收敛边界全部保留。每处注册各自使用 Bevy change detection 检查
+`GameplayTagContainer` 是否变更，并检查内部 Requirement dirty 标志。没有变化时跳过完整
+效果签名、排序和决策扫描；单纯推进 duration/period 计时器不会触发收敛。不同边界独立检测，
+因此 RequestProducers、Targeting 或 GameplayResolve 阶段产生的外部标签修改仍在后续边界可见。
+标签组件的 discard observer 在移除、替换或实体 despawn 时持久标脏，即使数个渲染帧内都未运行
+FixedUpdate，也不会因 removal 事件被清理而漏掉 source/target 依赖变化。observer 先立即标脏，
+再通过 deferred command 在组件实际移除后补一次标脏：用户生命周期 observer 即使在旧标签仍
+可见时调用同步收敛并清除 dirty，也不会吞掉最终移除产生的变化。到期和周期失败清理产生
+的标签变更仍分别在 period 执行前、AbilityTasks 前收敛。
+
+此守卫仅用于 Runtime Plugin 的系统注册；显式调用 `resolve_active_effect_tag_requirements()`
+或独立运行公开的 `update_active_effect_tag_requirements_system` 仍强制完整收敛，同步 API 的语义
+保持不变。守卫按标签组件扫描 change tick，并不建立标签到效果的反向依赖索引。
+
 ## 示例
 
 推荐的运行时生产方式：
@@ -393,13 +414,22 @@ FIFO。入队成功返回 `GameplayExecutionRequestId`；Resolver 按消费顺�
 `EffectRequirementDiagnostics` 由 Runtime Plugin 注册，默认关闭。使用 `set_enabled(true)`
 开启后，`metrics()` 返回累计收敛调用次数、决策轮次、签名/决策访问量、完整效果快照数量、
 状态转换数量、循环数量及耗时；`reset()` 清空数据，不改变开关。关闭时不读取时钟。
-计时仅供观测，不参与 gameplay 判断或确定性顺序。
+计时仅供观测，不参与 gameplay 判断或确定性顺序。计数只记录实际执行的完整收敛，不把被系统
+条件跳过的边界算成一次调用。普通回归测试断言空闲 FixedUpdate 的调用、签名访问和决策访问均为
+零；标签变化、source 标签移除、到期、周期失败和 resolver 前后变更另有行为测试。
 
 显式运行代表性测量：
 
 ```bash
 cargo test --test gas_test effects_test::requirements_test::measure_requirement_convergence -- --ignored --nocapture --test-threads=1
 ```
+
+测量用例同时保留显式强制收敛测量，并在预热后测量 64 个完整的空闲 FixedUpdate；后者输出
+`idle_fixed_update` 行，且用工作量断言保证三个规模的完整收敛次数与效果访问量均为零。完整 tick
+计时还包含 duration/period 等其它系统，不能与纯收敛耗时直接当作相同基准比较。
+2026-09-30 在 debug/unoptimized profile 实测通过：0、128、2048 个效果的三个场景各运行
+64 个空闲 FixedUpdate，完整收敛调用、签名访问与决策访问均为 0。此结果仅描述无标签变化的
+场景，不代表标签检查和其它 tick 系统没有成本，也不作为 release 吞吐或整体加速比例的依据。
 
 2026-09-15 在同一机器、debug/unoptimized 测试 profile 下，各场景进行 64 次无标签变化的收敛，
 每个活跃效果携带 4 个 modifier。优化只把决策阶段的完整效果复制延后至确实发生
@@ -419,7 +449,7 @@ Remove/Inhibit/Uninhibit 时；全局双扫描、稳定排序、source 跨实体
 
 - 不要依赖 `GameplayEffect`、`EffectTags`、Plan 或 Active Effect 的私有字段布局。
 - 整体移除或替换 `ActiveGameplayEffects` 使用 ECS remove/insert；不要通过可变引用直接赋值以绕过 hooks。
-- Stale handle 返回 `None` 或 `Ok(false)`；容器重装更换 storage_id，槽位复用增加 generation，达到 `u32::MAX` 后退休。
+- 同一 World 内的 stale handle 返回 `None` 或 `Ok(false)`；容器重装更换 storage_id，槽位复用增加 generation，达到 `u32::MAX` 后退休。跨 World 句柄不属于此保证。
 - `EffectPayload::get_source()` 返回的实体才用于来源属性和标签查询；instigator 与 causer 是元数据，不能代替
   source 支付 cost 或读取来源状态。
 - 正周期执行失败、Requirement 转换失败或到期清理失败时，系统记录错误并强制移除效果，避免
