@@ -42,7 +42,7 @@ pub enum TargetingOperation {
 }
 
 impl TargetingOperation {
-    pub(crate) fn is_selection(&self) -> bool {
+    fn is_selection(&self) -> bool {
         matches!(
             self,
             Self::SelectSelf

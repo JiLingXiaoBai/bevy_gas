@@ -1,4 +1,4 @@
-use super::AbilitySpecHandle;
+use super::super::AbilitySpecHandle;
 use bevy::prelude::Entity;
 
 /// Captures the shared gameplay values used while executing an ability task.

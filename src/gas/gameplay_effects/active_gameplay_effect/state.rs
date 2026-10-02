@@ -125,7 +125,7 @@ impl ActiveGameplayEffects {
     }
 
     /// Returns the mutable active effect identified by `handle`.
-    pub(crate) fn get_mut(
+    pub(super) fn get_mut(
         &mut self,
         handle: ActiveEffectHandle,
     ) -> Option<&mut ActiveGameplayEffect> {
@@ -296,7 +296,7 @@ impl ActiveGameplayEffect {
     }
 
     /// Sets a positive stack count.
-    pub(crate) fn set_stack_count(&mut self, stack_count: u32) {
+    pub(super) fn set_stack_count(&mut self, stack_count: u32) {
         self.stack_count = stack_count.max(1);
     }
 

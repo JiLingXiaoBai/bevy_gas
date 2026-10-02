@@ -1,7 +1,9 @@
-use super::{
-    AbilityActivationRequest, AbilityActivationStatus, AbilitySystemComponent, ActiveAbilityHandle,
-    ActiveGameplayAbility, GameplayTagError, GameplayTagManager, PendingActiveGameplayAbilities,
+use super::super::{AbilitySystemComponent, PendingActiveGameplayAbilities};
+use crate::gameplay_abilities::{
+    AbilityActivationStatus, ActiveAbilityHandle, ActiveGameplayAbility,
 };
+use crate::gameplay_execution::AbilityActivationRequest;
+use crate::gameplay_tags::{GameplayTagError, GameplayTagManager};
 use bevy::prelude::*;
 
 impl AbilitySystemComponent {

@@ -1,4 +1,5 @@
-use super::{AbilitySpecHandle, AbilityTaskExecutionContext, ActiveAbilityHandle};
+use super::super::{AbilitySpecHandle, ActiveAbilityHandle};
+use super::AbilityTaskExecutionContext;
 use crate::gameplay_effects::GameplayEffect;
 use crate::unique_names::UniqueName;
 use bevy::prelude::Component;

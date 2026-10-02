@@ -1,7 +1,6 @@
-use super::{
-    AbilityActivationTargets, GameplayExecutionQueue, TargetingCandidateQuery,
-    TargetingContinuation, TargetingRequestQueue, TargetingResultEvent, acquire_targets,
-};
+use super::super::{AbilityActivationTargets, TargetingCandidateQuery, acquire_targets};
+use super::{TargetingContinuation, TargetingRequestQueue, TargetingResultEvent};
+use crate::gameplay_execution::GameplayExecutionQueue;
 use bevy::prelude::*;
 
 /// Processes queued targeting requests and dispatches their continuations.

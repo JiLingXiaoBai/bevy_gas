@@ -1,6 +1,4 @@
-use super::{
-    AbilityActivationContext, AbilityActivationData, AbilityChainContext, AbilitySpecHandle,
-};
+//! Active ability state, lifecycle status, and instance handles.
 
 mod state;
 

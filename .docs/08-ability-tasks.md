@@ -8,16 +8,7 @@ Ability Task 编排活跃技能中的定时行为。startup `Instant` 的效果�
 
 ## 源码布局
 
-```text
-src/gas/gameplay_abilities/
-├── ability_task.rs
-└── ability_task/
-    ├── context.rs
-    ├── definition.rs
-    ├── state.rs
-    ├── completion.rs
-    └── ticking.rs
-```
+完整源码树统一维护在 [17 — 当前源码树](./17-source-layout-and-maintenance.md#当前源码树)。
 
 | 文件 | 职责 |
 | ---- | ---- |
@@ -25,7 +16,8 @@ src/gas/gameplay_abilities/
 | `context.rs` | 公开的任务共享执行上下文 |
 | `definition.rs` | 资产定义 `AbilityTaskDef`、`AbilityTaskOnFinishedDef` 及实例化 |
 | `state.rs` | 跨 tick 的 Component、任务种类和仅保存动作数据的完成枚举 |
-| `completion.rs` | 完成分派、`AbilityTaskEvent` 和 Gameplay 请求生产 |
+| `event.rs` | 公开的 `AbilityTaskEvent` 数据与访问方法，由 startup 和运行时任务共用 |
+| `completion.rs` | 仅向任务模块内部开放的完成分派与 Gameplay 请求生产 |
 | `ticking.rs` | 按稳定实体顺序推进运行时任务 |
 
 startup `Instant` 由 `ability_system/activation` 的迭代执行栈处理；运行时任务由

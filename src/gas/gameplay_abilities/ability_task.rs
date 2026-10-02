@@ -1,17 +1,14 @@
-use super::{
-    AbilityActivationContext, AbilityActivationStatus, AbilitySpecHandle, ActiveAbilityHandle,
-    ActiveGameplayAbility, effect_payload_from_ability_context,
-};
+//! Ability task definitions, runtime state, completion events, and fixed-tick execution.
 
 mod completion;
 mod context;
 mod definition;
+mod event;
 mod state;
 mod ticking;
 
-pub use completion::AbilityTaskEvent;
-pub(crate) use completion::{AbilityTaskCompletion, dispatch_ability_task_completion};
 pub use context::AbilityTaskExecutionContext;
 pub use definition::{AbilityTaskDef, AbilityTaskOnFinishedDef};
+pub use event::AbilityTaskEvent;
 pub use state::{AbilityTask, AbilityTaskKind, AbilityTaskOnFinished};
 pub use ticking::tick_ability_tasks_system;

@@ -1,7 +1,6 @@
-use super::{
-    AbilityActivationStatus, AbilitySystemComponent, ActiveGameplayAbility, GameplayTagManager,
-    PendingActiveGameplayAbilities,
-};
+use super::super::{AbilitySystemComponent, PendingActiveGameplayAbilities};
+use crate::gameplay_abilities::{AbilityActivationStatus, ActiveGameplayAbility};
+use crate::gameplay_tags::GameplayTagManager;
 use bevy::ecs::lifecycle::Discard;
 use bevy::prelude::*;
 

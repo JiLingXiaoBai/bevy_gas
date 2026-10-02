@@ -1,4 +1,4 @@
-use super::{
+use super::super::{
     AbilityActivationContext, AbilityActivationData, AbilityChainContext, AbilitySpecHandle,
 };
 use crate::gameplay_targeting::AbilityActivationTargets;

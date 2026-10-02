@@ -1,15 +1,5 @@
 //! Ability instance bookkeeping, state transitions, and ECS lifetime cleanup.
 
-use super::component::AbilitySystemComponent;
-use super::params::{AbilitySystemParams, PendingActiveGameplayAbilities};
-use crate::gameplay_abilities::{
-    AbilityActivationStatus, ActiveAbilityHandle, ActiveGameplayAbility, GameplayAbility,
-};
-use crate::gameplay_execution::AbilityActivationRequest;
-use crate::gameplay_tags::{
-    GameplayTag, GameplayTagError, GameplayTagManager, tag_bits_from_tags_with_manager,
-};
-
 mod cleanup;
 mod instances;
 mod transitions;

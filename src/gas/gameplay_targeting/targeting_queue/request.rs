@@ -1,7 +1,5 @@
-use super::{
-    AbilityActivationContext, AbilitySpecHandle, AbilityTargetData, TargetingDefinition,
-    TargetingError,
-};
+use super::super::{AbilityTargetData, TargetingDefinition, TargetingError};
+use crate::gameplay_abilities::{AbilityActivationContext, AbilitySpecHandle};
 use bevy::prelude::{Entity, Event, Vec3};
 use std::sync::Arc;
 

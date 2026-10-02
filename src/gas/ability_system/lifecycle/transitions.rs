@@ -1,8 +1,9 @@
-use super::super::commit::AdditionalCostProvider;
-use super::{
-    AbilityActivationStatus, AbilitySystemParams, ActiveAbilityHandle, ActiveGameplayAbility,
-    GameplayAbility, GameplayTag, GameplayTagError, GameplayTagManager,
-    tag_bits_from_tags_with_manager,
+use super::super::{AbilitySystemParams, AdditionalCostProvider};
+use crate::gameplay_abilities::{
+    AbilityActivationStatus, ActiveAbilityHandle, ActiveGameplayAbility, GameplayAbility,
+};
+use crate::gameplay_tags::{
+    GameplayTag, GameplayTagError, GameplayTagManager, tag_bits_from_tags_with_manager,
 };
 use bevy::prelude::*;
 

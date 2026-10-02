@@ -1,7 +1,6 @@
-use super::{
-    AbilityActivationStatus, AbilityTask, AbilityTaskCompletion, ActiveGameplayAbility,
-    dispatch_ability_task_completion,
-};
+use super::super::{AbilityActivationStatus, ActiveGameplayAbility};
+use super::AbilityTask;
+use super::completion::{AbilityTaskCompletion, dispatch_ability_task_completion};
 use crate::gameplay_execution::GameplayExecutionQueue;
 use bevy::prelude::*;
 

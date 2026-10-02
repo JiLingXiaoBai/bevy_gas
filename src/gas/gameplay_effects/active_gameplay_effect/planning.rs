@@ -1,16 +1,14 @@
-use super::super::gameplay_effect::{EffectPayload, GameplayEffect, StackOverflowPolicy};
-use super::super::gameplay_effect_spec::{EffectDurationTicksSpec, GameplayEffectSpec};
-use super::super::{EffectContext, EffectSystemParams};
-use super::application::{
-    find_stackable_active_effect, is_blocked_by_application_immunity,
-    passes_application_requirements,
+use super::super::gameplay_effect::{
+    EffectPayload, GameplayEffect, StackOverflowPolicy, StackingType,
 };
+use super::super::gameplay_effect_spec::{EffectDurationTicksSpec, GameplayEffectSpec};
+use super::super::{EffectContext, EffectSystemParams, EffectTags};
 use super::error::{GameplayEffectApplicationError, map_attribute_set_error};
 use super::execution::validate_effect_execution_requirements;
 use super::removal::collect_active_effects_with_tags_for_params;
 use super::state::{ActiveEffectHandle, ActiveGameplayEffects};
 use crate::attributes::{AttributeIdManager, AttributeSet, AttributeSnapshot};
-use crate::gameplay_tags::GameplayTagManager;
+use crate::gameplay_tags::{GameplayTagError, GameplayTagManager, tag_bits_from_tags_with_manager};
 use crate::modifiers::{ModifierSourceId, ModifierSpec};
 use bevy::prelude::*;
 use std::sync::Arc;
@@ -244,4 +242,79 @@ pub fn prepare_gameplay_effect(
         removed_effects,
         kind,
     })
+}
+
+fn find_stackable_active_effect(
+    source: Entity,
+    target: Entity,
+    spec: &GameplayEffectSpec,
+    active_effect_query: &Query<&ActiveGameplayEffects>,
+    ignored_handles: &[ActiveEffectHandle],
+) -> Option<(ActiveEffectHandle, u32)> {
+    let stacking_type = spec.get_stacking_policy().get_stacking_type();
+    if matches!(stacking_type, StackingType::None) {
+        return None;
+    }
+    let active_effects = active_effect_query.get(target).ok()?;
+    active_effects.handles(target).find_map(|handle| {
+        if ignored_handles.contains(&handle) {
+            return None;
+        }
+        let effect = active_effects.get(handle)?;
+        (spec.is_same_def(effect.get_spec())
+            && match stacking_type {
+                StackingType::None => false,
+                StackingType::AggregateBySource => effect.get_source() == source,
+                StackingType::AggregateByTarget => true,
+            })
+        .then_some((handle, effect.get_stack_count()))
+    })
+}
+
+fn passes_application_requirements(
+    source: Entity,
+    target: Entity,
+    incoming_tags: &EffectTags,
+    params: &EffectSystemParams,
+) -> bool {
+    let source_tags = params.tag_container_query.get(source).ok();
+    let target_tags = params.tag_container_query.get(target).ok();
+    incoming_tags
+        .get_source_application_tags()
+        .passes(source_tags)
+        && incoming_tags
+            .get_target_application_tags()
+            .passes(target_tags)
+}
+
+fn is_blocked_by_application_immunity(
+    source: Entity,
+    target: Entity,
+    incoming_tags: &EffectTags,
+    params: &mut EffectSystemParams,
+) -> Result<bool, GameplayTagError> {
+    let source_tags = params.tag_container_query.get(source).ok();
+    let incoming_asset_bits =
+        tag_bits_from_tags_with_manager(incoming_tags.get_asset_tags(), &params.tag_manager)?;
+    let Ok(active_effects) = params.active_effect_query.get(target) else {
+        return Ok(false);
+    };
+    for handle in active_effects.handles(target) {
+        let Some(effect) = active_effects.get(handle) else {
+            continue;
+        };
+        if effect.is_inhibited() {
+            continue;
+        }
+        if effect
+            .get_spec()
+            .get_def_tags()
+            .get_granted_application_immunity()
+            .iter()
+            .any(|immunity| immunity.matches_tag_bits(source_tags, Some(&incoming_asset_bits)))
+        {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }

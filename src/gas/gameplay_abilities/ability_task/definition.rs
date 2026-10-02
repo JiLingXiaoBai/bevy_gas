@@ -1,7 +1,5 @@
-use super::{
-    AbilitySpecHandle, AbilityTask, AbilityTaskExecutionContext, AbilityTaskOnFinished,
-    ActiveAbilityHandle,
-};
+use super::super::{AbilitySpecHandle, ActiveAbilityHandle};
+use super::{AbilityTask, AbilityTaskExecutionContext, AbilityTaskOnFinished};
 use crate::gameplay_effects::GameplayEffect;
 use crate::unique_names::UniqueName;
 use std::sync::Arc;

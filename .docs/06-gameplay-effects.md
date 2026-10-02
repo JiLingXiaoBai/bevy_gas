@@ -12,32 +12,17 @@ Effects 的修改入口使用 `EffectSystemParams`，不要求调用者提供 AS
 
 ## 源码布局
 
-```text
-src/gas/
-├── gameplay_effects.rs
-└── gameplay_effects/
-    ├── gameplay_effect.rs
-    ├── gameplay_effect/
-    │   ├── context.rs          # EffectPayload and EffectContext
-    │   ├── definition.rs       # GameplayEffect
-    │   ├── timing.rs           # Duration and period definitions
-    │   ├── effect_tags.rs      # Tags, requirements, and immunity
-    │   └── stacking.rs         # Stacking policies
-    ├── gameplay_effect_spec.rs # Evaluated modifiers/timing with definition reference
-    ├── effect_system_params.rs # Effect-only ECS access
-    ├── active_gameplay_effect.rs
-    └── active_gameplay_effect/
-        ├── planning.rs         # Validation, plan, and public errors
-        ├── application.rs      # Synchronous entry and stack lookup
-        ├── execution.rs        # Plan execution and rollback
-        ├── modifiers.rs        # Shared instant/duration modifier mutations
-        ├── lifecycle.rs        # Shared contributions and component lifecycle hooks
-        ├── diagnostics.rs      # Optional convergence measurements
-        ├── state.rs            # Target-owned active storage
-        ├── requirements.rs     # Ongoing/removal fixed point
-        ├── removal.rs          # Cleanup and public removal/query API
-        └── ticking.rs          # Duration and period systems
-```
+完整源码树统一维护在 [17 — 当前源码树](./17-source-layout-and-maintenance.md#当前源码树)。
+
+| 文件 | 职责 |
+| ---- | ---- |
+| `active_gameplay_effect/application.rs` | 同步入口的条件收敛、准备与执行编排 |
+| `active_gameplay_effect/planning.rs` | 概率、标签条件、免疫和叠层选择，生成应用 Plan 并支持修饰器预演 |
+| `active_gameplay_effect/execution.rs` | Plan 重验证、执行与局部失败清理 |
+| `active_gameplay_effect/error.rs` | 应用错误、错误转换和拒绝分类 |
+
+准入与叠层查询辅助函数由 `planning.rs` 私有持有，准备流程不反向依赖应用入口。
+容器可变访问和叠层数修改只向 Active Effect 模块内部开放；其他领域通过公开应用、执行或移除入口操作。
 
 排队请求类型位于 `src/gas/gameplay_execution/request.rs`，不是 Effects 目录的一部分。
 

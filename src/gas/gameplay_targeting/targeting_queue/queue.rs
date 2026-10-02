@@ -1,7 +1,6 @@
-use super::{
-    TargetingContinuation, TargetingDefinition, TargetingInput, TargetingRequest,
-    TargetingRequestId,
-};
+use super::super::TargetingDefinition;
+use super::request::TargetingRequest;
+use super::{TargetingContinuation, TargetingInput, TargetingRequestId};
 use bevy::prelude::{Entity, Resource};
 use std::collections::VecDeque;
 use std::sync::Arc;
