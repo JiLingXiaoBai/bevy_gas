@@ -162,7 +162,11 @@ cargo fmt --check
 cargo clippy --all-targets --all-features -- -D warnings
 cargo test --all-features
 cargo build
+cargo doc --no-deps --all-features
 ```
+
+文档步骤单独设置 `RUSTDOCFLAGS=-D warnings`，检查公开项文档和 rustdoc 链接，
+不会为其他构建步骤改变编译标志。
 
 Clippy 编译全部测试与示例；CI 不启动窗口示例。依赖构建缓存只用于缩短运行时间，检查本身
 仍逐次执行。当前仅覆盖 Windows；本地通过不能替代 workflow 的实际运行结果。

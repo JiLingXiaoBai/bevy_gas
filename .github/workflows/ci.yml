@@ -33,3 +33,7 @@ jobs:
         run: cargo test --all-features
       - name: Build
         run: cargo build
+      - name: Check documentation
+        env:
+          RUSTDOCFLAGS: "-D warnings"
+        run: cargo doc --no-deps --all-features

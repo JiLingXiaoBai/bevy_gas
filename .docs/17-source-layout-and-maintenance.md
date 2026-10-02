@@ -489,6 +489,8 @@ cargo build
 cargo doc --no-deps --all-features
 ```
 
+CI 的文档步骤独立设置 `RUSTDOCFLAGS=-D warnings`，将失效的 rustdoc 链接等警告作为失败处理。
+
 
 ### 新增实现所有权
 
