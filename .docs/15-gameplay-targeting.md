@@ -6,27 +6,15 @@
 效果；它还拥有激活全过程使用的唯一目标值 `AbilityActivationTargets`。
 `ActivateAbility` continuation 只把激活请求写入统一 Gameplay FIFO。
 
-```text
-src/gas/
-├── gameplay_targeting.rs
-└── gameplay_targeting/
-    ├── ability_target_data.rs
-    ├── activation_targets.rs
-    ├── targeting_definition.rs
-    ├── acquisition.rs
-    ├── targeting_queue.rs
-    └── targeting_queue/
-        ├── request.rs
-        ├── queue.rs
-        └── processing.rs
-```
+完整源码树统一维护在 [17 — 当前源码树](./17-source-layout-and-maintenance.md#当前源码树)。
 
 | 文件 | 职责 |
 | ---- | ---- |
+| `error.rs` | 空激活目标、管线定义验证和运行时抓取错误 |
 | `ability_target_data.rs` | 有序命中与目标数据 |
 | `activation_targets.rs` | 单目标/抓取目标的统一激活值及非空约束 |
-| `targeting_definition.rs` | 操作定义、验证错误和 `Targetable` |
-| `acquisition.rs` | 同步选择/过滤算法、候选 Query 和运行时错误 |
+| `targeting_definition.rs` | 操作定义、管线验证和 `Targetable` |
+| `acquisition.rs` | 同步选择/过滤算法和候选 Query |
 | `targeting_queue/request.rs` | 输入快照、稳定 ID、continuation 与结果 Event |
 | `targeting_queue/queue.rs` | 私有请求的 FIFO Resource 与 ID 分配 |
 | `targeting_queue/processing.rs` | 完整 drain、continuation 和 Event 派发 |

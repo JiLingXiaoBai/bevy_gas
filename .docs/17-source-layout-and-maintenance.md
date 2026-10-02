@@ -3,7 +3,9 @@
 ## 本文职责
 
 本文是源码物理布局和模块所有权的权威说明。行为语义由各领域文档负责，精确公共签名由
-rustdoc 负责。目录变化后应优先更新本页，而不是在多篇领域文档中复制完整文件树。
+rustdoc 负责。完整源码树只在本页维护，完整测试与示例树只在
+[13 — 测试指南](./13-testing-guide.md#测试与示例组织)维护；领域文档保留职责说明和链接。
+目录变化后更新对应的权威清单，避免多份文件树随维护发生漂移。
 
 项目按 Gameplay 领域组织，不建立横跨所有领域的 `components/`、`systems/`、`resources/` 或
 `utils/` 目录。**所有新添加的功能模块统一使用“门面文件 + 同名实现目录”布局，即使只有一个
@@ -15,7 +17,8 @@ rustdoc 负责。目录变化后应优先更新本页，而不是在多篇领域
 ```text
 ability_input.rs
 ability_input/
-└── bindings.rs
+├── bindings.rs
+└── error.rs
 ```
 
 门面只负责模块文档、私有子模块声明和显式重导出：
@@ -24,13 +27,18 @@ ability_input/
 //! Optional mappings from logical actions to granted ability handles.
 
 mod bindings;
+mod error;
 
-pub use bindings::{AbilityInputBindingError, AbilityInputBindings};
+pub use bindings::AbilityInputBindings;
+pub use error::AbilityInputBindingError;
 ```
 
-组件、错误类型和相关实现放在 `ability_input/bindings.rs`。门面决定领域边界，实现文件只承担
-一种主要变更原因；功能增长后，再按职责在同名目录中增加 `state.rs`、`definition.rs` 或
+组件及其行为放在 `ability_input/bindings.rs`，公开错误放在 `ability_input/error.rs`。
+门面决定领域边界，实现文件只承担一种主要变更原因；功能增长后，再按职责在同名目录中增加 `state.rs`、`definition.rs` 或
 `execution.rs` 等文件。
+
+门面不通过普通 `use` 替子模块隐式转发业务依赖。叶子实现直接导入实际使用的类型：
+同领域使用 `super`，跨领域使用 `crate`；门面只维护模块文档、声明和必要的显式重导出。
 
 这条规则适用于新建的功能模块边界，不要求目录内每个叶子实现文件继续递归建立门面和同名目录。
 小型值类型与紧密相关的实现仍放在同一职责文件中，也不因这条规则批量调整既有辅助文件。
@@ -84,6 +92,7 @@ src/
 │   └── random.rs
 ├── unique_names.rs
 ├── unique_names/
+│   ├── error.rs
 │   └── unique_name.rs
 ├── gas.rs
 └── gas/
@@ -96,6 +105,7 @@ src/
     ├── settings.rs
     ├── gameplay_tags.rs
     ├── gameplay_tags/
+    │   ├── error.rs
     │   ├── tag.rs
     │   ├── bitset.rs
     │   ├── registry.rs
@@ -103,11 +113,13 @@ src/
     │   └── requirements.rs
     ├── attributes.rs
     ├── attributes/
+    │   ├── error.rs
     │   ├── registry.rs
     │   ├── aggregation.rs
     │   ├── snapshot.rs
     │   ├── attribute_set.rs
     │   └── attribute_set/
+    │       ├── error.rs
     │       ├── state.rs
     │       ├── mutation.rs
     │       └── recalculation.rs
@@ -129,6 +141,7 @@ src/
     │   │   └── effect_tags.rs
     │   ├── active_gameplay_effect.rs
     │   └── active_gameplay_effect/
+    │       ├── error.rs
     │       ├── state.rs
     │       ├── planning.rs
     │       ├── application.rs
@@ -141,10 +154,12 @@ src/
     │       └── ticking.rs
     ├── gameplay_abilities.rs
     ├── gameplay_abilities/
+    │   ├── error.rs
     │   ├── gameplay_ability.rs
     │   ├── additional_cost.rs
     │   ├── additional_cost/
-    │   │   └── definition.rs
+    │   │   ├── definition.rs
+    │   │   └── error.rs
     │   ├── gameplay_ability_spec.rs
     │   ├── activation_data.rs
     │   ├── activation_context.rs
@@ -156,14 +171,17 @@ src/
     │   └── ability_task/
     │       ├── context.rs
     │       ├── definition.rs
+    │       ├── event.rs
     │       ├── state.rs
     │       ├── completion.rs
     │       └── ticking.rs
     ├── ability_input.rs
     ├── ability_input/
-    │   └── bindings.rs
+    │   ├── bindings.rs
+    │   └── error.rs
     ├── ability_system.rs
     ├── ability_system/
+    │   ├── error.rs
     │   ├── component.rs
     │   ├── params.rs
     │   ├── commit.rs
@@ -186,6 +204,7 @@ src/
     │       └── execution.rs
     ├── gameplay_targeting.rs
     ├── gameplay_targeting/
+    │   ├── error.rs
     │   ├── ability_target_data.rs
     │   ├── activation_targets.rs
     │   ├── targeting_definition.rs
@@ -197,6 +216,7 @@ src/
     │       └── processing.rs
     ├── gameplay_execution.rs
     └── gameplay_execution/
+        ├── error.rs
         ├── request.rs
         ├── queue.rs
         ├── resolver.rs
@@ -205,7 +225,7 @@ src/
 
 完整技能与效果时间线示例位于 `examples/ability_effect_flow.rs`；标签注册示例位于
 `examples/tag_registration.rs`；独立输入绑定示例位于 `examples/ability_input_bindings.rs`。
-集成测试布局见本文后半部分。
+集成测试归属原则见本文后半部分，完整测试与示例树见 [13 — 测试指南](./13-testing-guide.md#测试与示例组织)。
 
 ## 外部游戏配置
 
@@ -252,7 +272,7 @@ src/
 
 | 文件                                        | 主要所有权                                            |
 | ------------------------------------------- | ----------------------------------------------------- |
-| `gameplay_tags/tag.rs`                      | `GameplayTag` 值类型和注册错误                        |
+| `gameplay_tags/tag.rs`                      | `GameplayTag` 值类型                        |
 | `gameplay_tags/bitset.rs`                   | 固定容量位集和继承位操作                              |
 | `gameplay_tags/registry.rs`                 | 名称注册、父标签递归注册和 `SystemParam` 注册入口     |
 | `gameplay_tags/container.rs`                | 每实体显式/汇总引用计数、容量预检与层级 Tag 位图      |
@@ -260,7 +280,7 @@ src/
 | `attributes/registry.rs`                    | Attribute ID、Region、Location 和注册表               |
 | `attributes/aggregation.rs`                 | `Aggregator` 与 AttributeSet 内部稀疏聚合器集合       |
 | `attributes/snapshot.rs`                    | 单属性与整套来源快照                                  |
-| `attributes/attribute_set/state.rs`         | AttributeSet 存储、dirty 位图和错误                   |
+| `attributes/attribute_set/state.rs`         | AttributeSet 存储和 dirty 位图                   |
 | `attributes/attribute_set/mutation.rs`      | 初始化、Instant/Duration 修改、成本数值预演和来源清理 |
 | `attributes/attribute_set/recalculation.rs` | 按需/批量重算与末尾系统                               |
 | `modifiers/definition.rs`                   | Modifier 操作、幅度和自定义计算 trait                 |
@@ -283,8 +303,8 @@ src/
 | `gameplay_effect/effect_tags.rs`         | Effect 标签、私有 source/target 条件对和公开链式 builder                             |
 | `gameplay_effect_spec.rs`                | 保留 definition `Arc`，捕获 Modifier/Duration/Period 求值结果；不复制 StackingPolicy |
 | `active_gameplay_effect/state.rs`        | Handle、稳定 slot、Active Effect 状态和目标 Component                                |
-| `active_gameplay_effect/planning.rs`     | 应用错误、Plan、prepare、修饰器预演桥接和错误映射                                    |
-| `active_gameplay_effect/application.rs`  | 同步应用入口、条件、概率、免疫和堆叠选择                                             |
+| `active_gameplay_effect/planning.rs`     | 概率、标签准入、免疫、叠层选择、Plan 与修饰器预演桥接                                    |
+| `active_gameplay_effect/application.rs`  | 同步应用入口的条件收敛、准备与执行编排                                             |
 | `active_gameplay_effect/execution.rs`    | Plan 重验证、Instant/Stack/Create 和回滚                                             |
 | `active_gameplay_effect/modifiers.rs`    | 即时/持续属性修改，以及叠层和到期减层共用的修饰器刷新                                |
 | `active_gameplay_effect/removal.rs`      | 显式/按标签移除和 Effect 状态清理                                                    |
@@ -302,7 +322,7 @@ commit 和生命周期编排的流程：
 | 文件                                        | 主要所有权                                                                     |
 | ------------------------------------------- | ------------------------------------------------------------------------------ |
 | `gameplay_ability.rs`                       | AbilityTags、startup task、cost/cooldown Effect 定义                           |
-| `gameplay_abilities/additional_cost/definition.rs` | 正整数外部资源需求与结构化错误；定义不保存余额 |
+| `gameplay_abilities/additional_cost/definition.rs` | 正整数外部资源需求；定义不保存余额 |
 | `gameplay_ability_spec.rs`                  | 授予 Handle、level 和 active count                                             |
 | `activation_data.rs`                        | 唯一组合 source、targets 与传播 context 的不可变激活值                         |
 | `ability_chain.rs`、`activation_context.rs` | 请求与运行实例共用的链保护、传播上下文，以及 Ability → Effect payload 转换     |
@@ -310,6 +330,7 @@ commit 和生命周期编排的流程：
 | `ability_task/context.rs`                   | 公开的 Task 共享 source/spec handle/level 轻量执行上下文；目标由父活跃实例持有 |
 | `ability_task/definition.rs`                | Instant/WaitTicks 定义和完成动作定义                                           |
 | `ability_task/state.rs`                     | 运行时 Task Component 与 action-only 完成枚举                                  |
+| `ability_task/event.rs` | startup 与运行时任务共用的公开事件数据和访问方法 |
 | `ability_task/completion.rs`                | 使用轻量 context 与父 Active targets 向 Event/Effect/Ability 请求分派完成动作  |
 | `ability_task/ticking.rs`                   | Task 稳定推进与清理                                                            |
 | `ability_system/component.rs`               | ASC 规格存储和显式 `GameplayAbilitySystemBundle`                               |
@@ -322,7 +343,7 @@ commit 和生命周期编排的流程：
 | `ability_system/commit/planning.rs`         | 属性/冷却 Plan 准备及外部成本检查，不持有支付 Receipt |
 | `ability_system/commit/execution.rs`        | Commit 入口、Plan 重验证与执行、局部外部支付及失败补偿 |
 | `ability_system/lifecycle.rs`、`lifecycle/` | 实例登记与幂等释放、状态迁移、Cleanup 和 Discard Observer |
-| `ability_input/bindings.rs`                 | 游戏逻辑动作到同实体 ASC 的技能 Handle 映射、稳定遍历和绑定错误                |
+| `ability_input/bindings.rs`                 | 游戏逻辑动作到同实体 ASC 的技能 Handle 映射和稳定遍历                |
 
 `AbilitySystemParams` 内嵌 `EffectSystemParams`，再增加 `Commands`、ASC、来源快照、活跃 Ability
 查询、内部 pending overlay 与可选的 `AdditionalCostProvider`。外部成本定义由
@@ -335,8 +356,8 @@ commit 和生命周期编排的流程：
 不依赖完整 Ability 参数或外部 Provider。`planning.rs` 保存未支付的计划；`execution.rs` 将
 支付上下文与 Receipt 配对保存在同步提交调用内，负责执行失败时的外部补偿。
 
-`ability_input.rs` 门面显式重导出 `ability_input/bindings.rs` 中的组件与错误类型，公开路径
-仍为 `bevy_gas::gas::ability_input`；`bindings` 是私有实现模块。
+`ability_input.rs` 门面分别从 `ability_input/bindings.rs` 和 `ability_input/error.rs`
+显式重导出组件与错误类型，公开路径仍为 `bevy_gas::gas::ability_input`；这两个实现模块均为私有。
 
 `ability_input` 是独立的可选输入适配领域，只依赖 ASC 的只读规格查询和 `AbilitySpecHandle`。
 它不采集物理设备、不保存按下状态、不安装系统，也不进入 `GameplayAbilitySystemBundle`。
@@ -348,8 +369,8 @@ commit 和生命周期编排的流程：
 | 文件                             | 主要所有权                                                                           |
 | -------------------------------- | ------------------------------------------------------------------------------------ |
 | `ability_target_data.rs`         | 稳定排序的 Hit 与多目标结果                                                          |
-| `activation_targets.rs`          | single/acquired 唯一激活目标值、空数据错误和统一目标遍历                             |
-| `targeting_definition.rs`        | Targetable、合法操作管线和定义错误                                                   |
+| `activation_targets.rs`          | single/acquired 唯一激活目标值、非空验证和统一目标遍历                             |
+| `targeting_definition.rs`        | Targetable 与操作管线定义、验证                                                   |
 | `acquisition.rs`                 | 同步候选查询、选择、过滤、排序和限制                                                 |
 | `targeting_queue/request.rs`     | 请求输入、continuation、ID 和结果 Event                                              |
 | `targeting_queue/queue.rs`       | FIFO Resource 与入队 API                                                             |
@@ -386,41 +407,15 @@ commit 和生命周期编排的流程：
 3. `pub(crate)`：确有跨领域运行时调用；
 4. `pub`：有稳定语义和 rustdoc 的用户 API。
 
+例如 Effect 容器可变访问、叠层数修改以及任务完成分派仅供各自模块内部使用；
+只在定义文件内调用的判定辅助函数保持私有。收窄内部可见性时保留实际跨领域调用需要的入口。
+
 同一领域内部优先 `use super::...`；跨领域使用 `use crate::...`。避免用多层
 `super::super::...` 穿透领域，也避免从私有叶子文件路径导入以绕过门面。
 
 ## 测试布局
 
-```text
-tests/
-├── gas_test.rs
-├── gas_test/
-│   ├── ability_input_test.rs
-│   ├── support_test.rs
-│   ├── attributes_test.rs
-│   ├── gameplay_tags_test.rs
-│   ├── gameplay_targeting_test.rs
-│   ├── queues_test.rs
-│   ├── runtime_paths_test.rs
-│   ├── effects_test.rs
-│   ├── effects_test/
-│   │   ├── application_test.rs
-│   │   ├── removal_test.rs
-│   │   ├── requirements_test.rs
-│   │   ├── stacking_test.rs
-│   │   └── ticking_test.rs
-│   ├── abilities_test.rs
-│   └── abilities_test/
-│       ├── activation_test.rs
-│       ├── additional_cost_test.rs
-│       ├── chaining_test.rs
-│       ├── commit_test.rs
-│       ├── grant_exhaustion_test.rs       # 访问私有字段的库单元测试，由源码声明加载
-│       ├── lifecycle_test.rs
-│       └── tasks_test.rs
-├── randoms_test.rs
-└── unique_names_test.rs
-```
+完整测试与示例树见 [13 — 测试与示例组织](./13-testing-guide.md#测试与示例组织)，本页只维护归属原则。
 
 集成测试的顶层归属与 crate 顶层功能领域一致：`src/gas/` 内功能的集成测试统一放在
 `tests/gas_test/`，由 `tests/gas_test.rs` 声明和加载；新增 GAS 子模块不新建顶层测试目标。
@@ -479,7 +474,7 @@ tests/
 源码结构或公共 API 变化后：
 
 1. 更新领域门面 `//!` 与 rustdoc；
-2. 更新本页的文件树、所有权或修改路由；
+2. 更新本页的源码树、所有权或修改路由；测试与示例树变化只更新第 13 篇；
 3. 更新对应领域文档中的行为和边界；
 4. 只在 API 快速参考中列高频公开入口，避免复制整个 rustdoc；
 5. 更新或新增能够编译的 example/集成测试；

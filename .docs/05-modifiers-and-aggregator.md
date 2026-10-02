@@ -15,16 +15,7 @@ Modifiers 不决定效果何时过期，也不保存 `ActiveEffectHandle`。Effe
 
 ## 源码布局
 
-```text
-src/gas/
-├── modifiers.rs                  # Shared-domain facade and explicit exports
-├── modifiers/
-│   ├── definition.rs            # Operations, magnitudes, and definitions
-│   ├── context.rs               # Neutral evaluation context
-│   └── spec.rs                  # Evaluated values and source identity
-└── attributes/
-    └── aggregation.rs           # Public Aggregator and private sparse set
-```
+完整源码树统一维护在 [17 — 当前源码树](./17-source-layout-and-maintenance.md#当前源码树)。
 
 `AttributeAggregatorSet` 是 `AttributeSet` 的私有实现，不属于 Modifiers 公共契约。
 

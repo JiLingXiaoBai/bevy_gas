@@ -2,6 +2,9 @@
 
 ## 测试与示例组织
 
+以下是测试与示例文件树的唯一维护位置；源码布局见
+[17 — 当前源码树](./17-source-layout-and-maintenance.md#当前源码树)。
+
 ```text
 tests/
 ├── gas_test.rs                         # GAS 集成测试 crate 门面

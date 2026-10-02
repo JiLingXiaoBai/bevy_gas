@@ -4,14 +4,7 @@
 
 支撑模块位于 GAS 领域目录之外：
 
-```text
-src/
-├── randoms.rs
-├── randoms/random.rs
-├── unique_names.rs
-├── unique_names/unique_name.rs
-└── gas/settings.rs
-```
+完整源码树统一维护在 [17 — 当前源码树](./17-source-layout-and-maintenance.md#当前源码树)。
 
 `randoms` 与 `unique_names` 是 crate 私有门面，分别显式重导出内部实现，再由 crate root
 公开。因此用户路径是 `bevy_gas::Random`、`bevy_gas::UniqueName`、

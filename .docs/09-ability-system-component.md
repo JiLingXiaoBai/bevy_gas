@@ -8,36 +8,14 @@ Effects。激活、Commit、结束与清理由同一领域中的函数和系统�
 
 ## 源码布局
 
-```text
-src/gas/
-├── ability_system.rs
-└── ability_system/
-    ├── component.rs
-    ├── params.rs
-    ├── activation.rs
-    ├── activation/
-    │   ├── error.rs
-    │   ├── validation.rs
-    │   ├── startup.rs
-    │   └── execution.rs
-    ├── commit.rs
-    ├── commit/
-    │   ├── additional_cost.rs
-    │   ├── error.rs
-    │   ├── affordability.rs
-    │   ├── planning.rs
-    │   └── execution.rs
-    ├── lifecycle.rs
-    └── lifecycle/
-        ├── instances.rs
-        ├── transitions.rs
-        └── cleanup.rs
-```
+完整源码树统一维护在 [17 — 当前源码树](./17-source-layout-and-maintenance.md#当前源码树)。
 
 | 文件 | 职责 |
 | ---- | ---- |
+| `error.rs` | 技能授予错误 |
 | `component.rs` | ASC 公共存储 API 与显式 Actor Bundle |
 | `params.rs` | Ability SystemParam 与 deferred Active Ability overlay |
+| `activation/error.rs` | 共享激活要求错误、只读预检和正式激活错误、显示信息与拒绝分类 |
 | `activation/validation.rs` | 快速预检和完整激活要求检查 |
 | `activation/startup.rs` | 启动 startup tasks |
 | `activation/execution.rs` | 同步入口与 batch 内激活顺序 |

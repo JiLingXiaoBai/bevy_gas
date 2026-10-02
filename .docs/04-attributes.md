@@ -11,19 +11,7 @@ Attributes 负责全局属性 ID 注册、每实体基础值与当前值、持�
 
 ## 源码布局
 
-```text
-src/gas/
-├── attributes.rs                    # Domain facade and explicit exports
-└── attributes/
-    ├── registry.rs                  # IDs, regions, manager, and register param
-    ├── aggregation.rs               # Public Aggregator and private sparse storage
-    ├── snapshot.rs                  # Immutable snapshots
-    ├── attribute_set.rs             # AttributeSet facade
-    └── attribute_set/
-        ├── state.rs                 # Component state and errors
-        ├── mutation.rs              # Initialization and modifier mutation
-        └── recalculation.rs         # Lazy recalculation, snapshots, and system
-```
+完整源码树统一维护在 [17 — 当前源码树](./17-source-layout-and-maintenance.md#当前源码树)。
 
 `Attribute` 与 `AttributeAggregatorSet` 都是实现细节，不是外部扩展点。公开契约集中在本篇
 列出的 ID、`AttributeSet`、快照和 `Aggregator` API。

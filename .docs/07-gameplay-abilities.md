@@ -8,34 +8,14 @@ Gameplay Ability 描述角色能够执行的动作，例如攻击、法术和冲
 
 ## 源码布局
 
-```text
-src/gas/
-├── gameplay_abilities.rs
-└── gameplay_abilities/
-    ├── gameplay_ability.rs
-    ├── additional_cost.rs
-    ├── additional_cost/
-    │   └── definition.rs
-    ├── gameplay_ability_spec.rs
-    ├── activation_data.rs
-    ├── activation_context.rs
-    ├── ability_chain.rs
-    ├── active_gameplay_ability.rs
-    ├── active_gameplay_ability/
-    │   └── state.rs
-    ├── ability_task.rs
-    └── ability_task/
-        ├── context.rs
-        ├── definition.rs
-        ├── state.rs
-        ├── completion.rs
-        └── ticking.rs
-```
+完整源码树统一维护在 [17 — 当前源码树](./17-source-layout-and-maintenance.md#当前源码树)。
 
 | 文件 | 职责 |
 | ---- | ---- |
 | `gameplay_ability.rs` | 不可变技能定义与 `AbilityTags` |
-| `additional_cost/definition.rs` | 游戏资源的正整数消耗定义和结构化错误 |
+| `error.rs` | 技能链验证错误 |
+| `additional_cost/definition.rs` | 游戏资源的正整数消耗定义 |
+| `additional_cost/error.rs` | 外部成本的结构化错误 |
 | `gameplay_ability_spec.rs` | 某个 ASC 已授予技能的等级和活跃计数 |
 | `activation_data.rs` | 一次激活共享的 source、targets 与传播 context 不可变值 |
 | `ability_chain.rs` | 链 ID、深度限制和重复 Handle 检查 |

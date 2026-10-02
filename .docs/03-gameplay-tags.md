@@ -10,16 +10,7 @@ Gameplay Tags 提供层级化标签注册、固定大小位集、每实体引用
 
 ## 源码布局
 
-```text
-src/gas/
-├── gameplay_tags.rs          # Domain facade and explicit exports
-└── gameplay_tags/
-    ├── tag.rs                # GameplayTag and GameplayTagError
-    ├── bitset.rs             # Fixed-size bitset and pure bit operations
-    ├── registry.rs           # GameplayTagManager and GameplayTagRegister
-    ├── container.rs          # Reference-counted component
-    └── requirements.rs       # TagRequirements
-```
+完整源码树统一维护在 [17 — 当前源码树](./17-source-layout-and-maintenance.md#当前源码树)。
 
 Gameplay Tags 不依赖 Gameplay Effects。`TagRequirements` 的所有权也在本领域；Effects 仅为
 兼容旧导入路径而重导出它。

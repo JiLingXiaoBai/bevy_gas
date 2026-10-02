@@ -18,21 +18,14 @@
 
 ## 源码布局
 
-```text
-src/gas/
-├── gameplay_execution.rs
-└── gameplay_execution/
-    ├── request.rs
-    ├── queue.rs
-    ├── resolver.rs
-    └── result.rs
-```
+完整源码树统一维护在 [17 — 当前源码树](./17-source-layout-and-maintenance.md#当前源码树)。
 
 - `gameplay_execution.rs`：私有子模块声明和公共重导出。
+- `error.rs`：入队错误与统一执行错误，包含显示信息和拒绝分类。
 - `request.rs`：两种具体请求、统一请求枚举及类型转换。
 - `queue.rs`：FIFO Resource、入队 API、请求 ID 和链 ID 分配。
 - `resolver.rs`：完整 drain、逐请求收敛、结果发布和 Bevy System 包装。
-- `result.rs`：成功、玩法拒绝、运行错误，以及带请求 ID 的结果 Message。
+- `result.rs`：成功、玩法拒绝和运行错误的结果分类，以及带请求 ID 的结果 Message。
 
 两种具体请求由 Execution 领域拥有；Ability System 与 Gameplay Effects 的领域门面显式
 重导出对应类型。

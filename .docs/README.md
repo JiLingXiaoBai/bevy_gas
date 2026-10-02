@@ -28,6 +28,10 @@
 | 接入游戏配置 | [19 外部配置集成](./19-external-configuration.md) → [14 扩展系统](./14-extending-the-system.md) |
 | 维护或重构源码            | [17 源码布局](./17-source-layout-and-maintenance.md) → [13 测试](./13-testing-guide.md) → [14 扩展系统](./14-extending-the-system.md)                                 |
 
+完整源码树只维护在 [17 — 当前源码树](./17-source-layout-and-maintenance.md#当前源码树)，
+完整测试与示例树只维护在 [13 — 测试与示例组织](./13-testing-guide.md#测试与示例组织)。
+各领域页通过职责说明和链接导航到实际实现。
+
 ## 文档目录
 
 ### 架构与运行时
