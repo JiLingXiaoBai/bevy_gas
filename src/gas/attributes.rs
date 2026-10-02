@@ -6,6 +6,7 @@
 
 mod aggregation;
 mod attribute_set;
+mod error;
 mod registry;
 mod snapshot;
 
@@ -14,8 +15,8 @@ pub use attribute_set::{
     ATTRIBUTE_SET_SIZE, AttributePostExecute, AttributeSet, AttributeSetError,
     COLD_ATTRIBUTE_SET_SIZE, HOT_ATTRIBUTE_SET_SIZE, recalculate_attribute_sets_system,
 };
+pub use error::AttributeIdError;
 pub use registry::{
-    AttributeId, AttributeIdError, AttributeIdManager, AttributeIdRegister, AttributeLocation,
-    AttributeRegion,
+    AttributeId, AttributeIdManager, AttributeIdRegister, AttributeLocation, AttributeRegion,
 };
 pub use snapshot::{AttributeSetSnapshot, AttributeSnapshot};

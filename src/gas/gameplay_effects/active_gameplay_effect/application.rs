@@ -1,8 +1,9 @@
 use super::super::gameplay_effect::{EffectPayload, GameplayEffect, StackingType};
 use super::super::gameplay_effect_spec::GameplayEffectSpec;
 use super::super::{EffectSystemParams, EffectTags};
+use super::error::GameplayEffectApplicationError;
 use super::execution::execute_gameplay_effect_plan_in_batch;
-use super::planning::{GameplayEffectApplicationError, prepare_gameplay_effect};
+use super::planning::prepare_gameplay_effect;
 use super::requirements::{
     resolve_active_effect_tag_requirements, resolve_active_effect_tag_requirements_if_dirty,
 };

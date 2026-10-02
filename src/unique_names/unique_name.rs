@@ -1,9 +1,9 @@
+use super::UniqueNameError;
 use bevy::platform::collections::HashMap;
 use bevy::platform::hash::FixedHasher;
 use bevy::prelude::*;
 use core::fmt;
 use core::hash::{BuildHasher, Hash};
-use std::error::Error;
 
 fn compute_hash(input: &str) -> u64 {
     FixedHasher.hash_one(input)
@@ -17,25 +17,6 @@ impl fmt::Debug for UniqueName {
         write!(f, "UniqueName({})", self.0)
     }
 }
-
-/// Error returned when a unique name cannot be interned.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum UniqueNameError {
-    /// The `u32` handle space is exhausted.
-    CapacityExceeded { max: u64 },
-}
-
-impl fmt::Display for UniqueNameError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::CapacityExceeded { max } => {
-                write!(f, "unique name capacity exceeded; max names: {max}")
-            }
-        }
-    }
-}
-
-impl Error for UniqueNameError {}
 
 #[derive(Debug, Clone)]
 enum HashBucket {

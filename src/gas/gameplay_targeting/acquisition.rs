@@ -1,14 +1,12 @@
 //! Deterministic target acquisition against the current ECS state.
 
 use super::{
-    AbilityTargetData, AbilityTargetHit, Targetable, TargetingDefinition, TargetingInput,
-    TargetingOperation, TargetingSortOrder,
+    AbilityTargetData, AbilityTargetHit, Targetable, TargetingDefinition, TargetingError,
+    TargetingInput, TargetingOperation, TargetingSortOrder,
 };
 use crate::attributes::AttributeSet;
 use crate::gameplay_tags::GameplayTagContainer;
 use bevy::prelude::*;
-use std::error::Error;
-use std::fmt;
 
 /// Read-only ECS query used to collect and filter targeting candidates.
 pub type TargetingCandidateQuery<'w, 's> = Query<
@@ -22,50 +20,6 @@ pub type TargetingCandidateQuery<'w, 's> = Query<
         Option<&'static Targetable>,
     ),
 >;
-
-/// Describes why a targeting request could not produce target data.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum TargetingError {
-    InvalidDefinition,
-    InvalidOrigin,
-    InvalidDirection,
-    MissingSource { source: Entity },
-    MissingExplicitTarget,
-    TargetNotFound { target: Entity },
-    TargetNotTargetable { target: Entity },
-    NoTargetsFound,
-}
-
-impl fmt::Display for TargetingError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::InvalidDefinition => write!(f, "targeting definition is not valid"),
-            Self::InvalidOrigin => write!(f, "targeting origin must contain finite coordinates"),
-            Self::InvalidDirection => write!(f, "targeting direction must be finite and non-zero"),
-            Self::MissingSource { source } => {
-                write!(
-                    f,
-                    "targeting source {source:?} does not have a GlobalTransform"
-                )
-            }
-            Self::MissingExplicitTarget => {
-                write!(f, "explicit target selection requires an explicit entity")
-            }
-            Self::TargetNotFound { target } => {
-                write!(
-                    f,
-                    "target entity {target:?} does not have a GlobalTransform"
-                )
-            }
-            Self::TargetNotTargetable { target } => {
-                write!(f, "target entity {target:?} is not marked Targetable")
-            }
-            Self::NoTargetsFound => write!(f, "targeting request found no valid targets"),
-        }
-    }
-}
-
-impl Error for TargetingError {}
 
 #[derive(Clone, Copy)]
 struct Candidate {

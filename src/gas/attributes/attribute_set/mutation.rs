@@ -2,9 +2,9 @@ use super::super::{
     Aggregator, AttributeId, AttributeIdError, AttributeIdManager, AttributeRegion,
     AttributeSnapshot,
 };
+use super::AttributeSetError;
 use super::state::{
-    Attribute, AttributePostExecute, AttributeSet, AttributeSetError, COLD_ATTRIBUTE_SET_SIZE,
-    HOT_ATTRIBUTE_SET_SIZE,
+    Attribute, AttributePostExecute, AttributeSet, COLD_ATTRIBUTE_SET_SIZE, HOT_ATTRIBUTE_SET_SIZE,
 };
 use crate::modifiers::{ModifierSourceId, ModifierSpec};
 use std::borrow::Cow;

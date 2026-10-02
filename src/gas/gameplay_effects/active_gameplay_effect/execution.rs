@@ -1,15 +1,13 @@
 use super::super::EffectSystemParams;
 use super::super::gameplay_effect::{StackDurationPolicy, StackPeriodPolicy};
 use super::super::gameplay_effect_spec::{EffectDurationTicksSpec, GameplayEffectSpec};
+use super::error::{GameplayEffectApplicationError, map_attribute_set_error};
 use super::lifecycle::{
     EffectCleanupResources, force_remove_effect, install_effect_contributions,
     validate_effect_cleanup,
 };
 use super::modifiers::{apply_instant_modifiers, refresh_duration_modifiers};
-use super::planning::{
-    GameplayEffectApplicationError, GameplayEffectApplicationKind, GameplayEffectApplicationPlan,
-    map_attribute_set_error,
-};
+use super::planning::{GameplayEffectApplicationKind, GameplayEffectApplicationPlan};
 use super::removal::remove_collected_active_effects_for_params;
 use super::requirements::resolve_active_effect_tag_requirements_if_dirty;
 use super::state::{ActiveEffectHandle, ActiveGameplayEffect, ActiveGameplayEffects};

@@ -1,10 +1,10 @@
 use super::super::EffectSystemParams;
 use super::diagnostics::EffectRequirementMetrics;
+use super::error::GameplayEffectApplicationError;
 use super::lifecycle::{
     EffectCleanupResources, cleanup_effect_state, force_remove_effect,
     install_effect_contributions, remove_effect_contributions,
 };
-use super::planning::GameplayEffectApplicationError;
 use super::state::{ActiveEffectHandle, ActiveGameplayEffect, ActiveGameplayEffects};
 use crate::attributes::{AttributeIdManager, AttributeSet};
 use crate::gameplay_tags::{GameplayTagContainer, GameplayTagManager, TagRequirements};

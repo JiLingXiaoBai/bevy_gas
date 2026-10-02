@@ -3,6 +3,7 @@
 mod activation;
 mod commit;
 mod component;
+mod error;
 mod lifecycle;
 mod params;
 
@@ -15,7 +16,8 @@ pub use activation::{
 pub use commit::{
     AbilityCommitError, AdditionalCostContext, AdditionalCostProvider, commit_ability,
 };
-pub use component::{AbilityGrantError, AbilitySystemComponent, GameplayAbilitySystemBundle};
+pub use component::{AbilitySystemComponent, GameplayAbilitySystemBundle};
+pub use error::AbilityGrantError;
 pub use lifecycle::{cancel_ability, cleanup_finished_abilities_system, end_ability};
 pub(crate) use lifecycle::{cleanup_discarded_ability_system, cleanup_discarded_active_ability};
 pub use params::{

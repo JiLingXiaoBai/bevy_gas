@@ -2,7 +2,7 @@
 
 use super::super::gameplay_effect::StackMagnitudePolicy;
 use super::super::gameplay_effect_spec::GameplayEffectSpec;
-use super::planning::{GameplayEffectApplicationError, map_attribute_set_error};
+use super::error::{GameplayEffectApplicationError, map_attribute_set_error};
 use super::state::ActiveEffectHandle;
 use crate::attributes::{AttributeIdManager, AttributeSet};
 use bevy::prelude::Entity;

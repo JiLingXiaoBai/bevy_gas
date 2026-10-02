@@ -35,6 +35,36 @@ pub use bindings::{AbilityInputBindingError, AbilityInputBindings};
 这条规则适用于新建的功能模块边界，不要求目录内每个叶子实现文件继续递归建立门面和同名目录。
 小型值类型与紧密相关的实现仍放在同一职责文件中，也不因这条规则批量调整既有辅助文件。
 
+## 错误类型布局
+
+公开错误类型优先集中在所属功能模块的私有 `error.rs` 中，并由已有门面显式重导出。
+错误枚举及其 `Display`、`std::error::Error`、`From` 和拒绝分类实现一起维护；
+业务文件负责检查条件和返回错误。`error.rs` 是叶子实现文件，不再增加同名目录。
+
+- 按功能所有权放置错误，不建立全库统一错误模块，也不合并不同阶段的错误类型。
+- 同一模块的多个错误可共用一个文件，例如激活预检与正式激活、目标定义与运行时抓取。
+- 仅供局部实现使用的小型内部错误就近保留，例如 `ActiveEffectStorageError` 仍在
+  `gameplay_effects/active_gameplay_effect/state.rs` 中，不对外重导出。
+- 仅移动定义时，只调整私有导入和门面重导出来源，保持公开路径、错误变体、显示文本、转换和拒绝分类不变。
+
+当前公开错误的定义位置如下，除 `src/unique_names/error.rs` 外，路径均相对于 `src/gas/`：
+
+| 定义文件 | 公开错误类型 |
+| -------- | ------------ |
+| `ability_system/error.rs` | `AbilityGrantError` |
+| `ability_system/activation/error.rs` | `AbilityActivationCheckError`、`AbilityActivationError` |
+| `ability_system/commit/error.rs` | `AbilityCommitError` |
+| `gameplay_abilities/error.rs` | `AbilityChainError` |
+| `gameplay_abilities/additional_cost/error.rs` | `AdditionalCostError` |
+| `gameplay_effects/active_gameplay_effect/error.rs` | `GameplayEffectApplicationError` |
+| `gameplay_tags/error.rs` | `GameplayTagError` |
+| `attributes/error.rs` | `AttributeIdError` |
+| `attributes/attribute_set/error.rs` | `AttributeSetError` |
+| `gameplay_targeting/error.rs` | `AbilityActivationTargetsError`、`TargetingDefinitionError`、`TargetingError` |
+| `gameplay_execution/error.rs` | `GameplayExecutionQueueError`、`GameplayExecutionError` |
+| `ability_input/error.rs` | `AbilityInputBindingError` |
+| `src/unique_names/error.rs` | `UniqueNameError` |
+
 ## 当前源码树
 
 以下结构对应当前仓库，不包含 `target/` 等生成内容：

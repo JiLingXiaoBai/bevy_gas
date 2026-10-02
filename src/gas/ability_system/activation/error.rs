@@ -5,6 +5,35 @@ use bevy::prelude::Entity;
 use std::error::Error;
 use std::fmt;
 
+/// Reason a read-only activation precheck found an ability unavailable.
+#[derive(Debug, Clone, PartialEq)]
+pub enum AbilityActivationCheckError {
+    /// Another active ability blocks this definition's asset tags.
+    BlockedByAbility,
+    /// The owner has a tag that blocks activation.
+    ActivationBlocked,
+    /// The owner's tag container does not satisfy the required activation tags.
+    MissingRequiredTags,
+    /// The owner currently has a granted cooldown tag.
+    CooldownActive,
+    /// Cost evaluation or affordability checking failed.
+    Cost(AbilityCommitError),
+}
+
+impl fmt::Display for AbilityActivationCheckError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::BlockedByAbility => write!(f, "another active ability blocks activation"),
+            Self::ActivationBlocked => write!(f, "an owned gameplay tag blocks activation"),
+            Self::MissingRequiredTags => write!(f, "required activation tags are missing"),
+            Self::CooldownActive => write!(f, "the ability is on cooldown"),
+            Self::Cost(error) => fmt::Display::fmt(error, f),
+        }
+    }
+}
+
+impl Error for AbilityActivationCheckError {}
+
 /// Describes why an ability could not be activated.
 #[derive(Debug, Clone, PartialEq)]
 pub enum AbilityActivationError {

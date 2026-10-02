@@ -4,12 +4,14 @@
 //! relative ordering remains observable within a fixed tick.
 //! Startup Instant actions resolve inside their activation before the next queued request.
 
+mod error;
 mod queue;
 mod request;
 mod resolver;
 mod result;
 
-pub use queue::{GameplayExecutionQueue, GameplayExecutionQueueError, GameplayExecutionRequestId};
+pub use error::{GameplayExecutionError, GameplayExecutionQueueError};
+pub use queue::{GameplayExecutionQueue, GameplayExecutionRequestId};
 pub use request::{
     AbilityActivationRequest, GameplayEffectApplicationRequest, GameplayExecutionRequest,
 };
@@ -18,4 +20,4 @@ pub use resolver::{
     process_gameplay_execution_queue_with_costs_system,
 };
 
-pub use result::{GameplayExecutionError, GameplayExecutionOutcome, GameplayExecutionResult};
+pub use result::{GameplayExecutionOutcome, GameplayExecutionResult};

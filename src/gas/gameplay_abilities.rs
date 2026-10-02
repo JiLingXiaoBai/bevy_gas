@@ -9,10 +9,11 @@ mod activation_context;
 mod activation_data;
 mod active_gameplay_ability;
 mod additional_cost;
+mod error;
 mod gameplay_ability;
 mod gameplay_ability_spec;
 
-pub use ability_chain::{AbilityChainContext, AbilityChainError};
+pub use ability_chain::AbilityChainContext;
 pub use ability_task::{
     AbilityTask, AbilityTaskDef, AbilityTaskEvent, AbilityTaskExecutionContext, AbilityTaskKind,
     AbilityTaskOnFinished, AbilityTaskOnFinishedDef, tick_ability_tasks_system,
@@ -24,5 +25,6 @@ pub use active_gameplay_ability::{
     AbilityActivationStatus, ActiveAbilityHandle, ActiveGameplayAbility,
 };
 pub use additional_cost::{AdditionalCost, AdditionalCostError};
+pub use error::AbilityChainError;
 pub use gameplay_ability::{AbilityTags, GameplayAbility};
 pub use gameplay_ability_spec::{AbilitySpecHandle, GameplayAbilitySpec};

@@ -2,6 +2,7 @@
 
 mod application;
 mod diagnostics;
+mod error;
 mod execution;
 mod lifecycle;
 mod modifiers;
@@ -14,13 +15,12 @@ mod ticking;
 pub use application::apply_gameplay_effect;
 pub(crate) use application::apply_gameplay_effect_in_batch;
 pub use diagnostics::{EffectRequirementDiagnostics, EffectRequirementMetrics};
+pub use error::GameplayEffectApplicationError;
 pub use execution::execute_gameplay_effect_plan;
 pub(crate) use execution::{execute_gameplay_effect_plan_in_batch, validate_gameplay_effect_plan};
 pub(crate) use lifecycle::ActiveEffectStorageRegistry;
 pub(crate) use planning::preview_instant_effect_modifiers;
-pub use planning::{
-    GameplayEffectApplicationError, GameplayEffectApplicationPlan, prepare_gameplay_effect,
-};
+pub use planning::{GameplayEffectApplicationPlan, prepare_gameplay_effect};
 pub use removal::{
     get_active_effects_on_target, has_active_effect_with_tags, remove_active_effect,
     remove_active_effects_with_tags,

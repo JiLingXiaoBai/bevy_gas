@@ -1,6 +1,6 @@
 use super::super::EffectSystemParams;
+use super::error::GameplayEffectApplicationError;
 use super::lifecycle::{EffectCleanupResources, cleanup_effect_state, validate_effect_cleanup};
-use super::planning::GameplayEffectApplicationError;
 use super::requirements::{
     resolve_active_effect_tag_requirements, resolve_active_effect_tag_requirements_if_dirty,
 };

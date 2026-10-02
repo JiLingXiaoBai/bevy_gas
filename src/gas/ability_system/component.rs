@@ -1,3 +1,4 @@
+use super::error::AbilityGrantError;
 use crate::attributes::AttributeSet;
 use crate::gameplay_abilities::{
     AbilitySpecHandle, ActiveAbilityHandle, GameplayAbility, GameplayAbilitySpec,
@@ -6,26 +7,7 @@ use crate::gameplay_effects::ActiveGameplayEffects;
 use crate::gameplay_tags::GameplayTagContainer;
 use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
-use std::error::Error;
-use std::fmt;
 use std::sync::Arc;
-
-/// Failure to grant an ability specification to an ability-system component.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AbilityGrantError {
-    /// Every owner-local `u32` handle has already been allocated.
-    HandleExhausted,
-}
-
-impl fmt::Display for AbilityGrantError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::HandleExhausted => write!(f, "ability specification handles are exhausted"),
-        }
-    }
-}
-
-impl Error for AbilityGrantError {}
 
 /// Stores the abilities granted to one gameplay entity.
 #[derive(Component, Default)]

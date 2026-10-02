@@ -1,8 +1,8 @@
 //! Shared installation and cleanup of effect-owned attribute and tag contributions.
 
 use super::super::gameplay_effect_spec::GameplayEffectSpec;
+use super::error::{GameplayEffectApplicationError, map_attribute_set_error};
 use super::modifiers::apply_duration_modifiers;
-use super::planning::{GameplayEffectApplicationError, map_attribute_set_error};
 use super::requirements::ActiveEffectRequirementSync;
 use super::state::{ActiveEffectHandle, ActiveGameplayEffect, ActiveGameplayEffects};
 use crate::attributes::{AttributeIdManager, AttributeSet};

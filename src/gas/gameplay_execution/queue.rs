@@ -1,14 +1,14 @@
-use super::{AbilityActivationRequest, GameplayEffectApplicationRequest, GameplayExecutionRequest};
+use super::{
+    AbilityActivationRequest, GameplayEffectApplicationRequest, GameplayExecutionQueueError,
+    GameplayExecutionRequest,
+};
 use crate::gameplay_abilities::{
-    AbilityActivationContext, AbilityChainContext, AbilityChainError, AbilitySpecHandle,
-    ActiveAbilityHandle,
+    AbilityActivationContext, AbilityChainContext, AbilitySpecHandle, ActiveAbilityHandle,
 };
 use crate::gameplay_effects::{EffectPayload, GameplayEffect};
 use crate::gameplay_targeting::AbilityActivationTargets;
 use bevy::prelude::*;
 use std::collections::VecDeque;
-use std::error::Error;
-use std::fmt;
 use std::sync::Arc;
 
 /// Queue-local identifier for one accepted gameplay request.
@@ -24,26 +24,6 @@ impl GameplayExecutionRequestId {
         self.0
     }
 }
-
-/// Describes why a gameplay request could not be added to the queue.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum GameplayExecutionQueueError {
-    /// The queue exhausted its monotonically increasing request identifiers.
-    RequestIdExhausted,
-    /// A chained activation would violate chain depth or repetition rules.
-    InvalidChain(AbilityChainError),
-}
-
-impl fmt::Display for GameplayExecutionQueueError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::RequestIdExhausted => write!(f, "gameplay request identifiers are exhausted"),
-            Self::InvalidChain(error) => fmt::Display::fmt(error, f),
-        }
-    }
-}
-
-impl Error for GameplayExecutionQueueError {}
 
 /// Global FIFO for gameplay mutations consumed during
 /// [`GameplayAbilitySystemSet::GameplayResolve`](crate::GameplayAbilitySystemSet::GameplayResolve).

@@ -2,6 +2,7 @@
 
 mod bitset;
 mod container;
+mod error;
 mod registry;
 mod requirements;
 mod tag;
@@ -11,6 +12,7 @@ pub use bitset::{
     add_bit_with_tag, tag_bits_from_tags,
 };
 pub use container::GameplayTagContainer;
+pub use error::GameplayTagError;
 pub use registry::{GameplayTagManager, GameplayTagRegister, tag_bits_from_tags_with_manager};
 pub use requirements::TagRequirements;
-pub use tag::{GameplayTag, GameplayTagError};
+pub use tag::GameplayTag;

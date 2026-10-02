@@ -1,58 +1,5 @@
-use super::AbilitySpecHandle;
+use super::{AbilityChainError, AbilitySpecHandle};
 use crate::settings::GameplayAbilitySystemSettings;
-use std::error::Error;
-use std::fmt;
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum AbilityChainError {
-    DepthExceeded {
-        chain_id: u64,
-        max_depth: u8,
-    },
-    CycleDetected {
-        chain_id: u64,
-        handle: AbilitySpecHandle,
-    },
-    HandleMismatch {
-        chain_id: u64,
-        expected: AbilitySpecHandle,
-        actual: AbilitySpecHandle,
-    },
-    EmptyChain {
-        chain_id: u64,
-    },
-}
-
-impl fmt::Display for AbilityChainError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            AbilityChainError::DepthExceeded {
-                chain_id,
-                max_depth,
-            } => write!(f, "ability chain {chain_id} exceeded max depth {max_depth}"),
-            AbilityChainError::CycleDetected { chain_id, handle } => write!(
-                f,
-                "ability chain {chain_id} detected cycle at handle {}",
-                handle.get_value()
-            ),
-            AbilityChainError::HandleMismatch {
-                chain_id,
-                expected,
-                actual,
-            } => write!(
-                f,
-                "ability chain {chain_id} handle mismatch: expected {}, got {}",
-                expected.get_value(),
-                actual.get_value()
-            ),
-            AbilityChainError::EmptyChain { chain_id } => {
-                write!(f, "ability chain {chain_id} has no visited handles")
-            }
-        }
-    }
-}
-
-impl Error for AbilityChainError {}
 
 /// Tracks one activation path, counting child-activation edges from a depth-zero root.
 #[derive(Debug, Clone, PartialEq, Eq)]

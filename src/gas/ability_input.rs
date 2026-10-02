@@ -4,5 +4,7 @@
 //! Resolve a binding there and submit activation through the gameplay execution queue.
 
 mod bindings;
+mod error;
 
-pub use bindings::{AbilityInputBindingError, AbilityInputBindings};
+pub use bindings::AbilityInputBindings;
+pub use error::AbilityInputBindingError;

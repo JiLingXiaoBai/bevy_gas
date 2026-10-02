@@ -1,7 +1,6 @@
+use super::TargetingDefinitionError;
 use crate::gameplay_tags::TagRequirements;
 use bevy::prelude::*;
-use std::error::Error;
-use std::fmt;
 
 /// Marks an entity as eligible for non-self targeting selection.
 #[derive(Component, Debug, Default, Clone, Copy)]
@@ -53,52 +52,6 @@ impl TargetingOperation {
         )
     }
 }
-
-/// Describes an invalid targeting operation pipeline.
-#[derive(Debug, Clone, PartialEq)]
-pub enum TargetingDefinitionError {
-    EmptyOperations,
-    SelectionMustBeFirst,
-    MultipleSelections,
-    InvalidRadius { radius: f32 },
-    InvalidDistance { max_distance: f32 },
-    InvalidHalfAngle { half_angle_radians: f32 },
-    ZeroLimit,
-}
-
-impl fmt::Display for TargetingDefinitionError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::EmptyOperations => write!(f, "targeting definition has no operations"),
-            Self::SelectionMustBeFirst => {
-                write!(f, "the first targeting operation must select candidates")
-            }
-            Self::MultipleSelections => {
-                write!(
-                    f,
-                    "a targeting definition may contain only one selection operation"
-                )
-            }
-            Self::InvalidRadius { radius } => {
-                write!(
-                    f,
-                    "targeting radius must be finite and non-negative, got {radius}"
-                )
-            }
-            Self::InvalidDistance { max_distance } => write!(
-                f,
-                "targeting distance must be finite and non-negative, got {max_distance}"
-            ),
-            Self::InvalidHalfAngle { half_angle_radians } => write!(
-                f,
-                "targeting cone half angle must be finite and in [0, PI], got {half_angle_radians}"
-            ),
-            Self::ZeroLimit => write!(f, "targeting result limit must be greater than zero"),
-        }
-    }
-}
-
-impl Error for TargetingDefinitionError {}
 
 /// An immutable, validated sequence of target selection and refinement operations.
 pub struct TargetingDefinition {
