@@ -1,6 +1,11 @@
 use super::*;
+use crate::support_test::run_effect_duration_tick;
 use bevy::ecs::system::SystemState;
-use bevy_gas::{AbilityActivationCheckError, AbilityActivationCheckParams, can_activate_ability};
+use bevy_gas::{
+    AbilityActivationCheckError, AbilityActivationCheckParams, AbilityActivationRequirementError,
+    can_activate_ability,
+};
+use std::error::Error;
 
 #[test]
 fn ability_without_end_stays_active_and_disallows_multiple_instances() {
@@ -91,15 +96,27 @@ fn ability_activation_required_and_blocked_tags_are_enforced() {
         None,
         true,
     ));
-    let handle = give_ability(&mut app, source, ability);
+    let handle = give_ability(&mut app, source, ability.clone());
 
-    assert!(!activate_ability(&mut app, source, source, handle));
+    assert_activation_requirement_rejected(
+        &mut app,
+        source,
+        handle,
+        &ability,
+        AbilityActivationRequirementError::MissingRequiredTags,
+    );
 
     add_tag_to_entity(&mut app, source, required);
     assert!(activate_ability(&mut app, source, source, handle));
 
     add_tag_to_entity(&mut app, source, blocked);
-    assert!(!activate_ability(&mut app, source, source, handle));
+    assert_activation_requirement_rejected(
+        &mut app,
+        source,
+        handle,
+        &ability,
+        AbilityActivationRequirementError::ActivationBlocked,
+    );
 }
 
 #[test]
@@ -138,10 +155,16 @@ fn active_ability_block_tags_prevent_matching_ability_activation() {
         false,
     ));
     let channel_handle = give_ability(&mut app, source, channel);
-    let movement_handle = give_ability(&mut app, source, movement);
+    let movement_handle = give_ability(&mut app, source, movement.clone());
 
     assert!(activate_ability(&mut app, source, source, channel_handle));
-    assert!(!activate_ability(&mut app, source, source, movement_handle));
+    assert_activation_requirement_rejected(
+        &mut app,
+        source,
+        movement_handle,
+        &movement,
+        AbilityActivationRequirementError::BlockedByAbility,
+    );
 }
 
 #[test]
@@ -165,42 +188,30 @@ fn try_activate_ability_by_handle_returns_error_for_missing_spec() {
 }
 
 #[test]
-fn readonly_activation_precheck_distinguishes_missing_and_blocking_tags() {
+fn cooldown_activation_requirement_matches_precheck_until_effect_expires() {
     let mut app = test_app();
-    let required = register_tag(&mut app, "Precheck.Ready");
-    let blocked = register_tag(&mut app, "Precheck.Silenced");
+    let cooldown_tag = register_tag(&mut app, "Cooldown.Precheck");
     let source = app
         .world_mut()
-        .spawn((
-            AbilitySystemComponent::default(),
-            GameplayTagContainer::default(),
-        ))
+        .spawn(GameplayAbilitySystemBundle::default())
         .id();
-    let ability = Arc::new(GameplayAbility::new(
-        AbilityTags::new(
-            Vec::new(),
-            Vec::new(),
-            Vec::new(),
-            vec![required],
-            vec![blocked],
-        ),
+    let cooldown = Arc::new(GameplayEffect::new(
         Vec::new(),
+        EffectDurationTicks::DurationTicks(ModifierMagnitude::Flat(2.0)),
         None,
-        None,
-        false,
+        1.0,
+        StackingPolicy::non_stacking(),
+        effect_tags(Vec::new(), vec![cooldown_tag]),
     ));
-    let mut state = SystemState::<AbilityActivationCheckParams>::new(app.world_mut());
-    assert_eq!(
-        can_activate_ability(
-            source,
-            source,
-            &ability,
-            1,
-            &state.get(app.world()).unwrap()
-        ),
-        Err(AbilityActivationCheckError::MissingRequiredTags)
+    let ability = Arc::new(
+        GameplayAbility::default()
+            .with_cooldown(cooldown)
+            .with_startup_tasks(vec![AbilityTaskDef::instant(
+                AbilityTaskOnFinishedDef::EndAbility,
+            )]),
     );
-    add_tag_to_entity(&mut app, source, required);
+    let handle = give_ability(&mut app, source, ability.clone());
+    let mut state = SystemState::<AbilityActivationCheckParams>::new(app.world_mut());
     assert_eq!(
         can_activate_ability(
             source,
@@ -211,7 +222,40 @@ fn readonly_activation_precheck_distinguishes_missing_and_blocking_tags() {
         ),
         Ok(())
     );
-    add_tag_to_entity(&mut app, source, blocked);
+    assert!(activate_ability(&mut app, source, source, handle));
+    run_finished_ability_cleanup(&mut app);
+    assert_eq!(active_ability_count(&mut app), 0);
+    assert!(
+        app.world()
+            .entity(source)
+            .get::<GameplayTagContainer>()
+            .unwrap()
+            .has_tag(&cooldown_tag)
+    );
+    assert_activation_requirement_rejected(
+        &mut app,
+        source,
+        handle,
+        &ability,
+        AbilityActivationRequirementError::CooldownActive,
+    );
+
+    run_effect_duration_tick(&mut app);
+    assert_activation_requirement_rejected(
+        &mut app,
+        source,
+        handle,
+        &ability,
+        AbilityActivationRequirementError::CooldownActive,
+    );
+    run_effect_duration_tick(&mut app);
+    assert!(
+        !app.world()
+            .entity(source)
+            .get::<GameplayTagContainer>()
+            .unwrap()
+            .has_tag(&cooldown_tag)
+    );
     assert_eq!(
         can_activate_ability(
             source,
@@ -220,6 +264,50 @@ fn readonly_activation_precheck_distinguishes_missing_and_blocking_tags() {
             1,
             &state.get(app.world()).unwrap()
         ),
-        Err(AbilityActivationCheckError::ActivationBlocked)
+        Ok(())
+    );
+    assert!(activate_ability(&mut app, source, source, handle));
+}
+
+fn assert_activation_requirement_rejected(
+    app: &mut App,
+    source: Entity,
+    handle: AbilitySpecHandle,
+    ability: &Arc<GameplayAbility>,
+    expected: AbilityActivationRequirementError,
+) {
+    let mut state = SystemState::<AbilityActivationCheckParams>::new(app.world_mut());
+    let precheck_error =
+        can_activate_ability(source, source, ability, 1, &state.get(app.world()).unwrap())
+            .unwrap_err();
+    assert_eq!(
+        precheck_error,
+        AbilityActivationCheckError::Requirements(expected)
+    );
+    assert_eq!(
+        precheck_error
+            .source()
+            .unwrap()
+            .downcast_ref::<AbilityActivationRequirementError>(),
+        Some(&expected)
+    );
+
+    let activation_error = activate_ability_result(app, source, source, handle).unwrap_err();
+    assert_eq!(
+        activation_error,
+        AbilityActivationError::ActivationRequirementsNotMet {
+            source,
+            handle,
+            error: expected,
+        }
+    );
+    assert!(activation_error.is_rejection());
+    assert!(activation_error.to_string().contains(&expected.to_string()));
+    assert_eq!(
+        activation_error
+            .source()
+            .unwrap()
+            .downcast_ref::<AbilityActivationRequirementError>(),
+        Some(&expected)
     );
 }

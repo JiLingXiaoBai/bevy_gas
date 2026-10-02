@@ -282,6 +282,13 @@ pub enum GameplayExecutionOutcome {
 `target` 对效果是应用目标，对技能是捕获的主目标；完整多目标数据仍由提交方或 Active Ability
 持有。`GameplayExecutionError` 保留 `AbilityActivation(AbilityActivationError)` 或
 `EffectApplication(GameplayEffectApplicationError)`，无需从日志文本解析原因。
+技能互斥、标签或冷却要求失败时，`AbilityActivationError::ActivationRequirementsNotMet`
+保留 `source`、`handle` 和具体的 `error: AbilityActivationRequirementError`。例如冷却未结束
+时，结果仍为 `Rejected`，可从其中的 `GameplayExecutionError::AbilityActivation` 匹配到
+`ActivationRequirementsNotMet { error: AbilityActivationRequirementError::CooldownActive, .. }`。
+正式激活错误的 `Display` 包含具体原因，`std::error::Error::source()` 可取得嵌套要求错误。
+这只补充可观察的失败原因，不改变拒绝分类、FIFO 顺序或成本提交行为；成本失败继续由
+`CommitPreparationFailed` / `CommitExecutionFailed` 携带 `AbilityCommitError`。
 
 - `Succeeded`：该请求的主操作成功。技能激活本身成功不表示每个 startup 效果或链式子激活
   都成功；这些内部步骤失败会记录日志，不改写根激活的成功结果。

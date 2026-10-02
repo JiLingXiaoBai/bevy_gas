@@ -252,11 +252,19 @@ ASC、Active Ability 或 `Commands`。`AbilitySystemParams` 内嵌它并实现 `
 | `AbilityActivationCheckParams<P=()>` | `SystemParam` | 只读 ASC、Effect 与 Provider 数据 |
 | `AdditionalCostProvider` | `trait` | 游戏 SystemParam 对整批外部成本的检查、准备与补偿协议 |
 | `AdditionalCostContext` | `struct` | 外部资源付款 source、level 与可选激活上下文 |
-| `AbilityActivationCheckError` | `enum` | 互斥、标签、冷却和成本预检错误 |
+| `AbilityActivationRequirementError` | `enum` | 预检与正式激活共用的互斥、标签和冷却要求错误；不含 Cost |
+| `AbilityActivationCheckError` | `enum` | `Requirements(AbilityActivationRequirementError)` 或 `Cost(AbilityCommitError)` |
 | `commit_ability`                          | `fn`          | 执行消耗 + 冷却        |
 | `end_ability`                             | `fn`          | 将状态设为 Ending      |
 | `cancel_ability`                          | `fn`          | 将状态设为 Cancelled   |
 | `cleanup_finished_abilities_system`       | `fn`          | 系统：销毁已完成技能   |
+
+`AbilityActivationRequirementError`、`AbilityActivationCheckError` 和 `AbilityActivationError`
+均由 `bevy_gas::gas::ability_system`、`bevy_gas::gas` 和 crate root 公开，不进入 prelude。
+正式激活的 `ActivationRequirementsNotMet { source, handle, error }` 保留具体要求错误；
+`Display` 和 `std::error::Error::source()` 可用于显示或追踪原因。旧预检变体的匹配方式需改为
+`Requirements(AbilityActivationRequirementError::...)`；成本仍单独使用 `Cost(...)`。
+完整变体与迁移示例见 [09 — 激活错误分层与迁移](./09-ability-system-component.md#激活错误分层与迁移)。
 
 `GameplayAbilitySystemBundle` 显式组合 `AbilitySystemComponent`、`AttributeSet`、
 `GameplayTagContainer` 与 `ActiveGameplayEffects`。这些 Component 本身没有反向

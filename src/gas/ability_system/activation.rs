@@ -5,7 +5,9 @@ mod execution;
 mod startup;
 mod validation;
 
-pub use error::{AbilityActivationCheckError, AbilityActivationError};
+pub use error::{
+    AbilityActivationCheckError, AbilityActivationError, AbilityActivationRequirementError,
+};
 pub(crate) use execution::execute_ability_activation_in_batch;
 pub use execution::try_activate_ability_by_handle;
 pub use validation::can_activate_ability;

@@ -1,21 +1,22 @@
 use super::support_test::{
-    ability_task_count, activate_ability, attribute_set, current_value, empty_effect_tags,
-    give_ability, instant_add_effect, modifier, register_attribute, run_ability_tasks,
-    run_gameplay_execution_queue, spawn_ability_task, spawn_active_ability, spawn_attribute_set,
-    test_app,
+    ability_task_count, activate_ability, attribute_set, current_value, effect_tags,
+    empty_effect_tags, give_ability, instant_add_effect, modifier, register_attribute,
+    register_tag, run_ability_tasks, run_gameplay_execution_queue, spawn_ability_task,
+    spawn_active_ability, spawn_attribute_set, test_app,
 };
 use bevy::prelude::*;
 use bevy_gas::{
     AbilityActivationContext, AbilityActivationData, AbilityActivationError,
-    AbilityActivationReason, AbilityActivationRequest, AbilityActivationStatus,
-    AbilityActivationTargets, AbilityChainContext, AbilitySpecHandle, AbilitySystemComponent,
-    AbilityTargetData, AbilityTargetHit, AbilityTask, AbilityTaskDef, AbilityTaskEvent,
-    AbilityTaskExecutionContext, AbilityTaskOnFinished, AbilityTaskOnFinishedDef,
-    ActiveGameplayAbility, AttributeId, EffectDurationTicks, EffectPayload, GameplayAbility,
-    GameplayAbilitySystemSet, GameplayEffect, GameplayEffectApplicationError,
+    AbilityActivationReason, AbilityActivationRequest, AbilityActivationRequirementError,
+    AbilityActivationStatus, AbilityActivationTargets, AbilityChainContext, AbilitySpecHandle,
+    AbilitySystemComponent, AbilityTargetData, AbilityTargetHit, AbilityTask, AbilityTaskDef,
+    AbilityTaskEvent, AbilityTaskExecutionContext, AbilityTaskOnFinished, AbilityTaskOnFinishedDef,
+    ActiveGameplayAbility, ActiveGameplayEffects, AttributeId, EffectDurationTicks, EffectPayload,
+    GameplayAbility, GameplayAbilitySystemSet, GameplayEffect, GameplayEffectApplicationError,
     GameplayExecutionError, GameplayExecutionOutcome, GameplayExecutionQueue,
-    GameplayExecutionRequest, GameplayExecutionResult, Modifier, ModifierEvaluationContext,
-    ModifierMagnitude, ModifierMagnitudeCalculation, ModifierOperation, StackingPolicy, UniqueName,
+    GameplayExecutionRequest, GameplayExecutionResult, GameplayTagContainer, Modifier,
+    ModifierEvaluationContext, ModifierMagnitude, ModifierMagnitudeCalculation, ModifierOperation,
+    StackingPolicy, UniqueName,
 };
 use std::sync::Arc;
 
@@ -678,10 +679,15 @@ fn task_emit_event_triggers_observer_with_full_payload() {
 fn execution_results_identify_fifo_success_rejection_and_failure() {
     let mut app = test_app();
     let attribute = register_attribute(&mut app, "Result.Value");
+    let cooldown_tag = register_tag(&mut app, "Cooldown.Result");
     let target = spawn_attribute_set(&mut app, attribute, 10.0);
     let source = app
         .world_mut()
-        .spawn(AbilitySystemComponent::default())
+        .spawn((
+            AbilitySystemComponent::default(),
+            GameplayTagContainer::default(),
+            ActiveGameplayEffects::default(),
+        ))
         .id();
     let ability = Arc::new(GameplayAbility::new(
         Default::default(),
@@ -691,7 +697,21 @@ fn execution_results_identify_fifo_success_rejection_and_failure() {
         false,
     ));
     let handle = give_ability(&mut app, source, ability);
-    let missing = AbilitySpecHandle::new(handle.get_value() + 1);
+    let cooldown = Arc::new(GameplayEffect::new(
+        Vec::new(),
+        EffectDurationTicks::DurationTicks(ModifierMagnitude::Flat(2.0)),
+        None,
+        1.0,
+        StackingPolicy::non_stacking(),
+        effect_tags(Vec::new(), vec![cooldown_tag]),
+    ));
+    let cooldown_ability = Arc::new(
+        GameplayAbility::default()
+            .with_cooldown(cooldown)
+            .with_allow_multiple_instances(true),
+    );
+    let cooldown_handle = give_ability(&mut app, source, cooldown_ability);
+    let missing = AbilitySpecHandle::new(cooldown_handle.get_value() + 1);
     let effect = instant_add_effect(attribute, 1.0);
     let ids = {
         let mut queue = app.world_mut().resource_mut::<GameplayExecutionQueue>();
@@ -715,7 +735,15 @@ fn execution_results_identify_fifo_success_rejection_and_failure() {
         let sixth = queue
             .push_application(target, effect, EffectPayload::new(source, None, 1))
             .unwrap();
-        vec![first, second, third, fourth, fifth, sixth]
+        let context =
+            AbilityActivationContext::direct(source, queue.new_root_chain(cooldown_handle));
+        let seventh = queue
+            .push_activation(source, target, cooldown_handle, context.clone())
+            .unwrap();
+        let eighth = queue
+            .push_activation(source, target, cooldown_handle, context)
+            .unwrap();
+        vec![first, second, third, fourth, fifth, sixth, seventh, eighth]
     };
     run_gameplay_execution_queue(&mut app);
     let results: Vec<_> = app
@@ -754,6 +782,19 @@ fn execution_results_identify_fifo_success_rejection_and_failure() {
         ))
     ));
     assert_eq!(results[5].outcome, GameplayExecutionOutcome::Succeeded);
+    assert_eq!(results[6].outcome, GameplayExecutionOutcome::Succeeded);
+    assert_eq!(
+        results[7].outcome,
+        GameplayExecutionOutcome::Rejected(GameplayExecutionError::AbilityActivation(
+            AbilityActivationError::ActivationRequirementsNotMet {
+                source,
+                handle: cooldown_handle,
+                error: AbilityActivationRequirementError::CooldownActive,
+            }
+        ))
+    );
+    assert_eq!(results[7].source, source);
+    assert_eq!(results[7].target, target);
     assert_eq!(current_value(&mut app, target, attribute), 12.0);
 }
 

@@ -5,7 +5,7 @@ use super::super::lifecycle::cancel_active_abilities_with_tags;
 use super::super::params::AbilitySystemParams;
 use super::error::{AbilityActivationError, ability_activation_failed};
 use super::startup::{StartupAbility, run_startup_ability_tasks};
-use super::validation::passes_ability_activation_requirements;
+use super::validation::check_ability_activation_requirements;
 use crate::gameplay_abilities::{AbilityActivationContext, AbilitySpecHandle};
 use crate::gameplay_effects::{
     resolve_active_effect_tag_requirements, resolve_active_effect_tag_requirements_if_dirty,
@@ -99,10 +99,11 @@ pub(super) fn begin_ability_activation(
         });
     }
 
-    if !passes_ability_activation_requirements(source, &ability, params) {
+    if let Err(error) = check_ability_activation_requirements(source, &ability, params) {
         return ability_activation_failed(AbilityActivationError::ActivationRequirementsNotMet {
             source,
             handle,
+            error,
         });
     }
 

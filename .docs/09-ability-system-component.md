@@ -204,14 +204,76 @@ pub fn can_activate_ability<P: AdditionalCostProvider>(
 ```
 
 `AbilityActivationCheckParams<P>` 包含只读 ASC 查询、`EffectReadOnlyParams` 与 `P::ReadOnly`，
-没有 Commands、随机数资源或可变 Gameplay 查询。错误区分技能互斥、阻止标签、缺失标签、
-冷却和具体属性或额外成本错误。
+没有 Commands、随机数资源或可变 Gameplay 查询。预检错误分为
+`Requirements(AbilityActivationRequirementError)` 与 `Cost(AbilityCommitError)`，分别保留
+技能互斥、阻止标签、缺失标签、冷却原因和具体属性或额外成本错误。
 
 该函数只检查标签/Cooldown、数值 Cost 与整批 Additional Costs，不检查技能是否已授予、
 Handle、技能链、多实例、取消和 startup tasks，因此不是最终授权。Cost 计算上下文使用传入 `target`，但实际 Commit 把 Cost
 应用到 `source`。来源缺少 `GameplayTagContainer` 时，required、blocked 和 cooldown tag
 检查会跳过。这里的 `target` 只是独立 Cost 预检的 Modifier 计算输入，不会创建激活请求，也不
 构成第二份 `AbilityActivationTargets`。
+
+### 激活错误分层与迁移
+
+`AbilityActivationRequirementError` 是只读预检与正式激活共用的激活要求错误，只描述以下
+四种原因，不包含 Cost、额外成本或冷却 Effect 的准备/执行错误：
+
+| 变体 | 含义 |
+| ---- | ---- |
+| `BlockedByAbility` | ASC 中其他技能的阻止标签命中了当前技能的 asset tags |
+| `ActivationBlocked` | 来源持有 activation blocked tags |
+| `MissingRequiredTags` | 来源缺少 activation required tags |
+| `CooldownActive` | 来源仍持有冷却 Effect 授予的任意 cooldown tag |
+
+共享检查返回 `Result<(), AbilityActivationRequirementError>`，两条调用路径直接保留具体
+失败原因，不再将检查结果通过 `.is_ok()` 转成 `bool`。检查顺序仍是技能互斥、阻止标签、
+必需标签、冷却；多个条件同时失败时返回最先遇到的原因。来源缺少可选 Tag 容器时，仍按
+既有规则跳过该容器的标签与冷却检查。
+
+- 只读预检把共享错误包装为 `AbilityActivationCheckError::Requirements(error)`；成本检查
+  仍在要求检查通过后执行，失败仍为 `AbilityActivationCheckError::Cost(error)`。
+- 正式激活保留 `AbilityActivationError::ActivationRequirementsNotMet` 的 `source` 和
+  `handle`，新增 `error: AbilityActivationRequirementError` 字段。成本和冷却 Effect 的
+  提交失败仍通过 `CommitPreparationFailed` 或 `CommitExecutionFailed` 表达。
+- 正式激活的 `Display` 包含具体要求失败原因；`std::error::Error::source()` 可取得嵌套
+  的要求错误。预检错误也可通过该方法取得嵌套的 Requirements 或 Cost 错误。
+- 要求失败仍由 `AbilityActivationError::is_rejection()` 分类为正常玩法拒绝；检查顺序、
+  成本预检与 Commit 执行行为均不改变。
+
+三个错误类型均由 `bevy_gas::gas::ability_system`、`bevy_gas::gas` 和 crate root 显式
+重导出，不进入精简 prelude。
+
+原来直接匹配 `AbilityActivationCheckError::BlockedByAbility`、`ActivationBlocked`、
+`MissingRequiredTags` 或 `CooldownActive` 的代码，现在应匹配 `Requirements` 中的同名
+`AbilityActivationRequirementError` 变体；`AbilityActivationCheckError::Cost(...)` 保持不变。
+例如，旧的 `AbilityActivationCheckError::CooldownActive` 模式改为：
+
+```rust
+use bevy_gas::{
+    AbilityActivationCheckError, AbilityActivationError, AbilityActivationRequirementError,
+};
+
+fn precheck_is_on_cooldown(error: &AbilityActivationCheckError) -> bool {
+    matches!(
+        error,
+        AbilityActivationCheckError::Requirements(AbilityActivationRequirementError::CooldownActive)
+    )
+}
+
+fn activation_is_on_cooldown(error: &AbilityActivationError) -> bool {
+    matches!(
+        error,
+        AbilityActivationError::ActivationRequirementsNotMet {
+            error: AbilityActivationRequirementError::CooldownActive,
+            ..
+        }
+    )
+}
+```
+
+正式激活原有的 `ActivationRequirementsNotMet { source, handle }` 完整模式需补上 `error`
+或 `..`；需要自行构造该错误时必须提供具体 `error`。
 
 ### 独立 Commit
 

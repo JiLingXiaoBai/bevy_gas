@@ -10,8 +10,8 @@ mod params;
 pub use crate::gameplay_execution::AbilityActivationRequest;
 pub(crate) use activation::execute_ability_activation_in_batch;
 pub use activation::{
-    AbilityActivationCheckError, AbilityActivationError, can_activate_ability,
-    try_activate_ability_by_handle,
+    AbilityActivationCheckError, AbilityActivationError, AbilityActivationRequirementError,
+    can_activate_ability, try_activate_ability_by_handle,
 };
 pub use commit::{
     AbilityCommitError, AdditionalCostContext, AdditionalCostProvider, commit_ability,

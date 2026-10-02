@@ -52,7 +52,7 @@ pub use bindings::{AbilityInputBindingError, AbilityInputBindings};
 | 定义文件 | 公开错误类型 |
 | -------- | ------------ |
 | `ability_system/error.rs` | `AbilityGrantError` |
-| `ability_system/activation/error.rs` | `AbilityActivationCheckError`、`AbilityActivationError` |
+| `ability_system/activation/error.rs` | `AbilityActivationRequirementError`、`AbilityActivationCheckError`、`AbilityActivationError` |
 | `ability_system/commit/error.rs` | `AbilityCommitError` |
 | `gameplay_abilities/error.rs` | `AbilityChainError` |
 | `gameplay_abilities/additional_cost/error.rs` | `AdditionalCostError` |
@@ -64,6 +64,13 @@ pub use bindings::{AbilityInputBindingError, AbilityInputBindings};
 | `gameplay_execution/error.rs` | `GameplayExecutionQueueError`、`GameplayExecutionError` |
 | `ability_input/error.rs` | `AbilityInputBindingError` |
 | `src/unique_names/error.rs` | `UniqueNameError` |
+
+激活错误在同一个 `ability_system/activation/error.rs` 内按职责分层：
+`AbilityActivationRequirementError` 只描述互斥、标签和冷却要求；预检错误通过 `Requirements`
+或 `Cost` 包装对应失败；正式激活通过 `ActivationRequirementsNotMet { source, handle, error }`
+保留共享要求错误。该共享类型不包含成本错误，成本检查与提交继续使用 `AbilityCommitError`。
+共享要求错误经 `ability_system`、`gas` 和 crate root 显式导出，不进入 prelude。
+具体行为与调用方迁移见 [09 — 激活错误分层与迁移](./09-ability-system-component.md#激活错误分层与迁移)。
 
 ## 当前源码树
 

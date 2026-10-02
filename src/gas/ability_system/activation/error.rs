@@ -5,9 +5,12 @@ use bevy::prelude::Entity;
 use std::error::Error;
 use std::fmt;
 
-/// Reason a read-only activation precheck found an ability unavailable.
-#[derive(Debug, Clone, PartialEq)]
-pub enum AbilityActivationCheckError {
+/// A tag or cooldown requirement shared by activation prechecks and actual activation.
+///
+/// These failures are gameplay rejections. Cost validation and commit failures use
+/// [`AbilityCommitError`] separately.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AbilityActivationRequirementError {
     /// Another active ability blocks this definition's asset tags.
     BlockedByAbility,
     /// The owner has a tag that blocks activation.
@@ -16,6 +19,26 @@ pub enum AbilityActivationCheckError {
     MissingRequiredTags,
     /// The owner currently has a granted cooldown tag.
     CooldownActive,
+}
+
+impl fmt::Display for AbilityActivationRequirementError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::BlockedByAbility => write!(f, "another active ability blocks activation"),
+            Self::ActivationBlocked => write!(f, "an owned gameplay tag blocks activation"),
+            Self::MissingRequiredTags => write!(f, "required activation tags are missing"),
+            Self::CooldownActive => write!(f, "the ability is on cooldown"),
+        }
+    }
+}
+
+impl Error for AbilityActivationRequirementError {}
+
+/// Reason a read-only activation precheck found an ability unavailable.
+#[derive(Debug, Clone, PartialEq)]
+pub enum AbilityActivationCheckError {
+    /// A tag or cooldown requirement rejected activation.
+    Requirements(AbilityActivationRequirementError),
     /// Cost evaluation or affordability checking failed.
     Cost(AbilityCommitError),
 }
@@ -23,16 +46,20 @@ pub enum AbilityActivationCheckError {
 impl fmt::Display for AbilityActivationCheckError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::BlockedByAbility => write!(f, "another active ability blocks activation"),
-            Self::ActivationBlocked => write!(f, "an owned gameplay tag blocks activation"),
-            Self::MissingRequiredTags => write!(f, "required activation tags are missing"),
-            Self::CooldownActive => write!(f, "the ability is on cooldown"),
+            Self::Requirements(error) => fmt::Display::fmt(error, f),
             Self::Cost(error) => fmt::Display::fmt(error, f),
         }
     }
 }
 
-impl Error for AbilityActivationCheckError {}
+impl Error for AbilityActivationCheckError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::Requirements(error) => Some(error),
+            Self::Cost(error) => Some(error),
+        }
+    }
+}
 
 /// Describes why an ability could not be activated.
 #[derive(Debug, Clone, PartialEq)]
@@ -55,6 +82,8 @@ pub enum AbilityActivationError {
     ActivationRequirementsNotMet {
         source: Entity,
         handle: AbilitySpecHandle,
+        /// The concrete tag or cooldown requirement that rejected activation.
+        error: AbilityActivationRequirementError,
     },
     /// Cost or cooldown preparation failed.
     CommitPreparationFailed {
@@ -100,9 +129,13 @@ impl fmt::Display for AbilityActivationError {
                 "ability activation failed: source entity {source:?} ability handle {} is already active",
                 handle.get_value()
             ),
-            Self::ActivationRequirementsNotMet { source, handle } => write!(
+            Self::ActivationRequirementsNotMet {
+                source,
+                handle,
+                error,
+            } => write!(
                 f,
-                "ability activation failed: source entity {source:?} ability handle {} does not meet activation requirements",
+                "ability activation failed: source entity {source:?} ability handle {} does not meet activation requirements: {error}",
                 handle.get_value()
             ),
             Self::CommitPreparationFailed {
@@ -145,7 +178,20 @@ impl fmt::Display for AbilityActivationError {
     }
 }
 
-impl Error for AbilityActivationError {}
+impl Error for AbilityActivationError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::InvalidChain(error) => Some(error),
+            Self::ActivationRequirementsNotMet { error, .. } => Some(error),
+            Self::CommitPreparationFailed { error, .. }
+            | Self::CommitExecutionFailed { error, .. } => Some(error),
+            Self::StartFailed { error, .. } | Self::CancellationFailed { error, .. } => Some(error),
+            Self::MissingAbilitySystemComponent { .. }
+            | Self::AbilityNotFound { .. }
+            | Self::MultipleInstancesNotAllowed { .. } => None,
+        }
+    }
+}
 
 impl AbilityActivationError {
     /// Returns whether this error represents an expected gameplay rejection.

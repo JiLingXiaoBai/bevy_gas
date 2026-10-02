@@ -3,7 +3,7 @@ use super::super::commit::{
 };
 use super::super::component::AbilitySystemComponent;
 use super::super::params::{AbilityActivationCheckParams, AbilitySystemParams};
-use super::error::AbilityActivationCheckError;
+use super::error::{AbilityActivationCheckError, AbilityActivationRequirementError};
 use crate::gameplay_abilities::GameplayAbility;
 use crate::gameplay_tags::GameplayTagContainer;
 use bevy::prelude::Entity;
@@ -29,6 +29,8 @@ use std::sync::Arc;
 /// # Returns
 ///
 /// `Ok(())` if the inspected rules pass, or the first concrete unavailable reason.
+/// Tag and cooldown failures are wrapped in [`AbilityActivationCheckError::Requirements`];
+/// cost failures are wrapped in [`AbilityActivationCheckError::Cost`].
 pub fn can_activate_ability<P: AdditionalCostProvider>(
     source: Entity,
     target: Entity,
@@ -40,7 +42,8 @@ pub fn can_activate_ability<P: AdditionalCostProvider>(
         params.asc_query.get(source).ok(),
         params.effects.tag_container_query.get(source).ok(),
         ability,
-    )?;
+    )
+    .map_err(AbilityActivationCheckError::Requirements)?;
     check_ability_cost(source, target, ability, level, &params.effects)
         .map_err(AbilityActivationCheckError::Cost)?;
     if !ability.get_additional_costs().is_empty() {
@@ -59,42 +62,41 @@ pub fn can_activate_ability<P: AdditionalCostProvider>(
     Ok(())
 }
 
-pub(super) fn passes_ability_activation_requirements(
+pub(super) fn check_ability_activation_requirements(
     source: Entity,
     ability: &Arc<GameplayAbility>,
     params: &AbilitySystemParams<'_, '_, impl AdditionalCostProvider>,
-) -> bool {
+) -> Result<(), AbilityActivationRequirementError> {
     check_activation_tags(
         params.asc_query.get(source).ok(),
         params.effects.tag_container_query.get(source).ok(),
         ability,
     )
-    .is_ok()
 }
 
 fn check_activation_tags(
     asc: Option<&AbilitySystemComponent>,
     tags: Option<&GameplayTagContainer>,
     ability: &GameplayAbility,
-) -> Result<(), AbilityActivationCheckError> {
+) -> Result<(), AbilityActivationRequirementError> {
     if asc.is_some_and(|asc| {
         asc.get_blocked_ability_tags()
             .has_any(ability.get_tags().get_ability_asset_tags())
     }) {
-        return Err(AbilityActivationCheckError::BlockedByAbility);
+        return Err(AbilityActivationRequirementError::BlockedByAbility);
     }
     if let Some(tags) = tags {
         let ability_tags = ability.get_tags();
         if tags.has_any(ability_tags.get_activation_blocked_tags()) {
-            return Err(AbilityActivationCheckError::ActivationBlocked);
+            return Err(AbilityActivationRequirementError::ActivationBlocked);
         }
         if !tags.has_all(ability_tags.get_activation_required_tags()) {
-            return Err(AbilityActivationCheckError::MissingRequiredTags);
+            return Err(AbilityActivationRequirementError::MissingRequiredTags);
         }
         if let Some(cooldown) = ability.get_cooldown()
             && tags.has_any(cooldown.get_tags().get_granted_tags())
         {
-            return Err(AbilityActivationCheckError::CooldownActive);
+            return Err(AbilityActivationRequirementError::CooldownActive);
         }
     }
     Ok(())
