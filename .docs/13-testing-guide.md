@@ -169,6 +169,12 @@ Clippy 编译全部测试与示例；CI 不启动窗口示例。依赖构建缓�
 
 ## 测试 App 与 Fixture
 
+`AbilitySpecHandle` 只在同一技能所有者内唯一。按规格查找实例或激活上下文的 helper
+必须同时传入 `source` 和 `handle`，禁止在整个 World 中仅按规格编号取第一项。
+`active_ability_entity_for_spec` 与 `active_ability_context_for_spec` 用于单实例场景；
+没有匹配项时返回 `None`，同一所有者与规格存在多个实例时断言失败。需要区分多个实例的测试
+应保存并使用具体 `ActiveAbilityHandle`，通过 ECS 查询该实例。
+
 集成测试的通用 App 与当前 `support_test.rs` 保持一致：
 
 ```rust

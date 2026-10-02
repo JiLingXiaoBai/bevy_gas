@@ -326,26 +326,41 @@ pub fn ability_task_count(app: &mut App) -> usize {
         .unwrap()
 }
 
-pub fn active_ability_entity_for_spec(app: &mut App, handle: AbilitySpecHandle) -> Option<Entity> {
+/// Returns the sole live instance for an owner-local spec, or `None` if it is absent.
+///
+/// Panics when multiple instances match. Tests that enable simultaneous instances must use
+/// the exact `ActiveAbilityHandle` of the instance they intend to inspect.
+pub fn active_ability_entity_for_spec(
+    app: &mut App,
+    source: Entity,
+    handle: AbilitySpecHandle,
+) -> Option<Entity> {
     app.world_mut()
         .run_system_once(move |query: Query<(Entity, &ActiveGameplayAbility)>| {
-            query.iter().find_map(|(entity, ability)| {
-                (ability.get_spec_handle() == handle).then_some(entity)
-            })
+            let mut instances = query.iter().filter_map(|(entity, ability)| {
+                (ability.get_source() == source && ability.get_spec_handle() == handle)
+                    .then_some(entity)
+            });
+            let instance = instances.next();
+            assert!(
+                instances.next().is_none(),
+                "multiple active instances for source {source:?} and spec {handle:?}; use an exact ActiveAbilityHandle"
+            );
+            instance
         })
         .unwrap()
 }
 
+/// Returns the activation context for the owner's sole live instance of `handle`.
+///
+/// Uses the same single-instance requirement as [`active_ability_entity_for_spec`].
 pub fn active_ability_context_for_spec(
     app: &mut App,
+    source: Entity,
     handle: AbilitySpecHandle,
 ) -> Option<AbilityActivationContext> {
-    app.world_mut()
-        .run_system_once(move |query: Query<&ActiveGameplayAbility>| {
-            query
-                .iter()
-                .find(|ability| ability.get_spec_handle() == handle)
-                .map(|ability| ability.get_activation_context().clone())
-        })
-        .unwrap()
+    let active = active_ability_entity_for_spec(app, source, handle)?;
+    app.world()
+        .get::<ActiveGameplayAbility>(active)
+        .map(|ability| ability.get_activation_context().clone())
 }

@@ -192,13 +192,13 @@ fn chained_startup_effect_inherits_activation_payload() {
             .with_causer(Some(causer))
             .with_source_snapshot(source_snapshot);
     activate_ability_with_context(&mut app, source, target.into(), first_handle, context).unwrap();
-    let first_active = active_ability_entity_for_spec(&mut app, first_handle).unwrap();
+    let first_active = active_ability_entity_for_spec(&mut app, source, first_handle).unwrap();
 
     run_ability_tasks(&mut app);
     run_gameplay_execution_queue(&mut app);
 
     assert_eq!(current_value(&mut app, target, damage), 7.0);
-    let second_context = active_ability_context_for_spec(&mut app, second_handle).unwrap();
+    let second_context = active_ability_context_for_spec(&mut app, source, second_handle).unwrap();
     assert_eq!(second_context.get_instigator(), instigator);
     assert_eq!(second_context.get_causer(), Some(causer));
     assert_eq!(

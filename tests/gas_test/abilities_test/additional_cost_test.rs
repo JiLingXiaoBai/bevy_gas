@@ -594,7 +594,7 @@ fn cancelling_a_successful_activation_does_not_refund_its_items() {
         activate_with_inventory(&mut app, source, source, handle),
         Ok(())
     );
-    let active = active_ability_entity_for_spec(&mut app, handle).unwrap();
+    let active = active_ability_entity_for_spec(&mut app, source, handle).unwrap();
     assert!(
         app.world_mut()
             .run_system_once(move |mut params: AbilitySystemParams<InventoryCosts>| {

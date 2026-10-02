@@ -62,7 +62,7 @@ fn startup_end_ability_stops_later_sibling_tasks() {
     assert!(activate_ability(&mut app, source, source, handle));
 
     assert_eq!(ability_task_count(&mut app), 0);
-    let active_ability = active_ability_entity_for_spec(&mut app, handle).unwrap();
+    let active_ability = active_ability_entity_for_spec(&mut app, source, handle).unwrap();
     assert_eq!(
         app.world()
             .entity(active_ability)
@@ -210,7 +210,7 @@ fn startup_effect_finishes_before_the_next_external_activation() {
             .iter()
             .all(|result| result.outcome == GameplayExecutionOutcome::Succeeded)
     );
-    assert!(active_ability_entity_for_spec(&mut app, second_handle).is_some());
+    assert!(active_ability_entity_for_spec(&mut app, source, second_handle).is_some());
     assert!(app.world().resource::<GameplayExecutionQueue>().is_empty());
 }
 
@@ -270,8 +270,8 @@ fn nested_startup_activation_finishes_before_parent_batch_continues() {
     assert!(activate_ability(&mut app, source, target, parent_handle));
 
     assert_eq!(current_value(&mut app, target, health), 60.0);
-    let child_active = active_ability_entity_for_spec(&mut app, child_handle).unwrap();
-    let parent_active = active_ability_entity_for_spec(&mut app, parent_handle).unwrap();
+    let child_active = active_ability_entity_for_spec(&mut app, source, child_handle).unwrap();
+    let parent_active = active_ability_entity_for_spec(&mut app, source, parent_handle).unwrap();
     assert_eq!(
         app.world()
             .get::<ActiveGameplayAbility>(child_active)
@@ -289,7 +289,7 @@ fn nested_startup_activation_finishes_before_parent_batch_continues() {
     assert_eq!(ability_task_count(&mut app), 1);
     run_finished_ability_cleanup(&mut app);
     assert_eq!(ability_task_count(&mut app), 0);
-    assert!(active_ability_entity_for_spec(&mut app, child_handle).is_none());
+    assert!(active_ability_entity_for_spec(&mut app, source, child_handle).is_none());
     run_ability_tasks(&mut app);
     run_gameplay_execution_queue(&mut app);
     assert_eq!(current_value(&mut app, target, health), 60.0);
@@ -363,8 +363,8 @@ fn child_cancellation_stops_parent_actions_and_preserves_cancelled_status() {
     assert!(activate_ability(&mut app, source, target, parent_handle));
 
     assert_eq!(current_value(&mut app, target, health), 100.0);
-    assert!(active_ability_entity_for_spec(&mut app, parent_handle).is_none());
-    assert!(active_ability_entity_for_spec(&mut app, child_handle).is_some());
+    assert!(active_ability_entity_for_spec(&mut app, source, parent_handle).is_none());
+    assert!(active_ability_entity_for_spec(&mut app, source, child_handle).is_some());
     assert_eq!(ability_task_count(&mut app), 0);
     let observations = app.world().resource::<StartupCancellationObservations>();
     assert_eq!(observations.started_tasks, 0);
@@ -446,7 +446,7 @@ fn rejected_startup_effect_does_not_stop_later_actions() {
     assert!(activate_ability(&mut app, source, target, handle));
 
     assert_eq!(current_value(&mut app, target, health), 110.0);
-    let active = active_ability_entity_for_spec(&mut app, handle).unwrap();
+    let active = active_ability_entity_for_spec(&mut app, source, handle).unwrap();
     assert_eq!(
         app.world()
             .get::<ActiveGameplayAbility>(active)

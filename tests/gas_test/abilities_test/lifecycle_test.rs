@@ -2,6 +2,89 @@ use super::*;
 use bevy_gas::ActiveGameplayAbility;
 
 #[test]
+fn active_ability_lookups_distinguish_owners_with_the_same_spec_handle() {
+    let mut app = test_app();
+    let first_owner = app
+        .world_mut()
+        .spawn(AbilitySystemComponent::default())
+        .id();
+    let second_owner = app
+        .world_mut()
+        .spawn(AbilitySystemComponent::default())
+        .id();
+    let definition = Arc::new(GameplayAbility::default());
+    let first_handle = give_ability(&mut app, first_owner, Arc::clone(&definition));
+    let second_handle = give_ability(&mut app, second_owner, definition);
+    assert_eq!(first_handle, second_handle);
+
+    let first_context =
+        AbilityActivationContext::direct(first_owner, AbilityChainContext::root(first_handle, 11));
+    activate_ability_with_context(
+        &mut app,
+        first_owner,
+        first_owner.into(),
+        first_handle,
+        first_context,
+    )
+    .unwrap();
+    assert!(active_ability_entity_for_spec(&mut app, second_owner, second_handle).is_none());
+    assert!(active_ability_context_for_spec(&mut app, second_owner, second_handle).is_none());
+
+    let second_context =
+        AbilityActivationContext::input(second_owner, AbilityChainContext::root(second_handle, 22));
+    activate_ability_with_context(
+        &mut app,
+        second_owner,
+        second_owner.into(),
+        second_handle,
+        second_context,
+    )
+    .unwrap();
+
+    let first_active = active_ability_entity_for_spec(&mut app, first_owner, first_handle).unwrap();
+    let second_active =
+        active_ability_entity_for_spec(&mut app, second_owner, second_handle).unwrap();
+    assert_ne!(first_active, second_active);
+    for (owner, handle, active, chain_id, reason) in [
+        (
+            first_owner,
+            first_handle,
+            first_active,
+            11,
+            AbilityActivationReason::Direct,
+        ),
+        (
+            second_owner,
+            second_handle,
+            second_active,
+            22,
+            AbilityActivationReason::Input,
+        ),
+    ] {
+        let ability = app.world().get::<ActiveGameplayAbility>(active).unwrap();
+        assert_eq!(ability.get_source(), owner);
+        assert_eq!(ability.get_spec_handle(), handle);
+        let context = active_ability_context_for_spec(&mut app, owner, handle).unwrap();
+        assert_eq!(context.get_instigator(), owner);
+        assert_eq!(context.get_chain().unwrap().get_chain_id(), chain_id);
+        assert_eq!(context.get_reason(), reason);
+    }
+
+    app.world_mut().despawn(first_active);
+    app.world_mut().flush();
+    assert!(active_ability_entity_for_spec(&mut app, first_owner, first_handle).is_none());
+    assert!(active_ability_context_for_spec(&mut app, first_owner, first_handle).is_none());
+    assert_eq!(
+        active_ability_entity_for_spec(&mut app, second_owner, second_handle),
+        Some(second_active)
+    );
+    let second_context =
+        active_ability_context_for_spec(&mut app, second_owner, second_handle).unwrap();
+    assert_eq!(second_context.get_instigator(), second_owner);
+    assert_eq!(second_context.get_chain().unwrap().get_chain_id(), 22);
+}
+
+#[test]
 fn activating_ability_cancels_matching_active_abilities() {
     let mut app = test_app();
     let stance_tag = register_tag(&mut app, "Ability.Stance");
@@ -351,8 +434,8 @@ fn removing_active_components_releases_each_shared_block_only_once() {
     let second = give_ability(&mut app, owner, definition);
     assert!(activate_ability(&mut app, owner, owner, first));
     assert!(activate_ability(&mut app, owner, owner, second));
-    let first_entity = active_ability_entity_for_spec(&mut app, first).unwrap();
-    let second_entity = active_ability_entity_for_spec(&mut app, second).unwrap();
+    let first_entity = active_ability_entity_for_spec(&mut app, owner, first).unwrap();
+    let second_entity = active_ability_entity_for_spec(&mut app, owner, second).unwrap();
 
     app.world_mut()
         .entity_mut(first_entity)
@@ -391,7 +474,7 @@ fn replacing_an_active_component_terminates_its_old_activation_and_tasks() {
     ));
     let handle = give_ability(&mut app, owner, definition);
     assert!(activate_ability(&mut app, owner, owner, handle));
-    let entity = active_ability_entity_for_spec(&mut app, handle).unwrap();
+    let entity = active_ability_entity_for_spec(&mut app, owner, handle).unwrap();
     let replacement = app
         .world()
         .get::<ActiveGameplayAbility>(entity)
