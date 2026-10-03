@@ -12,7 +12,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 fn ability_activation_commits_cost_and_cooldown_then_cooldown_blocks_reactivation() {
     let mut app = test_app();
     let mana = register_attribute(&mut app, "Mana");
-    let cooldown_tag = register_tag(&mut app, "Cooldown.Fireball");
+    let cooldown_tag = register_tag(&mut app, "Cooldown.Laser");
     let attributes = attribute_set(&app, mana, 50.0);
     let source = app
         .world_mut()

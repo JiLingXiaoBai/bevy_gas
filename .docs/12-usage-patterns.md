@@ -43,7 +43,7 @@ $env:RUST_LOG = "warn,ability_effect_flow=info"
 cargo run --example ability_effect_flow
 ```
 
-按 `main` → 注册属性/标签 → `spawn_actors` → `make_fireball` → `queue_fireball` →
+按 `main` → 注册属性/标签 → `spawn_actors` → `make_laser` → `queue_laser` →
 `report_state` 阅读。示例使用 MinimalPlugins 和日志插件，不创建窗口，也不等待真实时间；
 `main` 显式运行 21 次完整的 GAS `FixedUpdate` 管线。实际游戏仍由 Bevy 推进固定时间，生产请求的
 系统同样放在 `RequestProducers` 阶段。
@@ -141,11 +141,11 @@ fn enqueue_direct_activation(
 计算器只依赖独立的 `ModifierEvaluationContext`，因此 modifier 不需要依赖 Effect 或 ASC：
 
 ```rust
-struct FireballDamage {
+struct LaserDamage {
     attack_id: AttributeId,
 }
 
-impl ModifierMagnitudeCalculation for FireballDamage {
+impl ModifierMagnitudeCalculation for LaserDamage {
     fn calculate(&self, context: &dyn ModifierEvaluationContext) -> f32 {
         let attack = context
             .source_snapshot()
@@ -161,7 +161,7 @@ impl ModifierMagnitudeCalculation for FireballDamage {
     }
 }
 
-fn make_fireball_damage(
+fn make_laser_damage(
     health_id: AttributeId,
     attack_id: AttributeId,
     damage_tag: GameplayTag,
@@ -170,7 +170,7 @@ fn make_fireball_damage(
         vec![Modifier::new(
             health_id,
             ModifierOperation::Add,
-            ModifierMagnitude::Calculated(Box::new(FireballDamage { attack_id })),
+            ModifierMagnitude::Calculated(Box::new(LaserDamage { attack_id })),
         )],
         EffectDurationTicks::Instant,
         None,
@@ -186,16 +186,16 @@ fn make_fireball_damage(
 ```rust
 use bevy_gas::gas::ability_system::AbilityGrantError;
 
-fn make_fireball_ability(
+fn make_laser_ability(
     damage_effect: Arc<GameplayEffect>,
     cooldown_effect: Arc<GameplayEffect>,
     cost_effect: Arc<GameplayEffect>,
-    fireball_tag: GameplayTag,
+    laser_tag: GameplayTag,
     stun_tag: GameplayTag,
 ) -> Arc<GameplayAbility> {
     Arc::new(GameplayAbility::new(
         AbilityTags::new(
-            vec![fireball_tag],
+            vec![laser_tag],
             vec![],
             vec![],
             vec![],
@@ -216,7 +216,7 @@ fn make_fireball_ability(
     ))
 }
 
-fn grant_fireball(
+fn grant_laser(
     ability_system: &mut AbilitySystemComponent,
     ability: Arc<GameplayAbility>,
 ) -> Result<AbilitySpecHandle, AbilityGrantError> {

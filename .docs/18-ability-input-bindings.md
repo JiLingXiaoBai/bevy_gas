@@ -50,10 +50,10 @@ enum PlayerAction {
 
 fn spawn_player(mut commands: Commands) -> Result<(), AbilityGrantError> {
     let mut ability_system = AbilitySystemComponent::default();
-    let fireball = Arc::new(GameplayAbility::default().with_startup_tasks(vec![
+    let laser = Arc::new(GameplayAbility::default().with_startup_tasks(vec![
         AbilityTaskDef::instant(AbilityTaskOnFinishedDef::EndAbility),
     ]));
-    let handle = ability_system.give_ability(fireball, 1)?;
+    let handle = ability_system.give_ability(laser, 1)?;
 
     let mut bindings = AbilityInputBindings::<PlayerAction>::default();
     let _ = bindings.bind(PlayerAction::Slot(0), handle);

@@ -1,4 +1,4 @@
-//! Runs one complete fireball cast without a window or wall-clock delays.
+//! Runs one complete laser cast without a window or wall-clock delays.
 //!
 //! Run with `cargo run --example ability_effect_flow`. Tick zero is the activation
 //! tick: mana is spent immediately, damage lands at tick five, the ability ends
@@ -19,12 +19,12 @@ type ExampleResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
 struct GameplayIds {
     health: AttributeId,
     mana: AttributeId,
-    fireball: GameplayTag,
+    laser: GameplayTag,
     cooldown: GameplayTag,
 }
 
 #[derive(Resource)]
-struct FireballScenario {
+struct LaserScenario {
     caster: Entity,
     target: Entity,
     ability: AbilitySpecHandle,
@@ -44,7 +44,7 @@ fn main() -> ExampleResult<()> {
     .init_resource::<ExampleTick>()
     .add_systems(
         FixedUpdate,
-        queue_fireball.in_set(GameplayAbilitySystemSet::RequestProducers),
+        queue_laser.in_set(GameplayAbilitySystemSet::RequestProducers),
     );
     app.finish();
     app.cleanup();
@@ -55,14 +55,14 @@ fn main() -> ExampleResult<()> {
         .world_mut()
         .run_system_once(register_attributes)
         .map_err(|error| format!("attribute registration system failed: {error:?}"))??;
-    let (fireball, cooldown) = app
+    let (laser, cooldown) = app
         .world_mut()
         .run_system_once(register_tags)
         .map_err(|error| format!("tag registration system failed: {error:?}"))??;
     app.insert_resource(GameplayIds {
         health,
         mana,
-        fireball,
+        laser,
         cooldown,
     });
     app.world_mut()
@@ -93,9 +93,9 @@ fn register_attributes(
 }
 
 fn register_tags(mut tags: GameplayTagRegister) -> ExampleResult<(GameplayTag, GameplayTag)> {
-    let fireball = tags.request_or_register_tag("Ability.Fireball")?;
-    let cooldown = tags.request_or_register_tag("Cooldown.Fireball")?;
-    Ok((fireball, cooldown))
+    let laser = tags.request_or_register_tag("Ability.Laser")?;
+    let cooldown = tags.request_or_register_tag("Cooldown.Laser")?;
+    Ok((laser, cooldown))
 }
 
 fn spawn_actors(
@@ -107,7 +107,7 @@ fn spawn_actors(
     caster
         .attributes
         .initialize_attribute(&manager, ids.mana, 50.0, None)?;
-    let ability = caster.ability_system.give_ability(make_fireball(&ids), 1)?;
+    let ability = caster.ability_system.give_ability(make_laser(&ids), 1)?;
 
     let mut target = GameplayAbilitySystemBundle::default();
     target
@@ -116,7 +116,7 @@ fn spawn_actors(
 
     let caster = commands.spawn(caster).id();
     let target = commands.spawn(target).id();
-    commands.insert_resource(FireballScenario {
+    commands.insert_resource(LaserScenario {
         caster,
         target,
         ability,
@@ -125,7 +125,7 @@ fn spawn_actors(
     Ok(())
 }
 
-fn make_fireball(ids: &GameplayIds) -> Arc<GameplayAbility> {
+fn make_laser(ids: &GameplayIds) -> Arc<GameplayAbility> {
     let cost = instant_delta(ids.mana, -20.0);
     let damage = instant_delta(ids.health, -30.0);
     let cooldown = Arc::new(GameplayEffect::new(
@@ -139,7 +139,7 @@ fn make_fireball(ids: &GameplayIds) -> Arc<GameplayAbility> {
 
     Arc::new(
         GameplayAbility::default()
-            .with_tags(AbilityTags::default().with_ability_asset_tags(vec![ids.fireball]))
+            .with_tags(AbilityTags::default().with_ability_asset_tags(vec![ids.laser]))
             .with_cost(cost)
             .with_cooldown(cooldown)
             .with_startup_tasks(vec![
@@ -167,10 +167,7 @@ fn instant_delta(attribute: AttributeId, value: f32) -> Arc<GameplayEffect> {
     ))
 }
 
-fn queue_fireball(
-    mut scenario: ResMut<FireballScenario>,
-    mut queue: ResMut<GameplayExecutionQueue>,
-) {
+fn queue_laser(mut scenario: ResMut<LaserScenario>, mut queue: ResMut<GameplayExecutionQueue>) {
     if scenario.submitted {
         return;
     }
@@ -179,14 +176,14 @@ fn queue_fireball(
     if let Err(error) =
         queue.push_activation(scenario.caster, scenario.target, scenario.ability, context)
     {
-        error!("failed to queue fireball: {error}");
+        error!("failed to queue laser: {error}");
     }
     scenario.submitted = true;
 }
 
 fn report_state(
     tick: Res<ExampleTick>,
-    scenario: Res<FireballScenario>,
+    scenario: Res<LaserScenario>,
     ids: Res<GameplayIds>,
     manager: Res<AttributeIdManager>,
     mut attributes: Query<&mut AttributeSet>,
@@ -204,7 +201,7 @@ fn report_state(
     let active_count = abilities
         .get(scenario.caster)?
         .find_ability_spec(scenario.ability)
-        .ok_or("fireball was not granted")?
+        .ok_or("laser was not granted")?
         .get_active_count();
     let on_cooldown = tags.get(scenario.caster)?.has_tag(&ids.cooldown);
     info!(
@@ -213,7 +210,7 @@ fn report_state(
         target_health = health,
         active_count,
         on_cooldown,
-        "Fireball state after FixedUpdate"
+        "Laser state after FixedUpdate"
     );
     Ok(())
 }

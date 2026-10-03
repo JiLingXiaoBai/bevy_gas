@@ -32,12 +32,12 @@ fn spawn_gameplay_actor(mut commands: Commands) {
 
 ## 可运行示例
 
-建议先运行完整火球示例，了解一次技能从授予、激活到伤害、结束与冷却到期的过程。
+建议先运行完整激光示例，了解一次技能从授予、激活到伤害、结束与冷却到期的过程。
 以下命令均在仓库根目录执行：
 
 | 示例 | 内容 | 运行命令 |
 | --- | --- | --- |
-| [完整火球流程](./examples/ability_effect_flow.rs) | 无窗口演示属性消耗、延迟伤害与独立冷却 | `cargo run --example ability_effect_flow` |
+| [完整激光流程](./examples/ability_effect_flow.rs) | 无窗口演示属性消耗、延迟伤害与独立冷却 | `cargo run --example ability_effect_flow` |
 | [标签注册](./examples/tag_registration.rs) | 注册层级标签并读取标签信息 | `cargo run --example tag_registration` |
 | [技能输入绑定](./examples/ability_input_bindings.rs) | 无窗口演示技能栏重绑与固定 tick 输入缓冲 | `cargo run --example ability_input_bindings` |
 

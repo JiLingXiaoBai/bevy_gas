@@ -27,7 +27,7 @@ fn register_initial_tags(mut register: GameplayTagRegister) {
         error!("Failed to register tag: {error}");
         return;
     }
-    if let Err(error) = register.request_or_register_tag("Ability.Fireball") {
+    if let Err(error) = register.request_or_register_tag("Ability.Laser") {
         error!("Failed to register tag: {error}");
         return;
     }

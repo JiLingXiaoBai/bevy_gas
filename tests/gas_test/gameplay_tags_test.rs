@@ -103,8 +103,8 @@ fn tag_requirements_match_inherited_bits_and_ignored_tags() {
 #[test]
 fn repeated_tag_registration_returns_existing_tag() {
     let mut app = test_app();
-    let first = register_tag(&mut app, "Ability.Fireball");
-    let second = register_tag(&mut app, "Ability.Fireball");
+    let first = register_tag(&mut app, "Ability.Laser");
+    let second = register_tag(&mut app, "Ability.Laser");
     let parent = register_tag(&mut app, "Ability");
 
     assert_eq!(first, second);
