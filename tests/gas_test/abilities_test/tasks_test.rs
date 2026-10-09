@@ -307,7 +307,7 @@ fn child_cancellation_stops_parent_actions_and_preserves_cancelled_status() {
     let mut app = test_app();
     app.init_resource::<StartupCancellationObservations>();
     app.add_observer(
-        |remove: On<Remove, ActiveGameplayAbility>,
+        |remove: On<Remove<ActiveGameplayAbility>>,
          abilities: Query<&ActiveGameplayAbility>,
          mut observations: ResMut<StartupCancellationObservations>| {
             let active = abilities.get(remove.entity).unwrap();
@@ -317,7 +317,7 @@ fn child_cancellation_stops_parent_actions_and_preserves_cancelled_status() {
         },
     );
     app.add_observer(
-        |_: On<Add, AbilityTask>, mut observations: ResMut<StartupCancellationObservations>| {
+        |_: On<Add<AbilityTask>>, mut observations: ResMut<StartupCancellationObservations>| {
             observations.started_tasks += 1;
         },
     );

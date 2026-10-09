@@ -1,5 +1,6 @@
-use bevy::math::{FromRng, ShapeSample};
+use bevy::math::FromRng;
 use bevy::prelude::*;
+use bevy::shape::ShapeSample;
 use rand::{
     RngExt, SeedableRng,
     distr::{Distribution, StandardUniform, uniform::SampleRange, uniform::SampleUniform},

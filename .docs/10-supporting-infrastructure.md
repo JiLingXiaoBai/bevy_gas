@@ -68,6 +68,8 @@ pub struct Random {
 | `sample_interior(shape)` | 在实现 `ShapeSample` 的形状内部采样 |
 | `sample_boundary(shape)` | 在形状边界采样 |
 
+Bevy 0.20 中，形状采样 trait 改从 `bevy::shape::ShapeSample` 导入，`FromRng` 仍位于 `bevy::math::FromRng`。
+
 在相同依赖版本、相同种子和相同调用顺序下可复现随机序列。不要把不同系统对同一全局
 `Random` 的未排序访问当作确定性契约；若调用顺序具有 Gameplay 语义，应通过 SystemSet
 排序，或为独立流程使用独立种子的随机状态。统一 FIFO 只保留实际入队顺序，不会自动排序

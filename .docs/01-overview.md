@@ -2,9 +2,12 @@
 
 ## 项目定位
 
-`bevy_gas` 是面向 Bevy 0.19 的 ECS-first Gameplay Ability System。它提供构建 RPG、MOBA、
+`bevy_gas` 是面向 Bevy 0.20 的 ECS-first Gameplay Ability System。它提供构建 RPG、MOBA、
 ARPG 等 Gameplay 规则所需的基础能力，但不替游戏决定输入映射、动画、表现层、网络同步或资源
 序列化格式。
+
+当前依赖基线为 Bevy 0.20.0、Rust 1.97.1+（edition 2024）；引擎接口迁移说明见
+[02 — 插件与生命周期](./02-plugins-and-lifecycle.md#bevy-020-升级基线)。
 
 设计优先级是：
 

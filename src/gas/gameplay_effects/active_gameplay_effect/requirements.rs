@@ -172,7 +172,7 @@ pub(crate) fn active_effect_requirements_need_update(
 
 /// Retains invalidation even when no fixed tick runs before removal events expire.
 pub(crate) fn invalidate_effect_requirements_on_tag_discard(
-    _event: On<Discard, GameplayTagContainer>,
+    _event: On<Discard<GameplayTagContainer>>,
     mut sync: ResMut<ActiveEffectRequirementSync>,
     mut commands: Commands,
 ) {

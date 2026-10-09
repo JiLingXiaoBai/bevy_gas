@@ -1,5 +1,21 @@
 # 02 — 插件系统与生命周期
 
+## Bevy 0.20 升级基线
+
+当前依赖 Bevy 0.20.0，使用 Rust edition 2024。Bevy 的最低 Rust 版本为 1.97.1，见
+[Bevy 0.20.0 Cargo 元数据](https://docs.rs/crate/bevy/0.20.0/source/Cargo.toml)。
+
+生命周期 Observer 的组件类型现在放在事件泛型内：`On<Discard, T>` 改为
+`On<Discard<T>>`，`On<Add, T>` / `On<Remove, T>` 同样改为 `On<Add<T>>` /
+`On<Remove<T>>`。Active Ability 与 ASC 仍由 Discard Observer 清理；
+`ActiveGameplayEffects` 通过组件的 `on_discard` lifecycle hook 撤销旧效果的标签与修饰器。
+`GameplayTagContainer` 的 Discard Observer 则将条件同步标记为待重新计算。
+
+本次升级保持既有运行契约：Gameplay 时间仍以 `FixedUpdate` tick 为单位，系统的显式
+`.chain()` / `.before()` 顺序、Ability/Effect 共用的跨类型 FIFO 与同 tick 消费边界不变。
+startup Instant 效果和链式激活仍在当前激活内部同步结算，运行时等待任务仍产生 FIFO
+请求，延迟 Observer 仍遵循原有可见性边界。
+
 ## 插件一览
 
 `src/gas/runtime_plugin.rs` 是插件门面，具体实现位于同名目录：`foundation.rs` 初始化基础

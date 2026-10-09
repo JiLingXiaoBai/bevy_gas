@@ -1187,7 +1187,7 @@ fn periodic_failure_converges_removed_tags_before_ability_tasks() {
 fn tag_removal_invalidation_survives_synchronous_observer_convergence() {
     let (mut app, _, source, target, handle) = source_requirement_fixture();
     app.add_observer(
-        |event: On<Remove, GameplayTagContainer>, mut params: EffectSystemParams| {
+        |event: On<Remove<GameplayTagContainer>>, mut params: EffectSystemParams| {
             // Remove observers run before the old component becomes unavailable.
             assert!(params.tag_container_query.get(event.entity).is_ok());
             resolve_active_effect_tag_requirements(&mut params);

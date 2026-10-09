@@ -1,10 +1,10 @@
 # bevy_gas
 
-`bevy_gas` 是面向 Bevy 0.19 的 ECS 优先 Gameplay Ability System（GAS）库，提供
+`bevy_gas` 是面向 Bevy 0.20 的 ECS 优先 Gameplay Ability System（GAS）库，提供
 Gameplay Tags、Attributes、Modifiers、Gameplay Effects、Gameplay Abilities、Ability Tasks、
 Targeting、技能输入绑定，以及基于 `FixedUpdate` tick 的统一 Gameplay 执行队列。
 
-项目使用 Rust edition 2024，具体依赖版本见 [Cargo.toml](./Cargo.toml)。
+项目使用 Rust edition 2024，当前依赖 Bevy 0.20.0，最低要求 Rust 1.97.1。具体依赖版本见 [Cargo.toml](./Cargo.toml)，升级说明见 [插件与生命周期](./.docs/02-plugins-and-lifecycle.md#bevy-020-升级基线)。
 
 ## 快速开始
 

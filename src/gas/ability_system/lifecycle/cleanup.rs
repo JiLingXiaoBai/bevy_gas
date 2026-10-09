@@ -39,7 +39,7 @@ pub fn cleanup_finished_abilities_system(
 
 /// Component replacement and removal terminate the old activation, including direct ECS removal.
 pub(crate) fn cleanup_discarded_active_ability(
-    event: On<Discard, ActiveGameplayAbility>,
+    event: On<Discard<ActiveGameplayAbility>>,
     active_query: Query<&ActiveGameplayAbility>,
     mut asc_query: Query<&mut AbilitySystemComponent>,
     tag_manager: Res<GameplayTagManager>,
@@ -61,7 +61,7 @@ pub(crate) fn cleanup_discarded_active_ability(
 
 /// Discarding an ASC terminates all of its registered activation entities.
 pub(crate) fn cleanup_discarded_ability_system(
-    event: On<Discard, AbilitySystemComponent>,
+    event: On<Discard<AbilitySystemComponent>>,
     asc_query: Query<&AbilitySystemComponent>,
     mut commands: Commands,
     mut pending: ResMut<PendingActiveGameplayAbilities>,
