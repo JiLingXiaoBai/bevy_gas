@@ -14,76 +14,71 @@ pub(super) enum AbilityTaskCompletion {
 pub(super) fn dispatch_ability_task_completion(
     active_ability: ActiveAbilityHandle,
     context: AbilityTaskExecutionContext,
-    on_finished: AbilityTaskOnFinished,
+    on_finished: &AbilityTaskOnFinished,
     targets: &AbilityActivationTargets,
     active_context: &AbilityActivationContext,
     commands: &mut Commands,
     execution_queue: &mut GameplayExecutionQueue,
 ) -> AbilityTaskCompletion {
-    match on_finished {
-        AbilityTaskOnFinished::None => {}
-        AbilityTaskOnFinished::EndAbility => return AbilityTaskCompletion::EndAbility,
-        AbilityTaskOnFinished::Batch { actions } => {
-            for action in actions {
-                let completion = dispatch_ability_task_completion(
-                    active_ability,
+    // Keep single actions allocation-free and borrow nested actions until dispatch completes.
+    let mut pending_actions = Vec::new();
+    let mut current = Some(on_finished);
+    while let Some(action) = current {
+        match action {
+            AbilityTaskOnFinished::None => {}
+            AbilityTaskOnFinished::EndAbility => return AbilityTaskCompletion::EndAbility,
+            AbilityTaskOnFinished::Batch { actions } => {
+                pending_actions.extend(actions.iter().rev());
+            }
+            AbilityTaskOnFinished::EmitEvent { event_id } => {
+                commands.trigger(AbilityTaskEvent::new(
                     context,
-                    action,
-                    targets,
+                    targets.clone(),
+                    active_ability,
+                    *event_id,
+                ));
+            }
+            AbilityTaskOnFinished::ActivateAbility { handle } => {
+                if let Err(error) = execution_queue.push_chained_activation(
+                    context.get_source(),
+                    targets.clone(),
+                    *handle,
+                    active_ability,
                     active_context,
-                    commands,
-                    execution_queue,
-                );
-                if matches!(completion, AbilityTaskCompletion::EndAbility) {
-                    return completion;
+                ) {
+                    error!("failed to queue chained ability activation: {error}");
                 }
             }
-        }
-        AbilityTaskOnFinished::EmitEvent { event_id } => {
-            commands.trigger(AbilityTaskEvent::new(
-                context,
-                targets.clone(),
-                active_ability,
-                event_id,
-            ));
-        }
-        AbilityTaskOnFinished::ActivateAbility { handle } => {
-            if let Err(error) = execution_queue.push_chained_activation(
-                context.get_source(),
-                targets.clone(),
-                handle,
-                active_ability,
-                active_context,
-            ) {
-                error!("failed to queue chained ability activation: {error}");
-            }
-        }
-        AbilityTaskOnFinished::ApplyGameplayEffect { effect } => {
-            let payload = effect_payload_from_ability_context(
-                context.get_source(),
-                context.get_level(),
-                Some(active_context),
-            );
-            if let Err(error) =
-                execution_queue.push_application(targets.get_primary_target(), effect, payload)
-            {
-                error!("failed to queue ability-task effect: {error}");
-            }
-        }
-        AbilityTaskOnFinished::ApplyGameplayEffectToTargets { effect } => {
-            let payload = effect_payload_from_ability_context(
-                context.get_source(),
-                context.get_level(),
-                Some(active_context),
-            );
-            for target in targets.entities() {
-                if let Err(error) =
-                    execution_queue.push_application(target, effect.clone(), payload.clone())
-                {
+            AbilityTaskOnFinished::ApplyGameplayEffect { effect } => {
+                let payload = effect_payload_from_ability_context(
+                    context.get_source(),
+                    context.get_level(),
+                    Some(active_context),
+                );
+                if let Err(error) = execution_queue.push_application(
+                    targets.get_primary_target(),
+                    effect.clone(),
+                    payload,
+                ) {
                     error!("failed to queue ability-task effect: {error}");
                 }
             }
+            AbilityTaskOnFinished::ApplyGameplayEffectToTargets { effect } => {
+                let payload = effect_payload_from_ability_context(
+                    context.get_source(),
+                    context.get_level(),
+                    Some(active_context),
+                );
+                for target in targets.entities() {
+                    if let Err(error) =
+                        execution_queue.push_application(target, effect.clone(), payload.clone())
+                    {
+                        error!("failed to queue ability-task effect: {error}");
+                    }
+                }
+            }
         }
+        current = pending_actions.pop();
     }
     AbilityTaskCompletion::Continue
 }

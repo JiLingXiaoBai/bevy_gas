@@ -96,28 +96,47 @@ impl AbilityTaskDef {
 
 impl AbilityTaskOnFinishedDef {
     pub(crate) fn instantiate(&self) -> AbilityTaskOnFinished {
-        match self {
-            AbilityTaskOnFinishedDef::None => AbilityTaskOnFinished::None,
-            AbilityTaskOnFinishedDef::EndAbility => AbilityTaskOnFinished::EndAbility,
-            AbilityTaskOnFinishedDef::Batch { actions } => AbilityTaskOnFinished::Batch {
-                actions: actions.iter().map(Self::instantiate).collect(),
-            },
-            AbilityTaskOnFinishedDef::EmitEvent { event_id } => AbilityTaskOnFinished::EmitEvent {
-                event_id: *event_id,
-            },
-            AbilityTaskOnFinishedDef::ApplyGameplayEffectToTarget { effect } => {
-                AbilityTaskOnFinished::ApplyGameplayEffect {
-                    effect: effect.clone(),
+        // Fill the original batch shape iteratively; only nested actions need a work stack.
+        let mut instantiated = AbilityTaskOnFinished::None;
+        let mut pending_actions = Vec::new();
+        let mut current = Some((self, &mut instantiated));
+        while let Some((definition, output)) = current {
+            *output = match definition {
+                AbilityTaskOnFinishedDef::None => AbilityTaskOnFinished::None,
+                AbilityTaskOnFinishedDef::EndAbility => AbilityTaskOnFinished::EndAbility,
+                AbilityTaskOnFinishedDef::Batch { actions } => AbilityTaskOnFinished::Batch {
+                    actions: vec![AbilityTaskOnFinished::None; actions.len()],
+                },
+                AbilityTaskOnFinishedDef::EmitEvent { event_id } => {
+                    AbilityTaskOnFinished::EmitEvent {
+                        event_id: *event_id,
+                    }
                 }
-            }
-            AbilityTaskOnFinishedDef::ApplyGameplayEffectToTargets { effect } => {
-                AbilityTaskOnFinished::ApplyGameplayEffectToTargets {
-                    effect: effect.clone(),
+                AbilityTaskOnFinishedDef::ApplyGameplayEffectToTarget { effect } => {
+                    AbilityTaskOnFinished::ApplyGameplayEffect {
+                        effect: effect.clone(),
+                    }
                 }
+                AbilityTaskOnFinishedDef::ApplyGameplayEffectToTargets { effect } => {
+                    AbilityTaskOnFinished::ApplyGameplayEffectToTargets {
+                        effect: effect.clone(),
+                    }
+                }
+                AbilityTaskOnFinishedDef::ActivateAbility { handle } => {
+                    AbilityTaskOnFinished::ActivateAbility { handle: *handle }
+                }
+            };
+            if let (
+                AbilityTaskOnFinishedDef::Batch { actions },
+                AbilityTaskOnFinished::Batch {
+                    actions: instantiated_actions,
+                },
+            ) = (definition, output)
+            {
+                pending_actions.extend(actions.iter().zip(instantiated_actions).rev());
             }
-            AbilityTaskOnFinishedDef::ActivateAbility { handle } => {
-                AbilityTaskOnFinished::ActivateAbility { handle: *handle }
-            }
+            current = pending_actions.pop();
         }
+        instantiated
     }
 }

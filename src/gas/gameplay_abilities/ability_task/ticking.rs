@@ -41,7 +41,7 @@ pub fn tick_ability_tasks_system(
             let completion = dispatch_ability_task_completion(
                 active_handle,
                 *task.get_context(),
-                task.get_on_finished().clone(),
+                task.get_on_finished(),
                 active_ability.get_targets(),
                 active_ability.get_activation_context(),
                 &mut commands,

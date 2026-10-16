@@ -455,3 +455,156 @@ fn rejected_startup_effect_does_not_stop_later_actions() {
         AbilityActivationStatus::Ending
     );
 }
+
+#[test]
+fn nested_batch_instantiation_preserves_shape_and_runtime_depth_first_order() {
+    let mut app = test_app();
+    let health = register_attribute(&mut app, "Health");
+    let source = app.world_mut().spawn_empty().id();
+    let target = spawn_attribute_set(&mut app, health, 100.0);
+    let handle = AbilitySpecHandle::new(7);
+    let active_ability = spawn_active_ability(&mut app, source, target, handle);
+    let context = AbilityTaskExecutionContext::new(source, handle, 1);
+    let overwrite = Arc::new(GameplayEffect::new(
+        vec![Modifier::new(
+            health,
+            ModifierOperation::Override,
+            ModifierMagnitude::Flat(50.0),
+        )],
+        EffectDurationTicks::Instant,
+        None,
+        1.0,
+        StackingPolicy::non_stacking(),
+        empty_effect_tags(),
+    ));
+    let increment = instant_add_effect(health, 1.0);
+    let mut action = AbilityTaskOnFinishedDef::Batch {
+        actions: vec![
+            AbilityTaskOnFinishedDef::ApplyGameplayEffectToTarget { effect: overwrite },
+            AbilityTaskOnFinishedDef::Batch {
+                actions: Vec::new(),
+            },
+            AbilityTaskOnFinishedDef::ApplyGameplayEffectToTarget {
+                effect: instant_add_effect(health, 10.0),
+            },
+        ],
+    };
+    let depth = 64;
+    for _ in 0..depth {
+        action = AbilityTaskOnFinishedDef::Batch {
+            actions: vec![
+                AbilityTaskOnFinishedDef::Batch {
+                    actions: Vec::new(),
+                },
+                AbilityTaskOnFinishedDef::ApplyGameplayEffectToTarget {
+                    effect: increment.clone(),
+                },
+                action,
+                AbilityTaskOnFinishedDef::ApplyGameplayEffectToTarget {
+                    effect: increment.clone(),
+                },
+            ],
+        };
+    }
+    let definition = AbilityTaskDef::wait_ticks(1, action);
+    let task = definition.instantiate(active_ability, context);
+    let mut nested_action = task.get_on_finished();
+    for _ in 0..depth {
+        let actions = match nested_action {
+            AbilityTaskOnFinished::Batch { actions } => Some(actions),
+            _ => None,
+        }
+        .expect("instantiation must retain each nested batch");
+        assert_eq!(actions.len(), 4);
+        assert!(
+            matches!(&actions[0], AbilityTaskOnFinished::Batch { actions } if actions.is_empty())
+        );
+        nested_action = &actions[2];
+    }
+    assert!(
+        matches!(nested_action, AbilityTaskOnFinished::Batch { actions } if actions.len() == 3)
+    );
+    spawn_ability_task(&mut app, task);
+
+    run_ability_tasks(&mut app);
+
+    assert_eq!(ability_task_count(&mut app), 0);
+    assert_eq!(current_value(&mut app, target, health), 100.0);
+    assert_eq!(
+        app.world().resource::<GameplayExecutionQueue>().len(),
+        depth * 2 + 2
+    );
+    assert_eq!(
+        app.world()
+            .get::<ActiveGameplayAbility>(active_ability)
+            .unwrap()
+            .get_status(),
+        AbilityActivationStatus::Active
+    );
+    run_gameplay_execution_queue(&mut app);
+    assert_eq!(current_value(&mut app, target, health), 124.0);
+}
+
+#[test]
+fn nested_end_stops_sibling_actions_at_every_batch_depth() {
+    for delayed in [false, true] {
+        let mut app = test_app();
+        let health = register_attribute(&mut app, "Health");
+        let source = app
+            .world_mut()
+            .spawn(AbilitySystemComponent::default())
+            .id();
+        let target = spawn_attribute_set(&mut app, health, 100.0);
+        let skipped_effect = instant_add_effect(health, 1000.0);
+        let mut action = AbilityTaskOnFinishedDef::Batch {
+            actions: vec![
+                AbilityTaskOnFinishedDef::ApplyGameplayEffectToTarget {
+                    effect: instant_add_effect(health, 10.0),
+                },
+                AbilityTaskOnFinishedDef::EndAbility,
+                AbilityTaskOnFinishedDef::ApplyGameplayEffectToTarget {
+                    effect: skipped_effect.clone(),
+                },
+            ],
+        };
+        for _ in 0..64 {
+            action = AbilityTaskOnFinishedDef::Batch {
+                actions: vec![
+                    AbilityTaskOnFinishedDef::Batch {
+                        actions: Vec::new(),
+                    },
+                    action,
+                    AbilityTaskOnFinishedDef::ApplyGameplayEffectToTarget {
+                        effect: skipped_effect.clone(),
+                    },
+                ],
+            };
+        }
+        let task = if delayed {
+            AbilityTaskDef::wait_ticks(1, action)
+        } else {
+            AbilityTaskDef::instant(action)
+        };
+        let ability = Arc::new(GameplayAbility::default().with_startup_tasks(vec![task]));
+        let handle = give_ability(&mut app, source, ability);
+
+        assert!(activate_ability(&mut app, source, target, handle));
+        if delayed {
+            run_ability_tasks(&mut app);
+            assert_eq!(current_value(&mut app, target, health), 100.0);
+            assert_eq!(app.world().resource::<GameplayExecutionQueue>().len(), 1);
+            run_gameplay_execution_queue(&mut app);
+        }
+
+        assert_eq!(current_value(&mut app, target, health), 110.0);
+        assert!(app.world().resource::<GameplayExecutionQueue>().is_empty());
+        let active = active_ability_entity_for_spec(&mut app, source, handle).unwrap();
+        assert_eq!(
+            app.world()
+                .get::<ActiveGameplayAbility>(active)
+                .unwrap()
+                .get_status(),
+            AbilityActivationStatus::Ending
+        );
+    }
+}
