@@ -1,9 +1,14 @@
+use bevy::app::ScheduleRunnerPlugin;
+use bevy::log::LogPlugin;
 use bevy::prelude::*;
 use bevy_gas::*;
 
 fn main() {
     App::new()
-        .add_plugins(DefaultPlugins)
+        .add_plugins((
+            MinimalPlugins.set(ScheduleRunnerPlugin::run_once()),
+            LogPlugin::default(),
+        ))
         .add_plugins(GameplayAbilitySystemPlugin)
         .add_systems(Startup, register_initial_tags)
         .run();
