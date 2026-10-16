@@ -15,7 +15,7 @@
 | crate root | `bevy_gas::GameplayEffect` | 显式兼容重导出；另拥有 `Random` 与 `UniqueName*` 支撑类型 |
 
 `lib.rs` 还显式重导出 `ability_input`、`ability_system`、`attributes`、`gameplay_abilities`、
-`gameplay_effects`、`gameplay_execution`、`gameplay_tags`、`gameplay_targeting`、
+`gameplay_effects`、`gameplay_execution`、`gameplay_position`、`gameplay_tags`、`gameplay_targeting`、
 `modifiers` 与 `settings` 模块，因此旧的 `bevy_gas::gameplay_effects::...` 路径仍可用。
 所有门面都禁止 `pub use *`；新增内部 `pub` 项不会自动成为公开 API。
 
@@ -33,7 +33,8 @@
 | Effects | `ActiveGameplayEffects`、`EffectDurationTicks`、`EffectPayload`、`EffectSystemParams`、`EffectTags`、`GameplayEffect`、`StackingPolicy` |
 | Execution | `GameplayExecutionQueue` |
 | Tags | `GameplayTag`、`GameplayTagContainer`、`GameplayTagRegister`、`TagRequirements` |
-| Targeting | `AbilityActivationTargets`、`AbilityTargetData`、`TargetingDefinition`、`TargetingRequestQueue` |
+| Position | `LogicalPosition`、`PositionPresentation`、`PositionPresentationPlugin` |
+| Targeting | `AbilityActivationTargets`、`AbilityTargetData`、`TargetingDefinition`、`TargetingRequestQueue`、`TargetingSystemParams` |
 | Modifiers | `Modifier`、`ModifierEvaluationContext`、`ModifierMagnitude`、`ModifierMagnitudeCalculation`、`ModifierOperation` |
 
 错误类型、低层 handle/spec、管理器、独立基础插件、系统函数与支撑类型不在 prelude；请从拥有它
@@ -45,6 +46,7 @@
 | --- | --- | --- | --- |
 | `GameplayAbilitySystemPlugin` | `PluginGroup` | 是 | `bevy_gas::gas` / crate root |
 | `GameplayAbilitySystemRuntimePlugin` | `Plugin` | 是 | `bevy_gas::gas` / crate root |
+| `PositionPresentationPlugin` | `Plugin` | 是 | `bevy_gas::gas::gameplay_position` / GAS 聚合门面 / crate root |
 | `GameplayAbilitySystemSet` | `SystemSet` | 是 | `bevy_gas::gas` / crate root |
 | `GameplayTagPlugin` | `Plugin` | 否 | `bevy_gas::gas` / crate root |
 | `UniqueNamePlugin` | `Plugin` | 否 | `bevy_gas::gas` / crate root |
@@ -167,6 +169,27 @@ ASC、Active Ability 或 `Commands`。`AbilitySystemParams` 内嵌它并实现 `
 两个请求类型由 `gameplay_execution` 领域拥有。`ability_system` 与 `gameplay_effects` 门面分别
 兼容重导出对应请求类型；新代码需要同时处理两类请求时，应从 Execution 门面导入。
 
+### Gameplay 逻辑位置与表现
+
+公开领域路径为 `bevy_gas::gas::gameplay_position`，GAS 聚合门面和 crate root 也显式重导出。
+两个常用 Component 和 `PositionPresentationPlugin` 进入 prelude。
+
+| 项 | 类型 | 说明 |
+| --- | --- | --- |
+| `LogicalPosition(pub Vec3)` | `Component` | 权威世界坐标；不 Required Transform，不继承父变换 |
+| `PositionPresentation` | `Component` | 可选根实体表现；Required Transform，单向写 translation |
+| `PositionPresentationPlugin` | `Plugin` | 独立安装历史采集、表现同步与逻辑位置替换清历史 Observer |
+| `PositionPresentationError` | `enum` | 缺失逻辑位置/Transform、非有限逻辑坐标或存在父级 |
+| `capture_logical_position_history_system` | `fn` | 系统：FixedFirst 保存插值起点 |
+| `sync_position_presentation_system` | `fn` | 系统：PostUpdate 在 Transform 传播前同步或插值表现 |
+
+`PositionPresentation::default()` / `interpolated()` 启用插值，`direct()` 使用当前位置。
+`is_interpolation_enabled()` 查询模式，`set_interpolation_enabled(bool)` 切换并在模式变化时
+清历史；传送后调用 `reset()` 清历史，`last_error()` 读取最近采集/同步错误。
+默认 GAS Plugin Group 包含表现插件；单独安装 Runtime 时需另外安装它，也可从完整组禁用。
+移动系统使用 `GameplayAbilitySystemSet::Movement`，位置采样和请求生产使用后续的
+`RequestProducers`。行为和调度要求见 [15 — 逻辑位置与可选表现](./15-gameplay-targeting.md#逻辑位置与可选表现)。
+
 ### Gameplay 目标抓取
 
 | 项                                      | 类型        | 说明                                      |
@@ -182,12 +205,15 @@ ASC、Active Ability 或 `Commands`。`AbilitySystemParams` 内嵌它并实现 `
 | `TargetingDefinitionError`              | `enum`      | 非法管线配置                              |
 | `TargetingInput`                        | `struct`    | 捕获的原点、方向和显式目标                |
 | `TargetingError`                        | `enum`      | 运行时抓取失败                            |
-| `TargetingCandidateQuery`               | `type alias` | 目标选择使用的只读 ECS Query              |
+| `TargetingCandidateQuery`               | `type alias` | 候选 Entity 的只读 ECS 数据访问；不单独作为抓取参数 |
+| `TargetingSystemParams`                 | `SystemParam` | 同步/队列抓取共用的只读索引与候选 Query |
+| `TargetingSpatialIndex`                 | `Resource`  | Targetable 逻辑点位置的动态 AABB 树；由 Runtime 初始化 |
 | `TargetingRequestId`                    | `struct`    | 队列请求的稳定标识                        |
 | `TargetingContinuation`                 | `enum`      | 只发结果或继续激活技能                    |
 | `TargetingResultEvent`                  | `Event`     | 请求完成后由 `Commands::trigger` 触发的 Observer Event |
 | `TargetingRequestQueue`                 | `Resource`  | 每 tick 全量消费的 FIFO 请求队列           |
-| `acquire_targets`                       | `fn`        | 同步执行目标操作管线                      |
+| `acquire_targets`                       | `fn`        | 通过 `&TargetingSystemParams` 同步执行管线，范围选择只查询动态树 |
+| `sync_targeting_spatial_index_system`    | `fn`        | 系统：同步逻辑位置索引；调用方先完成逻辑移动，再运行抓取 |
 | `process_targeting_request_queue_system`| `fn`        | 系统：处理请求并分派 continuation         |
 | `targeting_request_queue_has_work`      | `fn`        | 队列系统的运行条件                        |
 

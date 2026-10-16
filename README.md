@@ -6,6 +6,10 @@ Targeting、技能输入绑定，以及基于 `FixedUpdate` tick 的统一 Gamep
 
 项目使用 Rust edition 2024，当前依赖 Bevy 0.20.0，最低要求 Rust 1.97.1。具体依赖版本见 [Cargo.toml](./Cargo.toml)，升级说明见 [插件与生命周期](./.docs/02-plugins-and-lifecycle.md#bevy-020-升级基线)。
 
+本库关闭 Bevy 默认 features，运行依赖只启用 `std`、`multi_threaded` 和 `bevy_log`，
+另显式启用官方 `bevy_shape` 的 `rand` 采样功能；测试和输入示例额外启用 `keyboard`。
+游戏项目按需为自己的 Bevy 依赖选择窗口、渲染和资源格式。库仍使用标准库。
+
 ## 快速开始
 
 在 Bevy 应用中添加 GAS 插件，并创建 Gameplay Actor：
@@ -30,6 +34,11 @@ fn spawn_gameplay_actor(mut commands: Commands) {
 `GameplayAbilitySystemBundle` 组合技能、标签、属性和活跃效果组件；具体属性值和技能需要另行
 初始化与授予。只需要标签或属性的实体也可以单独挂载对应 Component。
 
+索敌读取 `LogicalPosition`；移动系统放入 `GameplayAbilitySystemSet::Movement`，请求生产放入
+后续的 `RequestProducers`。需要平滑表现时挂载 `PositionPresentation::interpolated()`。
+完整插件组包含独立 `PositionPresentationPlugin`；单装 Runtime 时需显式添加它，服务器也可
+从完整组禁用。详见 [逻辑位置与可选表现](./.docs/15-gameplay-targeting.md#逻辑位置与可选表现)。
+
 ## 可运行示例
 
 建议先运行完整激光示例，了解一次技能从授予、激活到伤害、结束与冷却到期的过程。
@@ -38,8 +47,9 @@ fn spawn_gameplay_actor(mut commands: Commands) {
 | 示例 | 内容 | 运行命令 |
 | --- | --- | --- |
 | [完整激光流程](./examples/ability_effect_flow.rs) | 无窗口演示属性消耗、延迟伤害与独立冷却 | `cargo run --example ability_effect_flow` |
-| [标签注册](./examples/tag_registration.rs) | 注册层级标签并读取标签信息 | `cargo run --example tag_registration` |
+| [标签注册](./examples/tag_registration.rs) | 无窗口注册层级标签，单次运行后退出 | `cargo run --example tag_registration` |
 | [技能输入绑定](./examples/ability_input_bindings.rs) | 无窗口演示技能栏重绑与固定 tick 输入缓冲 | `cargo run --example ability_input_bindings` |
+| [逻辑位置与索敌](./examples/logical_position_targeting.rs) | 固定 tick 移动和索敌、每帧表现插值 | `cargo run --example logical_position_targeting` |
 
 详细流程与日志输出说明见 [示例运行说明](./.docs/12-usage-patterns.md#完整可运行示例)。
 

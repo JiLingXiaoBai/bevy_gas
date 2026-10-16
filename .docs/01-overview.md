@@ -3,11 +3,14 @@
 ## 项目定位
 
 `bevy_gas` 是面向 Bevy 0.20 的 ECS-first Gameplay Ability System。它提供构建 RPG、MOBA、
-ARPG 等 Gameplay 规则所需的基础能力，但不替游戏决定输入映射、动画、表现层、网络同步或资源
-序列化格式。
+ARPG 等 Gameplay 规则所需的基础能力，并提供可选的位置表现同步；具体输入映射、动画、
+视觉资源、网络同步或资源序列化格式仍由游戏决定。
 
 当前依赖基线为 Bevy 0.20.0、Rust 1.97.1+（edition 2024）；引擎接口迁移说明见
 [02 — 插件与生命周期](./02-plugins-and-lifecycle.md#bevy-020-升级基线)。
+库的 Bevy 依赖关闭默认 features，仅启用 `std`、`multi_threaded` 和 `bevy_log`；官方
+`bevy_shape` 的 `rand` feature 保留数学/形状采样 API。开发依赖额外启用 `keyboard`，
+用于输入示例和测试。窗口、渲染及资源格式由游戏工程选择，库仍依赖标准库，不承诺 `no_std`。
 
 设计优先级是：
 
@@ -27,9 +30,10 @@ ARPG 等 Gameplay 规则所需的基础能力，但不替游戏决定输入映�
 | Gameplay Effects | Effect 定义、应用计划、活跃效果、堆叠、免疫和条件收敛 | 技能实例生命周期 |
 | Gameplay Abilities | Ability 定义、规格、激活上下文、活跃实例和任务定义 | ASC 的授予索引和统一请求调度 |
 | Ability System | ASC、激活校验、cost/cooldown commit、结束和取消 | 通用目标搜索 |
-| Targeting | 可验证的选择/过滤/排序管线和目标结果 | Effect 应用与 Ability 规则判断 |
+| Gameplay Position | 权威逻辑世界坐标、可选的位置表现同步与插值 | 角色移动规则、旋转/缩放模拟、模型或动画资源 |
+| Targeting | 基于逻辑位置的动态 AABB 树、选择/过滤/排序管线和目标结果 | Effect 应用与 Ability 规则判断 |
 | Gameplay Execution | Ability/Effect 共用的跨类型 FIFO 和 batch resolver | 定义具体 Gameplay 规则 |
-| Runtime Plugin | Resource 安装和 `FixedUpdate` 阶段排序 | 游戏侧请求生产策略 |
+| Runtime Plugin | GAS Resource 安装与 FixedUpdate 跨领域阶段排序 | 游戏侧移动/请求策略与表现调度 |
 
 实际文件和子模块所有权集中记录在
 [17 — 源码布局与维护边界](./17-source-layout-and-maintenance.md)，本页不重复私有文件细节。
@@ -150,8 +154,10 @@ flowchart TB
 
 ```text
 EffectTicks
+  → Movement
   → AbilityTasks
   → RequestProducers
+  → TargetingSpatialSync
   → Targeting
   → PreGameplayConvergence
   → GameplayResolve
@@ -163,6 +169,8 @@ EffectTicks
 关键边界：
 
 - `EffectTicks` 内部按 Duration → Requirement → Period → Requirement 串行执行；
+- `Movement` 完成逻辑移动及 deferred 命令，后续任务与请求生产读取本 tick 的位置；
+- 独立 `PositionPresentationPlugin` 负责 FixedFirst 历史和 PostUpdate 表现，默认 GAS 组包含它；
 - `AbilityTasks`、`RequestProducers`、`Targeting` 在 resolver 前产生的 Gameplay 请求可以在当前
   fixed tick 消费；
 - `GameplayResolve` 完整 drain Ability/Effect 共用 FIFO，包括 drain 期间直接追加的有限请求；

@@ -23,7 +23,8 @@
 | ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 第一次接入 GAS            | [01 总览](./01-overview.md) → [02 插件与生命周期](./02-plugins-and-lifecycle.md) → [09 ASC](./09-ability-system-component.md) → [12 使用模式](./12-usage-patterns.md) |
 | 理解一次技能如何结算      | [07 技能](./07-gameplay-abilities.md) → [08 任务](./08-ability-tasks.md) → [15 目标抓取](./15-gameplay-targeting.md) → [16 统一执行](./16-gameplay-execution.md)      |
-| 接入输入与技能栏          | [18 输入绑定](./18-ability-input-bindings.md) → [09 ASC](./09-ability-system-component.md) → [16 统一执行](./16-gameplay-execution.md)                                |
+| 接入逻辑位置与表现插值 | [15 目标抓取](./15-gameplay-targeting.md#逻辑位置与可选表现) → [位置示例](../examples/logical_position_targeting.rs) → [02 生命周期](./02-plugins-and-lifecycle.md) |
+| 接入输入与技能栏 | [18 输入绑定](./18-ability-input-bindings.md) → [09 ASC](./09-ability-system-component.md) → [16 统一执行](./16-gameplay-execution.md) |
 | 扩展数值与状态系统        | [03 标签](./03-gameplay-tags.md) → [04 属性](./04-attributes.md) → [05 修饰器](./05-modifiers-and-aggregator.md) → [06 效果](./06-gameplay-effects.md)                |
 | 接入游戏配置 | [19 外部配置集成](./19-external-configuration.md) → [14 扩展系统](./14-extending-the-system.md) |
 | 维护或重构源码            | [17 源码布局](./17-source-layout-and-maintenance.md) → [13 测试](./13-testing-guide.md) → [14 扩展系统](./14-extending-the-system.md)                                 |
@@ -39,7 +40,7 @@
 | 文档                                                     | 权威内容                                            |
 | -------------------------------------------------------- | --------------------------------------------------- |
 | [01 — 项目概述](./01-overview.md)                        | 领域职责、ECS 数据所有权、整体数据流和核心不变量    |
-| [02 — 插件系统与生命周期](./02-plugins-and-lifecycle.md) | PluginGroup、资源安装、`FixedUpdate` SystemSet 顺序 |
+| [02 — 插件系统与生命周期](./02-plugins-and-lifecycle.md) | PluginGroup、独立表现插件、资源安装与固定阶段顺序 |
 | [09 — 技能系统组件](./09-ability-system-component.md)    | ASC、显式 Bundle、Ability/Effect SystemParam 边界   |
 | [16 — Gameplay 执行模块](./16-gameplay-execution.md)     | 统一请求 FIFO、batch 可见性、同 tick/下一 tick 边界 |
 

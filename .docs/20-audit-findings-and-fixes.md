@@ -55,7 +55,7 @@ fail-closed 处理。这是待评估的最坏情况成本，不能直接表述�
 | F4 | Active Effect 句柄属于创建它的 World；同一 World 内的陈旧句柄保护不等于跨 World 唯一性。接入方不得混用不同 World 的句柄；见 [06 — 效果](./06-gameplay-effects.md)。不引入影响分配顺序的进程全局计数器。 |
 | F6/F7/F18 | 领域路径、GAS 聚合门面和 crate-root 兼容重导出属于既定公开 API；prelude 有意保持精简。新用法优先推荐路径，不为减少导入拼写破坏兼容；见 [17 — 源码布局](./17-source-layout-and-maintenance.md)。 |
 | F10 | 容量与冷热划分是编译期布局，调整需重新编译并保持客户端一致。存在实际容量需求后再讨论配置方式；见 [10 — 支撑基础设施](./10-supporting-infrastructure.md)。 |
-| F15 | 内建空间抓取使用 `GlobalTransform`，大部分 selection 要求 `Targetable`；游戏仍可自行构造 `AbilityTargetData` 后提交激活。无需为假设的第二种空间表示提前抽象；见 [15 — 目标抓取](./15-gameplay-targeting.md)。 |
+| F15 | 内建范围抓取使用动态 AABB 树索引 `Targetable` 的 `LogicalPosition` 世界坐标；Self/Explicit 同样读取逻辑位置。游戏在 `Movement` 完成逻辑移动，后续请求采样与空间同步读取当前位置；独立 `PositionPresentationPlugin` 驱动可选表现组件，不参与索敌。游戏仍可自行构造 `AbilityTargetData`；见 [15 — 目标抓取](./15-gameplay-targeting.md)。 |
 | F19 | Runtime Plugin 注册到 `FixedUpdate`，调用方可以显式运行该 schedule 推进 tick。自定义 schedule 参数化需要实际用例；见 [02 — 插件系统](./02-plugins-and-lifecycle.md)。 |
 
 ## 后续修改的验证要求

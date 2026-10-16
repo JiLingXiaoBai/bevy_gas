@@ -69,6 +69,10 @@ pub struct Random {
 | `sample_boundary(shape)` | 在形状边界采样 |
 
 Bevy 0.20 中，形状采样 trait 改从 `bevy::shape::ShapeSample` 导入，`FromRng` 仍位于 `bevy::math::FromRng`。
+库关闭 Bevy 默认 features，仅启用 `std`、`multi_threaded`、`bevy_log`，并显式依赖同版本官方
+`bevy_shape`、启用其 `rand` feature。这样保留上述数学与形状采样公开 API，无需借用渲染
+features 间接启用采样功能；这不是引入另一套第三方几何或随机数实现。`rand` 仍为 0.10.2。
+开发依赖的 Bevy 额外启用 `keyboard`，仅供输入示例和测试。
 
 在相同依赖版本、相同种子和相同调用顺序下可复现随机序列。不要把不同系统对同一全局
 `Random` 的未排序访问当作确定性契约；若调用顺序具有 Gameplay 语义，应通过 SystemSet

@@ -93,13 +93,17 @@ Modifier 是独立共享领域：Effect 负责把定义求值为 `ModifierSpec`�
 
 1. 将实现放在 owning domain；
 2. 从领域门面只公开确实属于用户 API 的 system；
-3. 在 `src/gas/runtime_plugin/runtime.rs` 的 `install_runtime()` 中注册到语义正确的
-   `GameplayAbilitySystemSet`；
+3. 在 owning domain 的安装入口注册到语义正确的 `GameplayAbilitySystemSet`，由 Runtime
+   组合调用；例如 Targeting 使用私有 `install_targeting(app)`，不要将其内部设施逐项提升到 Runtime；
+   没有领域安装入口的共享运行时系统仍由 `install_runtime()` 注册；
 4. 使用 `.before()` / `.after()` 或 `.chain()` 明确跨系统可见性；
 5. 只有运行条件不改变 Gameplay 语义时才添加 `run_if`；
 6. 添加运行完整 `FixedUpdate` 的集成测试，而不仅是 `RunSystemOnce`。
 
 游戏项目自身的生产系统无需修改 Runtime Plugin，直接注册到公共 SystemSet 即可。
+逻辑移动系统进入 `Movement`，读取位置并生成请求的系统进入 `RequestProducers`，
+由阶段顺序保证先移动、再采样；同一集合内有业务依赖时继续显式排序。
+表现系统不属于 GAS 固定逻辑管线，由独立 `PositionPresentationPlugin` 安装。
 
 ### 生产 Gameplay 请求
 

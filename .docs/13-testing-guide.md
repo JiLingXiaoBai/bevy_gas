@@ -26,11 +26,12 @@ tests/
 │   │   ├── additional_cost_test.rs           # 外部成本预检、批量支付、补偿与激活入口
 │   │   ├── lifecycle_test.rs                 # 取消、结束与清理
 │   │   ├── deferred_lifecycle_test.rs        # 延迟ASC移除/替换与startup命令交错
-│   │   ├── tasks_test.rs                     # WaitTicks 与任务结束
+│   │   ├── tasks_test.rs                     # WaitTicks、嵌套 Batch 顺序与任务结束
 │   │   └── chaining_test.rs                  # 链上下文、深度与循环限制
 │   ├── attributes_test.rs               # 属性注册、冷热槽位、重算与聚合
 │   ├── gameplay_tags_test.rs            # 标签注册、位集与引用计数
-│   ├── gameplay_targeting_test.rs       # 目标管线、确定性与技能集成
+│   ├── gameplay_position_test.rs        # 独立表现插件/禁用、逻辑分离、插值与无效配置
+│   ├── gameplay_targeting_test.rs       # 动态 AABB、目标管线、确定性与技能集成
 │   ├── queues_test.rs                   # 跨类型 FIFO、运行条件与批次语义
 │   └── runtime_paths_test.rs            # Plugin 管线、Bundle 与公共运行路径
 ├── randoms_test.rs                     # RNG 种子确定性与概率边界
@@ -40,7 +41,8 @@ examples/
 ├── ability_input_bindings.rs           # Buffered input and slot rebinding without a window
 ├── ability_effect_flow.rs              # 无窗口的完整技能、伤害与冷却时间线
 ├── inventory_bomb.rs                   # 背包炸弹与法力共同支付；同 tick 请求争用最后一颗
-└── tag_registration.rs                 # 完整 App 中的标签注册
+├── logical_position_targeting.rs       # 无窗口逻辑移动、索敌与 PostUpdate 表现插值
+└── tag_registration.rs                 # 无窗口的单次标签注册后退出
 ```
 
 集成测试按 crate 顶层功能领域归属组织。`src/gas/` 内功能的集成测试统一放在
@@ -107,6 +109,10 @@ cargo test --test gas_test
 # Input binding and buffering integration tests
 cargo test --test gas_test ability_input_test
 
+# Logical positions, presentation interpolation and targeting
+cargo test --test gas_test gameplay_position_test
+cargo test --test gas_test gameplay_targeting_test
+
 # External-resource costs through custom ECS access
 cargo test --test gas_test abilities_test::additional_cost_test
 
@@ -127,12 +133,17 @@ cargo test --test gas_test -- --list
 cargo run --example ability_effect_flow
 cargo run --example ability_input_bindings
 cargo run --example inventory_bomb
+cargo run --example logical_position_targeting
 cargo check --example tag_registration
 cargo run --example tag_registration
 ```
 
-`cargo run --example tag_registration` 会启动 Bevy App，适合人工验证；CI 只需编译示例，
-不应等待窗口退出。
+`tag_registration` 使用 `MinimalPlugins.set(ScheduleRunnerPlugin::run_once())` 和 LogPlugin，
+执行一次无窗口 App 更新后退出，可用于命令行和 CI 冒烟验证。仓库示例无需默认窗口/渲染 features。
+
+库依赖 Bevy 的最小功能集为 `std`、`multi_threaded`、`bevy_log`，官方 `bevy_shape/rand`
+保留随机采样 API；开发依赖另启用 `keyboard`。调整 features 后分别运行 `cargo check --lib`
+和 `cargo check --all-targets`，避免只在开发依赖功能合并后才能编译；仍需完成下述检查。
 
 ## 提交前检查
 
@@ -168,7 +179,7 @@ cargo doc --no-deps --all-features
 文档步骤单独设置 `RUSTDOCFLAGS=-D warnings`，检查公开项文档和 rustdoc 链接，
 不会为其他构建步骤改变编译标志。
 
-Clippy 编译全部测试与示例；CI 不启动窗口示例。依赖构建缓存只用于缩短运行时间，检查本身
+Clippy 编译全部测试与示例；示例均可在无窗口环境运行。依赖构建缓存只用于缩短运行时间，检查本身
 仍逐次执行。当前仅覆盖 Windows；本地通过不能替代 workflow 的实际运行结果。
 
 性能测量继续作为显式运行的 ignored 测试维护；不因 CI 机器的负载变化设置固定耗时门禁。
@@ -245,6 +256,45 @@ startup Instant 另需验证激活请求内部的顺序：效果先于下一动�
 先于父技能续点完成，再消费下一个公共 FIFO 请求。运行时 Instant/WaitTicks 仍入队；事件
 Observer 保持 deferred。还应覆盖子技能取消父技能后的截断及内部步骤没有独立请求结果。
 
+Batch 回归同时检查实例化后的 getter 结构与执行结果：64 层嵌套保留空 Batch 和兄弟节点，
+运行时按深度优先顺序产生 FIFO 请求；startup/runtime 的 EndAbility 都截断外层剩余动作，
+但不能撤回前方已产生的请求。该测试验证有限深度行为，不证明公开递归枚举的 Clone/Drop
+支持任意深度。
+
+## 动态 AABB 索敌回归
+
+范围抓取只有动态树实现，不保留扫描后端作为运行时回退或测试对照。测试用已知实体和位置构造
+明确的有序预期结果，覆盖球形/锥形边界、零半径、相等距离和 `Limit`；不要把树内部遍历顺序
+写成预期 Gameplay 顺序。
+
+空间生命周期应覆盖首次同步前的 `SpatialIndexNotReady`、代理盒内/外移动、标签变化、组件
+新增/移除/替换、实体销毁与 ID 复用，以及非有限位置的排除和恢复。验证同步 API 时先执行
+`sync_targeting_spatial_index_system`，再通过 `TargetingSystemParams` 调用 `acquire_targets()`；
+验证同 tick 生成、移动与 continuation 时应运行完整 `FixedUpdate`。
+移动系统和请求采样系统应分开注册到 `Movement` / `RequestProducers`，验证 source origin 与
+候选目标使用同 tick 的位置；还需覆盖 Movement 的 deferred 修改/生成在 AbilityTasks、请求采样
+和空间同步之前已经生效。
+
+性能测量应包含索引同步、查询、精筛和排序，而不是仅测树查询；同时改变实体数、移动比例、
+请求数和范围覆盖率。改造前后的同场景数据可在相应版本分别采集，无需长期保存旧实现。
+测量使用显式 ignored 测试，不设置依赖机器速度的固定通过阈值。
+
+## 逻辑位置与表现测试
+
+`gameplay_position_test.rs` 的基础 fixture 只安装 MinimalPlugins、TransformPlugin 与
+PositionPresentationPlugin，证明插值和组件替换清历史不依赖 GAS。另行覆盖默认/配置 GAS
+插件组包含表现插件、禁用表现插件以及单装 Runtime 时不会修改 Transform。
+它还验证 `LogicalPosition` 不自动插入 Transform，以及可选表现的直接
+同步、插值、首次无历史、零/多 fixed tick、传送 reset、模式切换、rotation/scale 保留、非法状态
+与恢复。索敌测试应只依赖逻辑位置，并验证修改表现 Transform 不影响选择；不能为了满足索敌
+Fixture 而安装 TransformPlugin 或运行 FixedUpdate 内的变换传播。
+
+验证表现时，单独 `run_schedule(FixedUpdate)` 不会执行 FixedFirst 历史采集。需要显式推进
+`FixedFirst` → `FixedUpdate`，设置固定时间余量后运行 `PostUpdate`；零 tick 帧只运行
+PostUpdate，多 tick 帧逐次采集和更新，最后才运行表现同步。视觉子节点传播测试安装
+TransformPlugin，并确保同步位于官方 Propagate 之前。完整接入示例见
+[`logical_position_targeting`](../examples/logical_position_targeting.rs)。
+
 ## 公共 API 路径测试
 
 prelude 是精简入口，不是完整 API 镜像。测试常见用法可导入 `bevy_gas::prelude::*`；错误、
@@ -283,7 +333,8 @@ handle/spec、管理器和系统函数应从 `bevy_gas::gas::<domain>` 或 crate
 | 技能             | 激活、Cost、Cooldown、阻止/取消标签与实例策略                        |
 | 技能任务/链      | startup、WaitTicks、完成动作、深度与循环检测                         |
 | 额外成本         | 只读预检、同名批量需求、同 tick 可见性、各入口支付、失败补偿与取消不退款 |
-| Targeting        | 管线校验、稳定排序、多目标 continuation                              |
+| 逻辑位置/表现    | 单向同步、插值时间、传送 reset、组件错误、与索敌解耦 |
+| Targeting        | 管线校验、逻辑位置动态树更新/清理、边界与有限值、稳定排序、多目标 continuation |
 | 统一 FIFO        | Ability/Effect 跨类型顺序、完整 drain、阶段边界                      |
 | 组件组合         | Bundle 四组件齐全，Tag/Attribute 独立存在                            |
 | 支撑设施         | RNG 同种子序列、名称复用、空名称与不同字符串区分                     |

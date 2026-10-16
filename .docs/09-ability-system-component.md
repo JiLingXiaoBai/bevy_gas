@@ -342,9 +342,13 @@ Effect Plan；快速预检按当前 removal tags 选择临时排除的来源，c
 EffectTicks
   Duration → Requirement → Period → Requirement
     ↓
+Movement
+    ↓
 AbilityTasks
     ↓
 RequestProducers
+    ↓
+TargetingSpatialSync
     ↓
 Targeting
     ↓

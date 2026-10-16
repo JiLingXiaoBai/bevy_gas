@@ -350,7 +350,7 @@ duration tick
 所以到期清理及其标签变化先收敛，周期效果不会在同一 tick 多 pulse 一次。抑制不暂停有限
 duration，但会暂停 period current tick。
 
-之后流水线依次运行 AbilityTasks、RequestProducers、Targeting、PreGameplayConvergence、
+之后流水线依次运行 Movement、AbilityTasks、RequestProducers、TargetingSpatialSync、Targeting、PreGameplayConvergence、
 GameplayResolve、UpdateEffectTagRequirements、Cleanup 和 RecalculateAttributes。
 
 四个 Requirement 收敛边界全部保留。每处注册各自使用 Bevy change detection 检查
@@ -361,7 +361,7 @@ GameplayResolve、UpdateEffectTagRequirements、Cleanup 和 RecalculateAttribute
 FixedUpdate，也不会因 removal 事件被清理而漏掉 source/target 依赖变化。observer 先立即标脏，
 再通过 deferred command 在组件实际移除后补一次标脏：用户生命周期 observer 即使在旧标签仍
 可见时调用同步收敛并清除 dirty，也不会吞掉最终移除产生的变化。到期和周期失败清理产生
-的标签变更仍分别在 period 执行前、AbilityTasks 前收敛。
+的标签变更仍分别在 period 执行前、Movement 前收敛。
 
 此守卫仅用于 Runtime Plugin 的系统注册；显式调用 `resolve_active_effect_tag_requirements()`
 或独立运行公开的 `update_active_effect_tag_requirements_system` 仍强制完整收敛，同步 API 的语义

@@ -171,9 +171,13 @@ EffectTicks
   ├─ Period
   └─ Requirement
       ↓
+Movement
+      ↓
 AbilityTasks
       ↓
 RequestProducers
+      ↓
+TargetingSpatialSync
       ↓
 Targeting
       ↓

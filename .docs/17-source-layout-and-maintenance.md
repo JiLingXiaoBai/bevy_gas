@@ -68,6 +68,7 @@ pub use error::AbilityInputBindingError;
 | `gameplay_tags/error.rs` | `GameplayTagError` |
 | `attributes/error.rs` | `AttributeIdError` |
 | `attributes/attribute_set/error.rs` | `AttributeSetError` |
+| `gameplay_position/error.rs` | `PositionPresentationError` |
 | `gameplay_targeting/error.rs` | `AbilityActivationTargetsError`、`TargetingDefinitionError`、`TargetingError` |
 | `gameplay_execution/error.rs` | `GameplayExecutionQueueError`、`GameplayExecutionError` |
 | `ability_input/error.rs` | `AbilityInputBindingError` |
@@ -202,13 +203,24 @@ src/
     │       ├── validation.rs
     │       ├── startup.rs
     │       └── execution.rs
+    ├── gameplay_position.rs
+    ├── gameplay_position/
+    │   ├── logical_position.rs
+    │   ├── plugin.rs
+    │   ├── presentation.rs
+    │   └── error.rs
     ├── gameplay_targeting.rs
     ├── gameplay_targeting/
+    │   ├── runtime.rs
     │   ├── error.rs
     │   ├── ability_target_data.rs
     │   ├── activation_targets.rs
     │   ├── targeting_definition.rs
     │   ├── acquisition.rs
+    │   ├── spatial_index.rs
+    │   ├── spatial_index/
+    │   │   ├── index.rs
+    │   │   └── tree.rs
     │   ├── targeting_queue.rs
     │   └── targeting_queue/
     │       ├── request.rs
@@ -225,6 +237,7 @@ src/
 
 完整技能与效果时间线示例位于 `examples/ability_effect_flow.rs`；标签注册示例位于
 `examples/tag_registration.rs`；独立输入绑定示例位于 `examples/ability_input_bindings.rs`。
+逻辑移动、索敌和每帧表现插值见 `examples/logical_position_targeting.rs`。
 集成测试归属原则见本文后半部分，完整测试与示例树见 [13 — 测试指南](./13-testing-guide.md#测试与示例组织)。
 
 ## 外部游戏配置
@@ -265,8 +278,8 @@ src/
 | 文件 | 主要所有权 |
 | ---- | ---------- |
 | `runtime_plugin/foundation.rs` | Tag、UniqueName 与 Random 基础资源插件 |
-| `runtime_plugin/runtime.rs` | Runtime Plugin、SystemSet、共享资源和系统安装，以及默认/配置 resolver 注册 |
-| `runtime_plugin/group.rs` | 默认与配置 Plugin Group 的插件组合 |
+| `runtime_plugin/runtime.rs` | 纯逻辑 Runtime、跨领域 SystemSet 顺序、共享资源和默认/配置 resolver 注册；调用 Targeting 内部安装入口 |
+| `runtime_plugin/group.rs` | 默认与配置 Plugin Group 的基础资源、Runtime 和独立表现插件组合 |
 
 ### Tags、Attributes 与 Modifiers
 
@@ -328,11 +341,11 @@ commit 和生命周期编排的流程：
 | `ability_chain.rs`、`activation_context.rs` | 请求与运行实例共用的链保护、传播上下文，以及 Ability → Effect payload 转换     |
 | `active_gameplay_ability/state.rs`          | 只持有 spec handle、共享激活数据和状态的活跃实例                               |
 | `ability_task/context.rs`                   | 公开的 Task 共享 source/spec handle/level 轻量执行上下文；目标由父活跃实例持有 |
-| `ability_task/definition.rs`                | Instant/WaitTicks 定义和完成动作定义                                           |
+| `ability_task/definition.rs`                | Instant/WaitTicks 与完成动作定义；显式栈迭代实例化并保留 Batch 层级                                           |
 | `ability_task/state.rs`                     | 运行时 Task Component 与 action-only 完成枚举                                  |
 | `ability_task/event.rs` | startup 与运行时任务共用的公开事件数据和访问方法 |
-| `ability_task/completion.rs`                | 使用轻量 context 与父 Active targets 向 Event/Effect/Ability 请求分派完成动作  |
-| `ability_task/ticking.rs`                   | Task 稳定推进与清理                                                            |
+| `ability_task/completion.rs`                | 借用动作树，以显式 DFS 栈向 Event/Effect/Ability 分派请求；End 截断遍历  |
+| `ability_task/ticking.rs`                   | Task 稳定推进、借用完成数据分派与清理，不克隆整棵动作树                                                            |
 | `ability_system/component.rs`               | ASC 规格存储和显式 `GameplayAbilitySystemBundle`                               |
 | `ability_system/params.rs`                  | `AbilitySystemParams` 和同 batch pending overlay                               |
 | `ability_system/activation/*`               | 错误、只读预检、startup task 和同步/batch 激活                                      |
@@ -364,20 +377,48 @@ commit 和生命周期编排的流程：
 输入生产系统由游戏配置，在 `RequestProducers` 将动作解析成 Handle 后写入统一队列；ASC
 生命周期不反向查询输入组件。详细职责见 [18 — 技能输入绑定](./18-ability-input-bindings.md)。
 
+### Gameplay Position
+
+`gameplay_position.rs` 门面拥有权威位置与可选表现适配，不依赖 Targeting、Ability 或 Effect。
+
+| 文件 | 主要所有权 |
+| --- | --- |
+| `gameplay_position/logical_position.rs` | `LogicalPosition` 世界坐标组件，与表现变换独立 |
+| `gameplay_position/presentation.rs` | `PositionPresentation`、FixedFirst 历史采集、PostUpdate 单向同步/插值 |
+| `gameplay_position/plugin.rs` | 独立 PositionPresentationPlugin，统一安装表现系统和逻辑位置 Discard 历史重置 Observer |
+| `gameplay_position/error.rs` | 非法表现配置与逻辑位置错误 |
+
+Targeting 跨领域读取 `LogicalPosition`，不读取表现 Transform。表现只支持无 `ChildOf` 的
+根实体，子视觉节点由 Bevy 官方变换传播处理；不自动为逻辑位置添加表现组件。
+常用的 `LogicalPosition` / `PositionPresentation` / `PositionPresentationPlugin` 进入 prelude，
+错误和系统函数经领域门面、GAS 聚合门面和 crate root 显式导出。表现插件拥有 FixedFirst 与
+PostUpdate 的安装，不反向依赖 GAS Runtime；默认 GAS 组包含它，也允许单独禁用。
+游戏移动归属于 Runtime 的公开 `Movement` 阶段，先于任务和请求生产。
+
 ### Targeting 与统一 Execution
 
 | 文件                             | 主要所有权                                                                           |
 | -------------------------------- | ------------------------------------------------------------------------------------ |
+| `runtime.rs`                     | 私有 install_targeting 入口：索引/FIFO 资源、空间 Discard Observer、同步及请求处理系统 |
 | `ability_target_data.rs`         | 稳定排序的 Hit 与多目标结果                                                          |
 | `activation_targets.rs`          | single/acquired 唯一激活目标值、非空验证和统一目标遍历                             |
 | `targeting_definition.rs`        | Targetable 与操作管线定义、验证                                                   |
-| `acquisition.rs`                 | 同步候选查询、选择、过滤、排序和限制                                                 |
+| `acquisition.rs`                 | TargetingSystemParams、树候选精筛、过滤、排序和限制 |
+| `spatial_index.rs`               | 空间索引门面，显式重导出 Resource 和同步系统 |
+| `spatial_index/index.rs`         | TargetingSpatialIndex、组件变化同步与 Discard 清理 |
+| `spatial_index/tree.rs`          | 私有动态 AABB 树、Fat AABB 代理和节点管理 |
 | `targeting_queue/request.rs`     | 请求输入、continuation、ID 和结果 Event                                              |
 | `targeting_queue/queue.rs`       | FIFO Resource 与入队 API                                                             |
 | `targeting_queue/processing.rs`  | 整批抓取、抓取目标转换、continuation 便捷入队和结果通知                              |
 | `gameplay_execution/request.rs`  | 只以 handle + activation data 保存 Ability 请求的具体请求类型、Effect 请求与统一枚举 |
 | `gameplay_execution/queue.rs`    | 跨类型 FIFO、便捷参数到 `AbilityActivationData` 的组装和 Ability chain ID 分配       |
 | `gameplay_execution/resolver.rs` | 完整 drain、逐请求 Requirement 收敛和 System 包装                                    |
+
+`TargetingSpatialIndex` 只保存 `LogicalPosition` 派生空间数据；标签和属性仍在候选组件中读取。Sphere/Cone
+统一使用动态树候选，不维护扫描后端；Self/Explicit 直接查询已知 Entity。公共同步入口
+`acquire_targets()` 接收 `&TargetingSystemParams`，由调用方保证先完成空间同步。
+Targeting 安装细节只在领域内部维护，Runtime 调用安装入口并拥有跨领域 SystemSet 顺序；
+新增索敌内部资源或 Observer 时无需把其类型继续提升到 Runtime 的导入列表。
 
 具体请求由 `gameplay_execution` 拥有。Ability System 和 Gameplay Effects 门面仅为兼容调用方
 重导出各自请求类型，不再保存重复请求文件。
@@ -452,6 +493,7 @@ commit 和生命周期编排的流程：
 | Ability 定义/实例/task     | `gameplay_abilities/`                            | `abilities_test/*`                            | 07、08   |
 | ASC 激活/commit/lifecycle  | `ability_system/`                                | `abilities_test/*`                            | 09       |
 | 输入动作绑定、重绑和清理   | `ability_input/bindings.rs`                      | `ability_input_test.rs`                       | 18       |
+| 逻辑位置、表现同步与插值   | `gameplay_position/`                             | `gameplay_position_test.rs`                   | 02、15   |
 | 目标管线与队列             | `gameplay_targeting/`                            | `gameplay_targeting_test.rs`                  | 15       |
 | 统一 FIFO 与阶段可见性     | `gameplay_execution/`、`runtime_plugin/runtime.rs`       | `queues_test.rs`、`runtime_paths_test.rs`     | 02、16   |
 | 公共导出/prelude           | 各门面、`src/gas.rs`、`src/lib.rs`、`prelude.rs` | 全目标编译/rustdoc                            | 11、17   |

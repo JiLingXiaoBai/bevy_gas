@@ -14,10 +14,10 @@ Ability Task 编排活跃技能中的定时行为。startup `Instant` 的效果�
 | ---- | ---- |
 | `ability_task.rs` | 门面与显式重导出 |
 | `context.rs` | 公开的任务共享执行上下文 |
-| `definition.rs` | 资产定义 `AbilityTaskDef`、`AbilityTaskOnFinishedDef` 及实例化 |
+| `definition.rs` | 资产定义 `AbilityTaskDef`、`AbilityTaskOnFinishedDef` 及保留嵌套结构的迭代实例化 |
 | `state.rs` | 跨 tick 的 Component、任务种类和仅保存动作数据的完成枚举 |
 | `event.rs` | 公开的 `AbilityTaskEvent` 数据与访问方法，由 startup 和运行时任务共用 |
-| `completion.rs` | 仅向任务模块内部开放的完成分派与 Gameplay 请求生产 |
+| `completion.rs` | 借用完成动作，通过显式栈按深度优先顺序生产 Gameplay 请求 |
 | `ticking.rs` | 按稳定实体顺序推进运行时任务 |
 
 startup `Instant` 由 `ability_system/activation` 的迭代执行栈处理；运行时任务由
@@ -68,6 +68,10 @@ Task 实例不持有完整 `AbilityActivationTargets`：startup Instant 完成�
 `AbilityActivationData` 借用，跨 tick task 完成动作从父 `ActiveGameplayAbility` 的同类数据
 借用，避免每个 task 再保存一份可能包含 `Vec` 的抓取数据。两条路径的效果 payload 都从其中的
 激活上下文继承 Instigator、Causer 与来源属性快照。
+
+嵌套 Batch 的实例化使用待填充动作引用栈迭代转换，保留 Batch 层级、空 Batch 和兄弟顺序；
+`get_on_finished()` 仍能读取与定义对应的嵌套结构，不会为了执行便利将公共动作树拍平。
+Effect 定义继续通过 `Arc` 共享。
 
 ## 运行时状态
 
@@ -159,6 +163,14 @@ startup definitions 按定义顺序处理。每个 Instant 效果结算并收敛
 两条路径都不提供事务回滚。单个效果或链式子激活失败后，仍可执行后续动作；已经成功的效果
 不会回滚。Batch 也不会改变 EmitEvent 的 deferred 时机。
 
+运行时完成分派直接借用任务的动作树，通过显式待执行引用栈按深度优先顺序遍历，
+不再为每次完成克隆整个 Batch，也不递归调用完成分派函数。遇到 EndAbility 立即停止整个
+完成动作遍历；其前方已入队的请求保留。单动作路径不向空栈添加元素，因此该工作栈不分配堆内存；
+Batch 遍历仍可能分配工作栈，效果/事件/激活请求也仍按其所有权需求持有 Arc 或目标数据。
+
+这只消除了动作实例化和运行时分派的函数递归。公开动作枚举、AbilityTask 的 Clone/Drop
+仍保留递归结构，未承诺任意嵌套深度下的整体栈安全；配置层仍应避免不必要的极深 Batch。
+
 独立 sibling 任务仍按 Entity bits 排序，不能通过创建多个同 tick WaitTicks 表达策划的动作顺序。
 游戏的配置编译层应将同一技能、同一完成 tick 的动作按明确顺序合为一个 Batch；
 不同 tick 仍相对激活时点并行计时。配置与运行时的衔接见
@@ -172,7 +184,7 @@ startup definitions 按定义顺序处理。每个 Instant 效果结算并收敛
 2. 重新取得每个任务；若父活跃技能不存在，排队销毁任务。
 3. 若父技能不是 `Active`，排队销毁任务，不执行完成动作。
 4. `Instant` 立即完成；`WaitTicks` 在大于零时递减，并在结果为零时完成。
-5. 完成后分派 `on_finished`，然后排队销毁任务实体。
+5. 完成后借用 `on_finished` 迭代分派，释放只读借用后处理结束状态，再排队销毁任务实体。
 6. `EndAbility` 会把父技能设为 `Ending`；默认插件稍后的 `Cleanup` 阶段负责 ASC bookkeeping
    和递归销毁。
 
@@ -256,7 +268,7 @@ task_commands.set_parent_in_place(active_ability);
 
 | 测试文件 | 覆盖范围 |
 | -------- | -------- |
-| `tests/gas_test/abilities_test/tasks_test.rs` | Wait tick 计数、startup 同步动作、`EndAbility` 截断 sibling、嵌套 Batch 与运行时已入队效果保留 |
+| `tests/gas_test/abilities_test/tasks_test.rs` | Wait tick、startup 同步动作、64 层 Batch 的实例化结构/DFS 顺序、空 Batch、startup/runtime End 截断及 FIFO 延迟 |
 | `tests/gas_test/abilities_test/lifecycle_test.rs` | 父技能结束时递归清理 startup task |
 | `tests/gas_test/queues_test.rs` | 缺失父实例、效果/技能入队、上下文继承和 Event payload |
 | `tests/gas_test/runtime_paths_test.rs` | startup `Instant` 同 tick 与 `WaitTicks` 跨 tick |
