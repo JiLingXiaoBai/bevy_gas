@@ -17,11 +17,15 @@ pub use super::gameplay_effects::{
     GameplayEffect, StackingPolicy,
 };
 pub use super::gameplay_execution::{GameplayExecutionQueue, GameplayExecutionResult};
+pub use super::gameplay_position::{
+    LogicalPosition, PositionPresentation, PositionPresentationPlugin,
+};
 pub use super::gameplay_tags::{
     GameplayTag, GameplayTagContainer, GameplayTagRegister, TagRequirements,
 };
 pub use super::gameplay_targeting::{
     AbilityActivationTargets, AbilityTargetData, TargetingDefinition, TargetingRequestQueue,
+    TargetingSystemParams,
 };
 pub use super::modifiers::{
     Modifier, ModifierEvaluationContext, ModifierMagnitude, ModifierMagnitudeCalculation,

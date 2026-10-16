@@ -75,10 +75,22 @@ pub enum TargetingError {
     InvalidDefinition,
     InvalidOrigin,
     InvalidDirection,
-    MissingSource { source: Entity },
+    /// Range acquisition was attempted before the first spatial-index synchronization.
+    SpatialIndexNotReady,
+    /// A directly selected entity has non-finite world-space coordinates.
+    InvalidTargetPosition {
+        target: Entity,
+    },
+    MissingSource {
+        source: Entity,
+    },
     MissingExplicitTarget,
-    TargetNotFound { target: Entity },
-    TargetNotTargetable { target: Entity },
+    TargetNotFound {
+        target: Entity,
+    },
+    TargetNotTargetable {
+        target: Entity,
+    },
     NoTargetsFound,
 }
 
@@ -88,10 +100,16 @@ impl fmt::Display for TargetingError {
             Self::InvalidDefinition => write!(f, "targeting definition is not valid"),
             Self::InvalidOrigin => write!(f, "targeting origin must contain finite coordinates"),
             Self::InvalidDirection => write!(f, "targeting direction must be finite and non-zero"),
+            Self::SpatialIndexNotReady => {
+                write!(f, "targeting spatial index has not been synchronized")
+            }
+            Self::InvalidTargetPosition { target } => {
+                write!(f, "target {target:?} has a non-finite world-space position")
+            }
             Self::MissingSource { source } => {
                 write!(
                     f,
-                    "targeting source {source:?} does not have a GlobalTransform"
+                    "targeting source {source:?} does not have a LogicalPosition"
                 )
             }
             Self::MissingExplicitTarget => {
@@ -100,7 +118,7 @@ impl fmt::Display for TargetingError {
             Self::TargetNotFound { target } => {
                 write!(
                     f,
-                    "target entity {target:?} does not have a GlobalTransform"
+                    "target entity {target:?} does not have a LogicalPosition"
                 )
             }
             Self::TargetNotTargetable { target } => {

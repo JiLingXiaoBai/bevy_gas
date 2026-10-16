@@ -6,6 +6,7 @@ pub mod attributes;
 pub mod gameplay_abilities;
 pub mod gameplay_effects;
 pub mod gameplay_execution;
+pub mod gameplay_position;
 pub mod gameplay_tags;
 pub mod gameplay_targeting;
 pub mod modifiers;
@@ -57,6 +58,10 @@ pub use gameplay_execution::{
     gameplay_execution_queue_has_work, process_gameplay_execution_queue_system,
     process_gameplay_execution_queue_with_costs_system,
 };
+pub use gameplay_position::{
+    LogicalPosition, PositionPresentation, PositionPresentationError, PositionPresentationPlugin,
+    capture_logical_position_history_system, sync_position_presentation_system,
+};
 pub use gameplay_tags::{
     BLOCK_SIZE_EXPONENT, GameplayTag, GameplayTagBits, GameplayTagContainer, GameplayTagError,
     GameplayTagManager, GameplayTagRegister, MAX_TAG_BLOCKS, MAX_TAG_COUNTS, TAG_BITS_PER_BLOCK,
@@ -67,7 +72,9 @@ pub use gameplay_targeting::{
     Targetable, TargetingCandidateQuery, TargetingContinuation, TargetingDefinition,
     TargetingDefinitionError, TargetingError, TargetingInput, TargetingOperation,
     TargetingRequestId, TargetingRequestQueue, TargetingResultEvent, TargetingSortOrder,
-    acquire_targets, process_targeting_request_queue_system, targeting_request_queue_has_work,
+    TargetingSpatialIndex, TargetingSystemParams, acquire_targets,
+    process_targeting_request_queue_system, sync_targeting_spatial_index_system,
+    targeting_request_queue_has_work,
 };
 pub use modifiers::{
     AppliedModifier, Modifier, ModifierEvaluationContext, ModifierMagnitude,

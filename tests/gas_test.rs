@@ -24,3 +24,6 @@ mod runtime_paths_test;
 
 #[path = "gas_test/ability_input_test.rs"]
 mod ability_input_test;
+
+#[path = "gas_test/gameplay_position_test.rs"]
+mod gameplay_position_test;

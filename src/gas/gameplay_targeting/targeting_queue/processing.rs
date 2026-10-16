@@ -1,4 +1,4 @@
-use super::super::{AbilityActivationTargets, TargetingCandidateQuery, acquire_targets};
+use super::super::{AbilityActivationTargets, TargetingSystemParams, acquire_targets};
 use super::{TargetingContinuation, TargetingRequestQueue, TargetingResultEvent};
 use crate::gameplay_execution::GameplayExecutionQueue;
 use bevy::prelude::*;
@@ -8,10 +8,10 @@ pub fn process_targeting_request_queue_system(
     mut commands: Commands,
     mut targeting_queue: ResMut<TargetingRequestQueue>,
     mut execution_queue: ResMut<GameplayExecutionQueue>,
-    query: TargetingCandidateQuery,
+    params: TargetingSystemParams,
 ) {
     while let Some(request) = targeting_queue.pop() {
-        let result = acquire_targets(request.source, request.input, &request.definition, &query);
+        let result = acquire_targets(request.source, request.input, &request.definition, &params);
 
         if let Ok(target_data) = &result
             && let TargetingContinuation::ActivateAbility { handle, context } = request.continuation

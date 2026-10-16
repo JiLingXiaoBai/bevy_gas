@@ -8,6 +8,10 @@ pub mod gas;
 mod randoms;
 mod unique_names;
 
+pub use gas::gameplay_position::{
+    LogicalPosition, PositionPresentation, PositionPresentationError, PositionPresentationPlugin,
+    capture_logical_position_history_system, sync_position_presentation_system,
+};
 pub use gas::{
     ATTRIBUTE_SET_SIZE, AbilityActivationCheckError, AbilityActivationCheckParams,
     AbilityActivationContext, AbilityActivationData, AbilityActivationError,
@@ -42,19 +46,20 @@ pub use gas::{
     TAG_BITS_PER_BLOCK, TagRequirements, Targetable, TargetingCandidateQuery,
     TargetingContinuation, TargetingDefinition, TargetingDefinitionError, TargetingError,
     TargetingInput, TargetingOperation, TargetingRequestId, TargetingRequestQueue,
-    TargetingResultEvent, TargetingSortOrder, UniqueNamePlugin, ability_input, ability_system,
-    acquire_targets, add_bit_with_tag, apply_gameplay_effect, attributes, can_activate_ability,
-    cancel_ability, cleanup_finished_abilities_system, commit_ability, default_executor,
-    end_ability, execute_gameplay_effect_plan, gameplay_abilities, gameplay_effects,
-    gameplay_execution, gameplay_execution_queue_has_work, gameplay_tags, gameplay_targeting,
+    TargetingResultEvent, TargetingSortOrder, TargetingSpatialIndex, TargetingSystemParams,
+    UniqueNamePlugin, ability_input, ability_system, acquire_targets, add_bit_with_tag,
+    apply_gameplay_effect, attributes, can_activate_ability, cancel_ability,
+    cleanup_finished_abilities_system, commit_ability, default_executor, end_ability,
+    execute_gameplay_effect_plan, gameplay_abilities, gameplay_effects, gameplay_execution,
+    gameplay_execution_queue_has_work, gameplay_position, gameplay_tags, gameplay_targeting,
     get_active_effects_on_target, has_active_effect_with_tags, modifiers, prelude,
     prepare_gameplay_effect, process_gameplay_execution_queue_system,
     process_gameplay_execution_queue_with_costs_system, process_targeting_request_queue_system,
     recalculate_attribute_sets_system, remove_active_effect, remove_active_effects_with_tags,
-    resolve_active_effect_tag_requirements, settings, tag_bits_from_tags,
-    tag_bits_from_tags_with_manager, targeting_request_queue_has_work, tick_ability_tasks_system,
-    tick_effect_duration_system, tick_effect_period_system, try_activate_ability_by_handle,
-    update_active_effect_tag_requirements_system,
+    resolve_active_effect_tag_requirements, settings, sync_targeting_spatial_index_system,
+    tag_bits_from_tags, tag_bits_from_tags_with_manager, targeting_request_queue_has_work,
+    tick_ability_tasks_system, tick_effect_duration_system, tick_effect_period_system,
+    try_activate_ability_by_handle, update_active_effect_tag_requirements_system,
 };
 pub use randoms::Random;
 pub use unique_names::{UniqueName, UniqueNameError, UniqueNamePool};

@@ -2,11 +2,15 @@ use super::{
     GameplayAbilitySystemRuntimePlugin, GameplayTagPlugin, RandomPlugin, UniqueNamePlugin,
 };
 use crate::ability_system::AdditionalCostProvider;
+use crate::gameplay_position::PositionPresentationPlugin;
 use bevy::app::PluginGroupBuilder;
 use bevy::prelude::*;
 use std::marker::PhantomData;
 
-/// Plugin group containing all resources and runtime systems required by GAS.
+/// Plugin group containing GAS resources, runtime systems, and optional position presentation.
+///
+/// Disable [`PositionPresentationPlugin`] on the group builder for simulation-only applications
+/// or when the game supplies its own presentation systems.
 pub struct GameplayAbilitySystemPlugin;
 
 impl PluginGroup for GameplayAbilitySystemPlugin {
@@ -16,6 +20,7 @@ impl PluginGroup for GameplayAbilitySystemPlugin {
             .add(GameplayTagPlugin)
             .add(RandomPlugin)
             .add(GameplayAbilitySystemRuntimePlugin)
+            .add(PositionPresentationPlugin)
     }
 }
 
@@ -39,5 +44,6 @@ impl<P: AdditionalCostProvider> PluginGroup for ConfiguredAbilitySystemPlugin<P>
             .add(GameplayTagPlugin)
             .add(RandomPlugin)
             .add(GameplayAbilitySystemRuntimePlugin::with_additional_costs::<P>())
+            .add(PositionPresentationPlugin)
     }
 }

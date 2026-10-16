@@ -14,13 +14,14 @@ use crate::gameplay_execution::{
     GameplayExecutionQueue, GameplayExecutionResult, gameplay_execution_queue_has_work,
     process_gameplay_execution_queue_system, process_gameplay_execution_queue_with_costs_system,
 };
-use crate::gameplay_targeting::{
-    TargetingRequestQueue, process_targeting_request_queue_system, targeting_request_queue_has_work,
-};
+use crate::gameplay_targeting::install_targeting;
 use bevy::prelude::*;
 use std::marker::PhantomData;
 
-/// Installs the fixed-tick GAS runtime resources, phases, and systems.
+/// Installs the fixed-tick GAS runtime without position-presentation systems.
+///
+/// The complete GAS plugin group also installs [`crate::PositionPresentationPlugin`].
+/// When installing this runtime directly, add that plugin separately if presentation is needed.
 pub struct GameplayAbilitySystemRuntimePlugin;
 
 /// Ordered phases of the fixed-tick GAS runtime pipeline.
@@ -28,10 +29,15 @@ pub struct GameplayAbilitySystemRuntimePlugin;
 pub enum GameplayAbilitySystemSet {
     /// Advances effect duration, requirements, and period state.
     EffectTicks,
+    /// Updates authoritative logical positions before tasks and request producers sample them.
+    /// Structural commands from this phase are applied before those later phases.
+    Movement,
     /// Runs built-in ability tasks that can produce gameplay requests.
     AbilityTasks,
     /// Public phase for gameplay request-producing systems.
     RequestProducers,
+    /// Synchronizes target spatial proxies after movement and request production.
+    TargetingSpatialSync,
     /// Runs targeting work that may produce gameplay requests.
     Targeting,
     /// Converges externally changed tags before gameplay requests are consumed.
@@ -88,6 +94,7 @@ impl<P: AdditionalCostProvider> Plugin for ConfiguredRuntimePlugin<P> {
 }
 
 fn install_runtime(app: &mut App) {
+    install_targeting(app);
     app.init_resource::<AttributeIdManager>()
         .init_resource::<GameplayExecutionQueue>()
         .add_message::<GameplayExecutionResult>()
@@ -95,18 +102,19 @@ fn install_runtime(app: &mut App) {
         .init_resource::<ActiveEffectStorageRegistry>()
         .init_resource::<EffectRequirementDiagnostics>()
         .init_resource::<PendingActiveGameplayAbilities>()
-        .init_resource::<TargetingRequestQueue>()
         .add_observer(invalidate_effect_requirements_on_tag_discard)
         .add_observer(cleanup_discarded_active_ability)
         .add_observer(cleanup_discarded_ability_system)
         .configure_sets(
             FixedUpdate,
             (
-                GameplayAbilitySystemSet::EffectTicks
-                    .before(GameplayAbilitySystemSet::AbilityTasks),
+                GameplayAbilitySystemSet::EffectTicks.before(GameplayAbilitySystemSet::Movement),
+                GameplayAbilitySystemSet::Movement.before(GameplayAbilitySystemSet::AbilityTasks),
                 GameplayAbilitySystemSet::AbilityTasks
                     .before(GameplayAbilitySystemSet::RequestProducers),
                 GameplayAbilitySystemSet::RequestProducers
+                    .before(GameplayAbilitySystemSet::TargetingSpatialSync),
+                GameplayAbilitySystemSet::TargetingSpatialSync
                     .before(GameplayAbilitySystemSet::Targeting),
                 GameplayAbilitySystemSet::Targeting
                     .before(GameplayAbilitySystemSet::PreGameplayConvergence),
@@ -136,12 +144,6 @@ fn install_runtime(app: &mut App) {
         .add_systems(
             FixedUpdate,
             tick_ability_tasks_system.in_set(GameplayAbilitySystemSet::AbilityTasks),
-        )
-        .add_systems(
-            FixedUpdate,
-            process_targeting_request_queue_system
-                .run_if(targeting_request_queue_has_work)
-                .in_set(GameplayAbilitySystemSet::Targeting),
         )
         .add_systems(
             FixedUpdate,
