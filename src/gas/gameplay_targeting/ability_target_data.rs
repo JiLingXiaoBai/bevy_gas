@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-/// One spatial hit produced by a targeting request.
+/// One entity target with spatial metadata supplied by a game adapter.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct AbilityTargetHit {
     entity: Entity,
@@ -9,7 +9,10 @@ pub struct AbilityTargetHit {
 }
 
 impl AbilityTargetHit {
-    /// Creates an entity hit at a world-space position.
+    /// Creates a target for `entity` with a game-supplied world-space `position` and optional normal.
+    ///
+    /// The position may be an aim point or a contact point, as defined by the producer. This
+    /// constructor performs no entity, geometry, or numeric validation and requires no components.
     pub fn new(entity: Entity, position: Vec3, normal: Option<Vec3>) -> Self {
         Self {
             entity,
@@ -34,7 +37,10 @@ impl AbilityTargetHit {
     }
 }
 
-/// Deterministically ordered target data produced by a targeting request.
+/// Captured target data in the order supplied by the game.
+///
+/// Games own selection, stable ordering, duplicate handling, and geometry validation. GAS does
+/// not run a spatial query or revalidate contact when consuming this data.
 #[derive(Debug, Clone, PartialEq)]
 pub struct AbilityTargetData {
     origin: Vec3,
@@ -42,7 +48,9 @@ pub struct AbilityTargetData {
 }
 
 impl AbilityTargetData {
-    /// Creates target data from a request origin and ordered hits.
+    /// Creates target data from a world-space `origin` and ordered `hits`.
+    ///
+    /// Returns the supplied data unchanged; it does not sort, deduplicate, or validate hits.
     pub fn new(origin: Vec3, hits: Vec<AbilityTargetHit>) -> Self {
         Self { origin, hits }
     }
@@ -52,7 +60,7 @@ impl AbilityTargetData {
         self.origin
     }
 
-    /// Returns all hits in deterministic selection order.
+    /// Returns all hits in the order supplied by the producer.
     pub fn get_hits(&self) -> &[AbilityTargetHit] {
         &self.hits
     }
@@ -62,7 +70,7 @@ impl AbilityTargetData {
         self.hits.first().map(AbilityTargetHit::get_entity)
     }
 
-    /// Iterates over targeted entities in deterministic selection order.
+    /// Iterates over targeted entities in the order supplied by the producer.
     pub fn entities(&self) -> impl Iterator<Item = Entity> + '_ {
         self.hits.iter().map(AbilityTargetHit::get_entity)
     }

@@ -3,7 +3,6 @@
 //! The prelude is intentionally small. Specialized systems, errors, and
 //! low-level runtime types remain available from their owning domain modules.
 
-pub use super::ability_input::AbilityInputBindings;
 pub use super::ability_system::{
     AbilityActivationCheckParams, AbilitySystemComponent, AbilitySystemParams,
     GameplayAbilitySystemBundle,
@@ -17,16 +16,10 @@ pub use super::gameplay_effects::{
     GameplayEffect, StackingPolicy,
 };
 pub use super::gameplay_execution::{GameplayExecutionQueue, GameplayExecutionResult};
-pub use super::gameplay_position::{
-    LogicalPosition, PositionPresentation, PositionPresentationPlugin,
-};
 pub use super::gameplay_tags::{
     GameplayTag, GameplayTagContainer, GameplayTagRegister, TagRequirements,
 };
-pub use super::gameplay_targeting::{
-    AbilityActivationTargets, AbilityTargetData, TargetingDefinition, TargetingRequestQueue,
-    TargetingSystemParams,
-};
+pub use super::gameplay_targeting::{AbilityActivationTargets, AbilityTargetData};
 pub use super::modifiers::{
     Modifier, ModifierEvaluationContext, ModifierMagnitude, ModifierMagnitudeCalculation,
     ModifierOperation,

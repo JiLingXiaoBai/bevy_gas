@@ -1,5 +1,3 @@
-use bevy::math::Quat;
-use bevy::shape::Sphere;
 use bevy_gas::Random;
 
 #[test]
@@ -19,29 +17,4 @@ fn random_bool_respects_extreme_probabilities() {
 
     assert!(!random.random_bool(0.0));
     assert!(random.random_bool(1.0));
-}
-
-#[test]
-fn bevy_math_and_shape_sampling_is_seeded_and_respects_geometry() {
-    let mut first = Random::from_seed(42);
-    let mut second = Random::from_seed(42);
-    let sphere = Sphere::new(2.5);
-    let tolerance = 1e-5;
-
-    for _ in 0..16 {
-        let rotation = first.from_rng::<Quat>();
-        assert_eq!(rotation, second.from_rng::<Quat>());
-        assert!(rotation.is_finite());
-        assert!((rotation.length_squared() - 1.0).abs() < tolerance);
-
-        let interior = first.sample_interior(&sphere);
-        assert_eq!(interior, second.sample_interior(&sphere));
-        assert!(interior.is_finite());
-        assert!(interior.length() <= sphere.radius + tolerance);
-
-        let boundary = first.sample_boundary(&sphere);
-        assert_eq!(boundary, second.sample_boundary(&sphere));
-        assert!(boundary.is_finite());
-        assert!((boundary.length() - sphere.radius).abs() < tolerance);
-    }
 }

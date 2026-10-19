@@ -5,9 +5,4 @@ edition = "2024"
 
 [dependencies]
 bevy = { version = "0.20.0", default-features = false, features = ["std", "multi_threaded", "bevy_log"] }
-# Preserve Bevy's math and shape sampling APIs without enabling rendering features.
-bevy_shape = { version = "0.20.0", default-features = false, features = ["rand"] }
 rand = "0.10.2"
-
-[dev-dependencies]
-bevy = { version = "0.20.0", default-features = false, features = ["keyboard"] }

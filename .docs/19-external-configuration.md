@@ -13,13 +13,14 @@
 1. 安装 `GameplayAbilitySystemPlugin`，准备名称、标签和属性注册资源。
 2. 游戏读取并校验自己的数据，以确定顺序注册标签、属性和额外资源名称。
    常规系统可使用 `GameplayTagRegister`、`AttributeIdRegister` 与 `UniqueNamePool`。
-3. 构造 `Modifier`、`GameplayEffect`、`GameplayAbility` 和 `TargetingDefinition`，
-   通过 `Arc` 共享定义；游戏的 Resource 保存稳定配置 ID 到定义的映射。
+3. 构造 `Modifier`、`GameplayEffect` 和 `GameplayAbility`，通过 `Arc` 共享定义；
+   游戏另行构造自己的索敌规则，Resource 保存稳定配置 ID 到相应定义的映射。
 4. 创建 `GameplayAbilitySystemBundle`，初始化属性，再通过
    `AbilitySystemComponent::give_ability()` 授予技能，处理 `AbilityGrantError` 后保存成功返回的
    `AbilitySpecHandle`；耗尽时不会回绕或复用旧编号。
-5. 游戏系统在 `GameplayAbilitySystemSet::RequestProducers` 产生目标或激活请求，
-   由公开 `TargetingRequestQueue`、`GameplayExecutionQueue` 进入固定 tick 运行时。
+5. 游戏系统在 `GameplayAbilitySystemSet::RequestProducers` 或其他明确排序的阶段生成目标，
+   将 Entity / `AbilityTargetData` 转为激活输入，通过 `GameplayExecutionQueue` 进入固定 tick 运行时。
+   模板的 `TargetingDefinition`、`TargetingRequestQueue` 与 `TargetingPlugin` 由模板自己拥有。
 
 游戏配置 ID 与运行时 Handle 分开保存。名称、标签、属性和技能 Handle 属于当前 World，
 不应直接当作跨存档的稳定编号。同一个逻辑效果应复用同一份 `Arc<GameplayEffect>`，
@@ -54,3 +55,6 @@
 修改依赖后，先运行本库测试，再运行游戏的配置验证和玩法回归。
 旧版库内的配置模块和工具已经移出，既有调用方需把对应配置代码迁入游戏工程，
 保留对上述 GAS 公共接口的调用。
+
+位置、空间索敌和可选表现也已迁入模板；只保留目标数据契约在 GAS。调用方导入与插件安装
+调整见 [15 — 从旧版库内索敌迁移](./15-gameplay-targeting.md#从旧版库内索敌迁移)。

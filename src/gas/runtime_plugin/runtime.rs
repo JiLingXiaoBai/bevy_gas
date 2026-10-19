@@ -14,14 +14,13 @@ use crate::gameplay_execution::{
     GameplayExecutionQueue, GameplayExecutionResult, gameplay_execution_queue_has_work,
     process_gameplay_execution_queue_system, process_gameplay_execution_queue_with_costs_system,
 };
-use crate::gameplay_targeting::install_targeting;
+use bevy::ecs::system::ScheduleSystem;
 use bevy::prelude::*;
 use std::marker::PhantomData;
 
-/// Installs the fixed-tick GAS runtime without position-presentation systems.
+/// Installs the fixed-tick GAS execution runtime independently of spatial gameplay systems.
 ///
-/// The complete GAS plugin group also installs [`crate::PositionPresentationPlugin`].
-/// When installing this runtime directly, add that plugin separately if presentation is needed.
+/// Games supply target acquisition, movement, collision detection, and presentation separately.
 pub struct GameplayAbilitySystemRuntimePlugin;
 
 /// Ordered phases of the fixed-tick GAS runtime pipeline.
@@ -29,17 +28,10 @@ pub struct GameplayAbilitySystemRuntimePlugin;
 pub enum GameplayAbilitySystemSet {
     /// Advances effect duration, requirements, and period state.
     EffectTicks,
-    /// Updates authoritative logical positions before tasks and request producers sample them.
-    /// Structural commands from this phase are applied before those later phases.
-    Movement,
     /// Runs built-in ability tasks that can produce gameplay requests.
     AbilityTasks,
     /// Public phase for gameplay request-producing systems.
     RequestProducers,
-    /// Synchronizes target spatial proxies after movement and request production.
-    TargetingSpatialSync,
-    /// Runs targeting work that may produce gameplay requests.
-    Targeting,
     /// Converges externally changed tags before gameplay requests are consumed.
     PreGameplayConvergence,
     /// Drains the deterministic gameplay execution FIFO.
@@ -54,13 +46,7 @@ pub enum GameplayAbilitySystemSet {
 
 impl Plugin for GameplayAbilitySystemRuntimePlugin {
     fn build(&self, app: &mut App) {
-        install_runtime(app);
-        app.add_systems(
-            FixedUpdate,
-            process_gameplay_execution_queue_system
-                .run_if(gameplay_execution_queue_has_work)
-                .in_set(GameplayAbilitySystemSet::GameplayResolve),
-        );
+        install_runtime(app, process_gameplay_execution_queue_system);
     }
 }
 
@@ -79,13 +65,7 @@ struct ConfiguredRuntimePlugin<P>(PhantomData<fn() -> P>);
 
 impl<P: AdditionalCostProvider> Plugin for ConfiguredRuntimePlugin<P> {
     fn build(&self, app: &mut App) {
-        install_runtime(app);
-        app.add_systems(
-            FixedUpdate,
-            process_gameplay_execution_queue_with_costs_system::<P>
-                .run_if(gameplay_execution_queue_has_work)
-                .in_set(GameplayAbilitySystemSet::GameplayResolve),
-        );
+        install_runtime(app, process_gameplay_execution_queue_with_costs_system::<P>);
     }
 
     fn name(&self) -> &str {
@@ -93,8 +73,7 @@ impl<P: AdditionalCostProvider> Plugin for ConfiguredRuntimePlugin<P> {
     }
 }
 
-fn install_runtime(app: &mut App) {
-    install_targeting(app);
+fn install_runtime<M>(app: &mut App, resolver: impl IntoScheduleConfigs<ScheduleSystem, M>) {
     app.init_resource::<AttributeIdManager>()
         .init_resource::<GameplayExecutionQueue>()
         .add_message::<GameplayExecutionResult>()
@@ -108,15 +87,11 @@ fn install_runtime(app: &mut App) {
         .configure_sets(
             FixedUpdate,
             (
-                GameplayAbilitySystemSet::EffectTicks.before(GameplayAbilitySystemSet::Movement),
-                GameplayAbilitySystemSet::Movement.before(GameplayAbilitySystemSet::AbilityTasks),
+                GameplayAbilitySystemSet::EffectTicks
+                    .before(GameplayAbilitySystemSet::AbilityTasks),
                 GameplayAbilitySystemSet::AbilityTasks
                     .before(GameplayAbilitySystemSet::RequestProducers),
                 GameplayAbilitySystemSet::RequestProducers
-                    .before(GameplayAbilitySystemSet::TargetingSpatialSync),
-                GameplayAbilitySystemSet::TargetingSpatialSync
-                    .before(GameplayAbilitySystemSet::Targeting),
-                GameplayAbilitySystemSet::Targeting
                     .before(GameplayAbilitySystemSet::PreGameplayConvergence),
                 GameplayAbilitySystemSet::PreGameplayConvergence
                     .before(GameplayAbilitySystemSet::GameplayResolve),
@@ -165,5 +140,11 @@ fn install_runtime(app: &mut App) {
             FixedUpdate,
             recalculate_attribute_sets_system
                 .in_set(GameplayAbilitySystemSet::RecalculateAttributes),
+        )
+        .add_systems(
+            FixedUpdate,
+            resolver
+                .run_if(gameplay_execution_queue_has_work)
+                .in_set(GameplayAbilitySystemSet::GameplayResolve),
         );
 }

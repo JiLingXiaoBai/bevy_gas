@@ -1,11 +1,12 @@
 use super::{AbilityActivationTargetsError, AbilityTargetData};
 use bevy::prelude::Entity;
 
-/// Owns the complete, validated target selection for one ability activation.
+/// Owns the complete, non-empty target selection for one ability activation.
 ///
 /// A selection is either one explicit entity or non-empty acquired target data. The cached
 /// primary target is established by the constructors so downstream execution cannot observe a
-/// disagreement between a fallback target and the first acquired target.
+/// disagreement between a fallback target and the first acquired target. Entity validity and
+/// spatial or combat rules remain the responsibility of the game adapter.
 #[derive(Debug, Clone, PartialEq)]
 pub struct AbilityActivationTargets {
     primary_target: Entity,

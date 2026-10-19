@@ -13,8 +13,9 @@
 - 请求量不会改变 Gameplay 结算 tick，不会因为队列上限把伤害或 Tag 隐式推迟；
 - 请求 ID 与结构化结果连接提交方和结算方，让 UI、AI 能观察实际成功或失败。
 
-`TargetingRequestQueue` 仍是独立的目标抓取队列。它先在 `Targeting` 阶段生成目标数据，
-需要继续激活技能时再向 `GameplayExecutionQueue` 写入激活请求。
+游戏可以先查询目标再提交请求。配套模板拥有独立的 `TargetingRequestQueue`，
+它在游戏 `GameplaySet::Targeting` 阶段生成目标数据，再按 continuation 写入 GAS 的
+`GameplayExecutionQueue`。库本身不安装目标查询队列或空间系统。
 
 ## 源码布局
 
@@ -171,15 +172,9 @@ EffectTicks
   ├─ Period
   └─ Requirement
       ↓
-Movement
-      ↓
 AbilityTasks
       ↓
 RequestProducers
-      ↓
-TargetingSpatialSync
-      ↓
-Targeting
       ↓
 PreGameplayConvergence
       ↓
@@ -345,20 +340,18 @@ Requirement 每一轮先基于同一快照收集决策，再按稳定的实体�
 
 | 请求或状态产生位置 | 默认插件下的消费时机 |
 | ------------------ | -------------------- |
-| `AbilityTasks`、`RequestProducers` 或 Targeting direct continuation 写入 Gameplay FIFO | 当前 `FixedUpdate` |
-| `TargetingResultEvent` Observer 写入 Gameplay FIFO | deferred trigger 在 resolver 前应用，当前 `FixedUpdate` |
+| `AbilityTasks`、`RequestProducers` 或明确排在 resolver 前的游戏系统写入 Gameplay FIFO | 当前 `FixedUpdate` |
 | `GameplayResolve` drain 内直接追加 Gameplay 请求 | 当前 drain，按 FIFO 排队 |
 | 激活请求内部的 startup Instant 效果或链式激活 | 同步完成效果或子技能 startup 后才进入下一动作及下一个队列请求 |
 | `GameplayResolve` 创建 startup `WaitTicks` | `AbilityTasks` 已结束，下一次 `FixedUpdate` 才开始推进 |
 | `GameplayResolve` 内 startup `Instant::EmitEvent` 的 Observer 写入 Gameplay FIFO | resolver 已结束，下一次 `FixedUpdate` |
 | `GameplayResolve` 之后的系统写入 Gameplay FIFO | 下一次 `FixedUpdate` |
 | `GameplayExecutionResult` 消费者写入 Gameplay FIFO | 消费者在 resolver 后运行，下一次 `FixedUpdate` |
-| `TargetingResultEvent` Observer 再写 Targeting FIFO | Targeting drain 已结束，下一次 `FixedUpdate` 抓取 |
 
 startup Event 项是 `GameplayResolve` 场景下的通知边界：`EmitEvent` 使用 `Commands::trigger`，Observer
 在当前 resolver 返回、deferred command 应用后才运行，此时本 tick 的唯一消费阶段已经结束。
-这不是由 `EventReader` 读取的缓冲消息。若 `WaitTicks` 在 `AbilityTasks` 发出通知，或目标结果在
-`Targeting` 发出通知，Observer 在 `GameplayResolve` 前完成入队时仍可赶上当前 tick。若要求
+这不是由 `EventReader` 读取的缓冲消息。若 `WaitTicks` 在 `AbilityTasks` 发出通知，或游戏系统在 resolver 前发出通知，
+Observer 在 `GameplayResolve` 前完成入队时仍可赶上当前 tick。若要求
 startup 派生效果或技能严格在当前 batch 生效，应使用 `ApplyGameplayEffectToTarget`、
 `ApplyGameplayEffectToTargets` 或 `ActivateAbility` 完成动作。
 
@@ -369,6 +362,11 @@ startup 派生效果或技能严格在当前 batch 生效，应使用 `ApplyGame
 对于未来的 AI、寻路或异步计算也采用相同规则：结果若在 `GameplayResolve` 前进入
 `RequestProducers`，则当前 tick 生效；若结果在该阶段之后才就绪，就明确属于下一 tick，
 不要通过运行负载相关的隐式分帧改变边界。
+
+模板的 Targeting direct continuation 和结果 Observer 由模板插件排在 resolver 之前，因此
+可以在当前 tick 写入 Gameplay FIFO；结果 Observer 再写模板索敌队列时，本次索敌 drain
+已经结束，留待下一 tick。该行为属于模板调度，不是 GAS 对所有外部查询系统的默认保证。
+详见 [模板空间索敌](../../bevy_gas_template/.docs/05-spatial-targeting.md#fixedupdate-时序与边界)。
 
 ## 与同步 API 的关系
 
@@ -439,7 +437,7 @@ pub fn execute_gameplay_effect_plan(
 - `tests/gas_test/runtime_paths_test.rs`：阶段边界、当前 tick 与下一 tick；
 - `tests/gas_test/effects_test/requirements_test.rs` 与 `stacking_test.rs`：请求间 Requirement、免疫、堆叠和跨实体 Tag 可见性；
 - `tests/gas_test/abilities_test/chaining_test.rs` 与 `lifecycle_test.rs`：startup Instant、链式激活和 deferred cancellation。
-- `tests/gas_test/gameplay_targeting_test.rs`：Targeting FIFO、direct continuation 与多目标请求。
+- `tests/gas_test/gameplay_targeting_test.rs`：目标结果契约、多目标激活与任务效果请求。
 
 继续阅读：
 
@@ -448,4 +446,4 @@ pub fn execute_gameplay_effect_plan(
 - [07 — Gameplay 技能](./07-gameplay-abilities.md)
 - [08 — 技能任务](./08-ability-tasks.md)
 - [14 — 扩展系统](./14-extending-the-system.md)
-- [15 — Gameplay 目标抓取](./15-gameplay-targeting.md)
+- [15 — Gameplay 目标结果契约](./15-gameplay-targeting.md)

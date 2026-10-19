@@ -59,7 +59,8 @@ cargo run --example ability_effect_flow
 第 6 tick 结束技能；冷却 Effect 自己继续存活到第 20 tick。示例展示具名配置入口，也可以使用
 五参数的 `GameplayAbility::new(...)` 和 `AbilityTags::new(...)` 构造定义。
 
-输入与技能栏绑定见 [`examples/ability_input_bindings.rs`](../examples/ability_input_bindings.rs)：
+输入与技能栏绑定已迁至模板
+[`ability_input_bindings.rs`](../../bevy_gas_template/examples/ability_input_bindings.rs)。在模板仓库根目录运行：
 
 ```bash
 cargo run --example ability_input_bindings
@@ -68,30 +69,18 @@ cargo run --example ability_input_bindings
 它演示独立绑定组件如何将逻辑动作转换为技能请求。物理输入适配、帧与 fixed tick 之间的缓冲、
 重绑和清理规则见 [18 — 技能输入绑定](./18-ability-input-bindings.md)。
 
-逻辑移动、动态 AABB 索敌与可选表现插值见
-[`examples/logical_position_targeting.rs`](../examples/logical_position_targeting.rs)：
-
-```bash
-cargo run --example logical_position_targeting
-```
-
-示例使用 MinimalPlugins、TransformPlugin 与 GAS，运行时不创建窗口。每帧推进 25 ms、每个
-fixed tick 推进 100 ms，共运行 13 帧。目标从 x=2 开始，每 tick 向前移动 1，搜索半径为 3；
-逻辑位置离开范围后，即使表现位置仍在插值追赶，索敌也不再命中。Gameplay 移动只改
-`LogicalPosition`：移动系统位于 `Movement`，独立请求系统位于 `RequestProducers`，
-保证取 origin 前移动已完成。索敌读取逻辑位置，表现插件在 PostUpdate 同步 `PositionPresentation`
-到 Transform；完整 GAS 组已包含该插件。
-真实游戏由 Bevy 驱动固定时间循环；普通表现根挂载 `PositionPresentation::interpolated()`，
-不需插值时使用 `direct()`，服务器实体无需表现组件。完整边界和传送处理见
-[15 — 逻辑位置与可选表现](./15-gameplay-targeting.md#逻辑位置与可选表现)。
+逻辑移动、动态 AABB 索敌与可选表现插值示例已迁移到游戏模板：
+[`logical_position_targeting.rs`](../../bevy_gas_template/examples/logical_position_targeting.rs)。
+在模板仓库根目录执行 `cargo run --example logical_position_targeting`。
+示例显式组合 GAS、模板索敌和独立表现插件；索敌只读取逻辑位置，表现插值不反向影响结果。
+完整接入与时序见 [模板空间索敌](../../bevy_gas_template/.docs/05-spatial-targeting.md)。
 
 ## 源码入口
 
 | 用途 | 源码 |
 |---|---|
 | 完整角色组件组合 | `src/gas/ability_system/component.rs` |
-| 逻辑动作与技能 Handle 绑定 | `src/gas/ability_input/bindings.rs` |
-| 权威位置与表现插值、独立表现插件 | `src/gas/gameplay_position/` |
+| 逻辑动作与技能 Handle 绑定 | 模板 `src/gameplay/ability_input/bindings.rs` |
 | 固定 tick 阶段与系统安装 | `src/gas/runtime_plugin/runtime.rs` |
 | 基础资源插件与完整插件组合 | `src/gas/runtime_plugin/foundation.rs`、`src/gas/runtime_plugin/group.rs` |
 | 能力定义、激活上下文 | `src/gas/gameplay_abilities/` |

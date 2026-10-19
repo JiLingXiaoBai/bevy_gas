@@ -22,8 +22,13 @@ startup Instant 效果和链式激活仍在当前激活内部同步结算，运�
 资源，`runtime.rs` 拥有 `FixedUpdate` 调度与 resolver 注册，`group.rs` 组合默认和配置后的
 Plugin Group。这些实现模块保持 crate 内部可见；公开类型由 `bevy_gas::gas` 和 crate root
 显式重导出，其中常用的 Plugin Group、Runtime Plugin 与 SystemSet 也位于 `bevy_gas::prelude`。
-位置表现由 `gameplay_position/plugin.rs` 中的独立 `PositionPresentationPlugin` 拥有，
-索敌资源和系统的安装由 `gameplay_targeting/runtime.rs` 内部集中维护。
+位置、空间索引、索敌和表现插件由游戏拥有，GAS Runtime 与完整插件组均不安装这些系统。
+
+默认与自定义成本版本共用运行时安装入口，统一维护 Resource、Observer、阶段、执行条件与
+resolver 注册；Plugin Group 共用基础插件组合。默认版本仍注册公开的
+`process_gameplay_execution_queue_system`，保留调用方按该系统函数设置 `.before()` / `.after()`
+的顺序契约；自定义版本传入对应 Provider 的 resolver。默认与配置 Runtime 仍共用唯一插件名，
+不允许在同一 App 中重复安装两套执行管线。
 
 | 插件 | 类型 | 安装内容 |
 | --- | --- | --- |
@@ -31,8 +36,7 @@ Plugin Group。这些实现模块保持 crate 内部可见；公开类型由 `be
 | `GameplayTagPlugin` | `Plugin` | 初始化 `GameplayTagManager` |
 | `RandomPlugin` | `Plugin` | 初始化确定性 `Random` |
 | `GameplayAbilitySystemRuntimePlugin` | `Plugin` | 初始化 GAS 运行时资源并注册 `FixedUpdate` 管线 |
-| `PositionPresentationPlugin` | `Plugin` | 独立安装位置历史采集、表现同步及历史失效 Observer |
-| `GameplayAbilitySystemPlugin` | `PluginGroup` | 组合基础资源、纯逻辑 Runtime 与可选表现插件 |
+| `GameplayAbilitySystemPlugin` | `PluginGroup` | 组合基础资源与 GAS Runtime |
 
 通常应安装完整 Plugin Group：
 
@@ -59,9 +63,7 @@ fn register_initial_tags(mut register: GameplayTagRegister) {
 时才能单独安装：它的无条件 `FixedUpdate` 系统会借用这两个 Resource，即使当前没有活跃
 Effect。它也不会初始化 `UniqueNamePool`。因此通常应安装完整 Plugin Group；确需自定义组合时，
 必须显式安装等价的基础插件或 Resource，注册 Tag/Attribute 名称时还要提供
-`UniqueNamePool`。Runtime 本身不安装表现系统；单独安装 Runtime 的调用者若需要位置表现，
-必须额外安装 `PositionPresentationPlugin`。默认和 `with_additional_costs` 完整插件组已包含它，
-原有默认组的表现行为保持不变。
+`UniqueNamePool`。
 
 需要从背包或其他游戏资源支付额外成本时，用配置后的插件替换默认安装：
 
@@ -99,19 +101,10 @@ EffectTicks
   Duration -> Requirement -> Period -> Requirement
     |
     v
-Movement
-    |
-    v
 AbilityTasks
     |
     v
 RequestProducers
-    |
-    v
-TargetingSpatialSync
-    |
-    v
-Targeting
     |
     v
 PreGameplayConvergence
@@ -132,11 +125,8 @@ RecalculateAttributes
 | SystemSet | 系统/用途 | 语义 |
 | --- | --- | --- |
 | `EffectTicks` | `tick_effect_duration_system` → Requirement → `tick_effect_period_system` → Requirement | 先处理到期和条件变化，再决定本 tick 周期执行 |
-| `Movement` | 游戏层逻辑移动系统 | 在任务和请求采样前完成当前 tick 的逻辑位置及 deferred 变更 |
 | `AbilityTasks` | `tick_ability_tasks_system` | 按稳定实体顺序推进任务，任务可产生 Gameplay 请求 |
 | `RequestProducers` | 游戏层自定义系统 | 当前 tick 的公共 Gameplay 请求生产阶段 |
-| `TargetingSpatialSync` | `sync_targeting_spatial_index_system`（无条件） | 在范围抓取前增量同步动态 AABB 树 |
-| `Targeting` | `process_targeting_request_queue_system`（`run_if`） | 消费目标请求并可继续产生技能激活请求 |
 | `PreGameplayConvergence` | `update_active_effect_tag_requirements_system` | 在统一 FIFO 前收敛外部 Tag 变化 |
 | `GameplayResolve` | 默认 `process_gameplay_execution_queue_system`，自定义 `process_gameplay_execution_queue_with_costs_system<P>`（`run_if`） | 按跨类型 FIFO 完整消费 Effect 与 Ability 请求 |
 | `UpdateEffectTagRequirements` | `update_active_effect_tag_requirements_system` | Gameplay 执行后再次收敛 |
@@ -146,48 +136,26 @@ RecalculateAttributes
 这里的 Requirement 调用不是重复注册错误：Duration 到期、Period 执行和 Gameplay FIFO 都可能
 改变 Tag 或 Active Effect 状态，阶段间收敛保证后续阶段观察到一致状态。
 
-游戏层将修改 `LogicalPosition` 的移动系统放入 `Movement`，将读取位置并提交索敌输入的系统
-放入 `RequestProducers`。公开阶段顺序保证移动及其 deferred 命令先于 `AbilityTasks` 和请求
-采样生效，避免施法者 origin 取旧位置、目标索引却使用新位置。同一 Movement 集合内有顺序依赖的
-系统仍需显式 `.chain()` / `.before()`。索敌只读取逻辑位置，不要求 FixedUpdate 内执行 Transform
-传播。即使没有索敌请求，索引也会同步；同步 API 使用 `TargetingSystemParams`，应在同步阶段
-之后、后续逻辑位置修改之前调用。详见 [15 — 目标抓取](./15-gameplay-targeting.md)。
+### 游戏空间系统的接入
 
-### 逻辑位置与表现调度
+GAS 不定义 Movement、TargetingSpatialSync 或 Targeting 集合。游戏在公开 GAS 阶段之间
+安排自己的系统，并显式保证 deferred 命令、空间同步和查询的顺序。
+配套模板的 `GameplaySchedulePlugin` 定义游戏阶段顺序，`TargetingPlugin` 自动安装它并提供以下组合：
 
-`PositionPresentationPlugin` 独立安装以下系统，不依赖 GAS Runtime、索敌资源或技能系统：
-
-| Schedule | 系统 | 用途 |
-| --- | --- | --- |
-| `FixedFirst` | `capture_logical_position_history_system` | 保存带 `PositionPresentation` 实体在本 tick 开始时的逻辑位置 |
-| `PostUpdate`，在 `TransformSystems::Propagate` 之前 | `sync_position_presentation_system` | 按固定时间余量插值，或直接同步 `Transform.translation` |
-
-Gameplay 使用权威世界坐标 `LogicalPosition`；`PositionPresentation` 是可选的表现适配组件，
-Required `Transform`，只支持没有 `ChildOf` 的表现根。视觉子节点由官方变换传播系统处理。
-没有表现组件的服务器实体不需要 TransformPlugin；有表现的应用安装 `DefaultPlugins` 或
-`TransformPlugin`。插值历史由组件保存，不是新增全局 Resource，表现坐标不会反向写入逻辑位置。
-表现插件还注册 `LogicalPosition` 的 Discard Observer，在移除或替换逻辑位置组件时清除
-对应表现历史。连续移动通过 Mut 修改坐标，传送时显式 reset。
-
-仅需要位置插值时可单独安装：
-
-```rust
-app.add_plugins((MinimalPlugins, TransformPlugin, PositionPresentationPlugin));
+```text
+GAS EffectTicks
+  → 游戏 GameplaySet::Movement
+  → GAS AbilityTasks
+  → GAS RequestProducers
+  → 游戏 GameplaySet::SpatialSync
+  → 游戏 GameplaySet::Targeting
+  → GAS PreGameplayConvergence
+  → GAS GameplayResolve
 ```
 
-服务器或自有表现系统可禁用完整组中的表现插件；逻辑移动与索敌仍正常运行：
-
-```rust
-app.add_plugins(
-    GameplayAbilitySystemPlugin
-        .build()
-        .disable::<PositionPresentationPlugin>(),
-);
-```
-
-配置后的 `GameplayAbilitySystemPlugin::with_additional_costs::<InventoryCosts>()` 同样支持
-`.build().disable::<PositionPresentationPlugin>()`。只禁用插件不会删除实体已有的表现组件或变换，
-也不会自动安装 Bevy 的 `TransformPlugin`。完整用法、传送 reset 与错误边界见 [15 — 逻辑位置与可选表现](./15-gameplay-targeting.md#逻辑位置与可选表现)。
+模板的 `PositionPresentationPlugin` 独立安装 FixedFirst 历史采集和 PostUpdate 表现同步，
+需要时由游戏显式添加。GAS 的默认与自定义成本插件组均不再包含该插件。
+详细接入见 [模板空间索敌](../../bevy_gas_template/.docs/05-spatial-targeting.md)。
 
 ## Resource 所有权
 
@@ -198,8 +166,6 @@ app.add_plugins(
 | `RandomPlugin` | `Random` | 带种子的随机源；从 crate root 导入 |
 | Runtime Plugin | `AttributeIdManager` | 属性 ID 与冷热槽位注册表 |
 | Runtime Plugin | `GameplayExecutionQueue` | Ability/Effect 共用的跨类型 FIFO |
-| Runtime 调用 Targeting 安装入口 | `TargetingRequestQueue` | 目标抓取 FIFO |
-| Runtime 调用 Targeting 安装入口 | `TargetingSpatialIndex` | Targetable 逻辑世界位置派生的动态 AABB 树 |
 | Runtime Plugin | `Messages<GameplayExecutionResult>` | 按请求 ID 反馈主操作的结算结果 |
 | Runtime Plugin | `EffectRequirementDiagnostics` | 默认关闭的条件收敛计数和耗时测量 |
 
@@ -214,7 +180,6 @@ system 签名中保持可见但标记为 `#[doc(hidden)]`。它们都是运行�
 - Ability 激活、commit 和生命周期编排使用 `AbilitySystemParams`，其内部包含
   `EffectSystemParams`，并额外访问 `Commands`、ASC 与 Active Ability；
 - 预检使用只读 `AbilityActivationCheckParams`，效果读取使用 `EffectReadOnlyParams`；
-- 索敌使用只读 `TargetingSystemParams`，同时访问空间索引和 ECS 候选；
 - 请求生产系统通常只需要 `ResMut<GameplayExecutionQueue>`，不应无故声明完整参数集。
 
 ## 请求生产约定
@@ -248,7 +213,5 @@ FIFO 请求；运行时 AbilityTask 完成动作仍通过公共队列提交效�
 [10 — 支撑基础设施](./10-supporting-infrastructure.md)。
 
 Runtime Plugin 同时安装 Active Ability 与 ASC 的 Discard Observer，处理结构移除/替换时的
-实例释放、计数和阻止标签清理。`Targetable` / `LogicalPosition` 的 Discard Observer 清理
-索引中的旧代理，保证跨多个渲染帧才执行一次 FixedUpdate 时不会遗漏移除或销毁。
-后两种索敌 Observer、空间索引、索敌 FIFO 和系统统一由私有 `install_targeting(app)` 安装；
-Runtime 只调用领域入口并配置跨领域阶段顺序，不逐项维护 Targeting 的内部设施。
+实例释放、计数和阻止标签清理。游戏的空间组件与派生索引生命周期由游戏插件维护，
+不反向注册到 GAS Runtime。

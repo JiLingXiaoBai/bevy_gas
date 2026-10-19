@@ -2,7 +2,7 @@
 
 ## 先确定所有权边界
 
-新增代码前先选择拥有它的领域：Tag、Attribute、Modifier、Effect、Ability、Targeting、
+新增代码前先选择拥有它的领域：Tag、Attribute、Modifier、Effect、Ability、目标结果、
 Execution 或 Ability System。实现文件保持私有，由同名领域门面显式公开；不要把新类型放进
 全局 `components/`、`systems/` 或 `utils/`。
 
@@ -23,6 +23,16 @@ Execution 或 Ability System。实现文件保持私有，由同名领域门面�
 `bevy_gas::gas::<domain>` 是专项 API 的规范所有者，`bevy_gas::gas` 是显式聚合门面，
 crate root 主要承担兼容路径。`Random` 与 `UniqueName*` 是例外：它们由 crate root 直接公开，
 不属于 GAS prelude。
+
+## 游戏适配边界
+
+输入绑定、空间随机、位置/表现与索敌由模板维护；GAS 不反向依赖模板。
+GAS `Random` 保留效果概率随机流，模板 `SpatialRandom` 持有独立流。具体伤害公式、
+资源余额、输入缓存、连招与表现策略应继续由游戏实现，公共协议与执行机制保留在 GAS。
+
+当前迁移未改变技能提交时机或任务接口：成本与冷却仍在启动前提交，原生任务仍是
+`Instant` / `WaitTicks`。需要延迟提交或等待外部信号时，应先定义通用协议和取消语义，
+再由游戏接入具体动作；不要假定发出 `AbilityTaskEvent` 已能暂停并恢复技能。
 
 ## 新增 Modifier 操作
 
@@ -94,16 +104,16 @@ Modifier 是独立共享领域：Effect 负责把定义求值为 `ModifierSpec`�
 1. 将实现放在 owning domain；
 2. 从领域门面只公开确实属于用户 API 的 system；
 3. 在 owning domain 的安装入口注册到语义正确的 `GameplayAbilitySystemSet`，由 Runtime
-   组合调用；例如 Targeting 使用私有 `install_targeting(app)`，不要将其内部设施逐项提升到 Runtime；
-   没有领域安装入口的共享运行时系统仍由 `install_runtime()` 注册；
+   组合调用；共享运行时系统由 `install_runtime()` 注册，游戏空间查询不加入该入口；
 4. 使用 `.before()` / `.after()` 或 `.chain()` 明确跨系统可见性；
 5. 只有运行条件不改变 Gameplay 语义时才添加 `run_if`；
 6. 添加运行完整 `FixedUpdate` 的集成测试，而不仅是 `RunSystemOnce`。
 
 游戏项目自身的生产系统无需修改 Runtime Plugin，直接注册到公共 SystemSet 即可。
-逻辑移动系统进入 `Movement`，读取位置并生成请求的系统进入 `RequestProducers`，
-由阶段顺序保证先移动、再采样；同一集合内有业务依赖时继续显式排序。
-表现系统不属于 GAS 固定逻辑管线，由独立 `PositionPresentationPlugin` 安装。
+读取输入并生成 Gameplay 请求的系统通常进入 `RequestProducers`。游戏自行定义移动、
+空间同步和目标查询集合，并插入 GAS 公开阶段之间；同一集合内有业务依赖时继续显式排序。
+位置表现与命中检测也由游戏维护，模板实现见
+[空间、索敌与 GAS 接入](../../bevy_gas_template/.docs/05-spatial-targeting.md)。
 
 ### 生产 Gameplay 请求
 
@@ -117,7 +127,7 @@ app.add_systems(
 );
 ```
 
-`RequestProducers` 和后续 `Targeting` 阶段产生的请求会在同一个 `FixedUpdate` 的
+`RequestProducers` 以及显式排在 resolver 前的游戏系统产生的请求会在同一个 `FixedUpdate` 的
 `GameplayResolve` 消费；resolver drain 期间追加的派生请求也在本次完整 drain 中处理。
 `GameplayResolve` 之后才入队的请求保留到下一 tick。
 

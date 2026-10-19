@@ -3,14 +3,14 @@
 ## 项目定位
 
 `bevy_gas` 是面向 Bevy 0.20 的 ECS-first Gameplay Ability System。它提供构建 RPG、MOBA、
-ARPG 等 Gameplay 规则所需的基础能力，并提供可选的位置表现同步；具体输入映射、动画、
-视觉资源、网络同步或资源序列化格式仍由游戏决定。
+ARPG 等 Gameplay 规则所需的基础能力。空间查询、逻辑位置、攻击命中、表现插值、具体输入映射、
+动画、视觉资源、网络同步和资源序列化格式由游戏决定。
 
 当前依赖基线为 Bevy 0.20.0、Rust 1.97.1+（edition 2024）；引擎接口迁移说明见
 [02 — 插件与生命周期](./02-plugins-and-lifecycle.md#bevy-020-升级基线)。
-库的 Bevy 依赖关闭默认 features，仅启用 `std`、`multi_threaded` 和 `bevy_log`；官方
-`bevy_shape` 的 `rand` feature 保留数学/形状采样 API。开发依赖额外启用 `keyboard`，
-用于输入示例和测试。窗口、渲染及资源格式由游戏工程选择，库仍依赖标准库，不承诺 `no_std`。
+库的 Bevy 依赖关闭默认 features，仅启用 `std`、`multi_threaded` 和 `bevy_log`。
+输入绑定和 Bevy 几何采样由模板维护，GAS 不直接依赖 `bevy_shape`。窗口、渲染及资源格式
+由游戏工程选择，库仍依赖标准库，不承诺 `no_std`。
 
 设计优先级是：
 
@@ -30,8 +30,7 @@ ARPG 等 Gameplay 规则所需的基础能力，并提供可选的位置表现�
 | Gameplay Effects | Effect 定义、应用计划、活跃效果、堆叠、免疫和条件收敛 | 技能实例生命周期 |
 | Gameplay Abilities | Ability 定义、规格、激活上下文、活跃实例和任务定义 | ASC 的授予索引和统一请求调度 |
 | Ability System | ASC、激活校验、cost/cooldown commit、结束和取消 | 通用目标搜索 |
-| Gameplay Position | 权威逻辑世界坐标、可选的位置表现同步与插值 | 角色移动规则、旋转/缩放模拟、模型或动画资源 |
-| Targeting | 基于逻辑位置的动态 AABB 树、选择/过滤/排序管线和目标结果 | Effect 应用与 Ability 规则判断 |
+| Targeting 结果契约 | 有序目标结果、非空激活目标值 | 空间查询、碰撞、锁定与表现 |
 | Gameplay Execution | Ability/Effect 共用的跨类型 FIFO 和 batch resolver | 定义具体 Gameplay 规则 |
 | Runtime Plugin | GAS Resource 安装与 FixedUpdate 跨领域阶段排序 | 游戏侧移动/请求策略与表现调度 |
 
@@ -71,14 +70,11 @@ flowchart TB
     TaskDef["startup tasks：AbilityTaskDef"]
     EffectDef["GameplayEffect（Arc 共享）"]
     ModifierDef["Modifier"]
-    TargetRequest["TargetingRequestQueue 中的请求"]
-    TargetDef["TargetingDefinition（Arc 共享）"]
 
     AbilitySpec -- "共享" --> AbilityDef
     AbilityDef -- "包含" --> TaskDef
     AbilityDef -- "引用" --> EffectDef
     EffectDef -- "包含" --> ModifierDef
-    TargetRequest -- "共享" --> TargetDef
 ```
 
 第一张图只表示值的持有与引用关系。`GameplayAbility` 通过 cost、cooldown 和 startup task
@@ -89,24 +85,13 @@ flowchart TB
 
 ```mermaid
 flowchart TB
-    Producers["Resolver 前的请求生产者"]
-    TargetQueue["TargetingRequestQueue"]
-    Targeting["Targeting 阶段完整消费"]
-    TargetData["成功的 AbilityTargetData"]
-    Continuation["ActivateAbility continuation"]
-    TargetEvent["TargetingResultEvent"]
-    Observer["Observer 追加 Gameplay 请求"]
+    Game["游戏输入、AI、空间查询或命中检测"]
+    Targets["Entity / AbilityTargetData"]
+    Activation["AbilityActivationTargets"]
     Execution["GameplayExecutionQueue"]
-
-    Producers -- "目标请求" --> TargetQueue
-    TargetQueue --> Targeting
-    Targeting -- "成功" --> TargetData
-    TargetData --> Continuation
-    Continuation -- "追加" --> Execution
-    Targeting -- "通知" --> TargetEvent
-    TargetEvent -.-> Observer
-    Observer -.-> Execution
-    Producers -- "直接追加" --> Execution
+    Game --> Targets --> Activation
+    Activation -- "激活请求" --> Execution
+    Game -- "效果应用请求" --> Execution
 ```
 
 请求生产者包括 `AbilityTasks`、`RequestProducers`、游戏系统、AI 和输入适配。进入统一队列后，
@@ -133,10 +118,9 @@ flowchart TB
     EffectRuntime --> AttributeState
 ```
 
-后两张图表示默认 Plugin 管线中的主运行时数据流，需注意：
+后两张图表示游戏接入与 GAS 主运行时数据流，需注意：
 
-- Targeting 成功时，内建 `ActivateAbility` continuation 直接把目标数据加入统一 FIFO；无论成功
-  或失败，随后触发的 `TargetingResultEvent` 都是独立 Observer 通知，不是 continuation 的中间节点；
+- 游戏负责生成目标结果，并决定何时提交激活或效果请求；GAS 不强制安装任何空间索敌后端；
 - startup `Instant` 在技能激活内逐动作同步结算效果与链式子技能 startup，不创建任务实体；
   `WaitTicks` 创建 `AbilityTask`，游戏层也可手动创建运行时 Instant。运行时任务的
   `ActivateAbility` 与 `ApplyGameplayEffect*` 仍追加 Gameplay 请求；`EmitEvent` 保持 deferred，
@@ -154,11 +138,8 @@ flowchart TB
 
 ```text
 EffectTicks
-  → Movement
   → AbilityTasks
   → RequestProducers
-  → TargetingSpatialSync
-  → Targeting
   → PreGameplayConvergence
   → GameplayResolve
   → UpdateEffectTagRequirements
@@ -169,9 +150,8 @@ EffectTicks
 关键边界：
 
 - `EffectTicks` 内部按 Duration → Requirement → Period → Requirement 串行执行；
-- `Movement` 完成逻辑移动及 deferred 命令，后续任务与请求生产读取本 tick 的位置；
-- 独立 `PositionPresentationPlugin` 负责 FixedFirst 历史和 PostUpdate 表现，默认 GAS 组包含它；
-- `AbilityTasks`、`RequestProducers`、`Targeting` 在 resolver 前产生的 Gameplay 请求可以在当前
+- 游戏通过公开阶段插入移动、空间同步和目标查询；模板由自己的插件维护该顺序与表现；
+- `AbilityTasks`、`RequestProducers` 及显式排序在 resolver 前的游戏系统产生的请求可以在当前
   fixed tick 消费；
 - `GameplayResolve` 完整 drain Ability/Effect 共用 FIFO，包括 drain 期间直接追加的有限请求；
 - resolver 之后才入队的请求属于下一 fixed tick；

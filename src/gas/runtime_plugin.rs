@@ -1,8 +1,8 @@
 //! Plugin composition and ordered fixed-tick scheduling for the GAS runtime.
 //!
 //! Foundation plugins initialize shared resources, the runtime owns fixed-tick scheduling,
-//! and the plugin group combines them with optional position presentation for default or
-//! external-cost-enabled installation.
+//! and the plugin group combines them for default or external-cost-enabled installation.
+//! Games install spatial queries and position presentation independently.
 
 mod foundation;
 mod group;

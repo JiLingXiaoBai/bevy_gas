@@ -64,15 +64,16 @@ pub struct Random {
 | `Random::set_seed(seed)` | 重置当前随机序列 |
 | `random_range(range)` | 从给定范围采样 |
 | `random_bool(probability)` | 按概率采样布尔值；调用方必须传入有限的 `0.0..=1.0` |
-| `from_rng<T>()` | 构造实现 Bevy `FromRng` 且支持标准分布的值 |
-| `sample_interior(shape)` | 在实现 `ShapeSample` 的形状内部采样 |
-| `sample_boundary(shape)` | 在形状边界采样 |
 
-Bevy 0.20 中，形状采样 trait 改从 `bevy::shape::ShapeSample` 导入，`FromRng` 仍位于 `bevy::math::FromRng`。
-库关闭 Bevy 默认 features，仅启用 `std`、`multi_threaded`、`bevy_log`，并显式依赖同版本官方
-`bevy_shape`、启用其 `rand` feature。这样保留上述数学与形状采样公开 API，无需借用渲染
-features 间接启用采样功能；这不是引入另一套第三方几何或随机数实现。`rand` 仍为 0.10.2。
-开发依赖的 Bevy 额外启用 `keyboard`，仅供输入示例和测试。
+Bevy 数学/形状采样已迁移到模板 `bevy_gas_template::gameplay::randoms::SpatialRandom`，
+包括原来的 `from_rng<T>()`、`sample_interior(shape)` 和 `sample_boundary(shape)`。
+调用方改用独立 `ResMut<SpatialRandom>` 并显式初始化该资源；GAS 不保留这些方法，
+也不直接依赖 `bevy_shape`。模板使用同版本官方 `bevy_shape/rand` 和现有 `rand` 0.10.2，
+没有新增其他第三方依赖。完整 API 与迁移见
+[模板 — 输入绑定与空间随机](../../bevy_gas_template/.docs/06-input-and-spatial-random.md#独立的空间随机流)。
+
+两种 Resource 各自持有 `StdRng`，空间采样不会推进 GAS 效果概率流。旧代码如果共用
+一个随机流，迁移后的后续序列会有意发生变化；回放版本应反映这一变化。
 
 在相同依赖版本、相同种子和相同调用顺序下可复现随机序列。不要把不同系统对同一全局
 `Random` 的未排序访问当作确定性契约；若调用顺序具有 Gameplay 语义，应通过 SystemSet
@@ -111,6 +112,6 @@ impl GameplayAbilitySystemSettings {
 `ABILITY_CHAIN_MAX_DEPTH` 按根节点之后的激活边数计数：根深度为 0，上限为 8 时允许
 一条路径包含根技能和最多 8 个后代技能。处于上限的链仍然有效，但不能继续调用 `next()` 扩展。
 
-`GameplayExecutionQueue` 与 `TargetingRequestQueue` 都不设置每 tick 消费上限：前者在
-`GameplayResolve` 按 Ability/Effect 跨类型 FIFO 完整 drain，后者在 `Targeting` 阶段完整
-处理。确定性来自固定阶段、显式生产者排序和稳定的数据顺序，而不是隐藏的全局批次上限。
+`GameplayExecutionQueue` 不设置每 tick 消费上限，在 `GameplayResolve` 按 Ability/Effect
+跨类型 FIFO 完整 drain。模板另有独立索敌队列，由游戏插件消费。确定性来自固定阶段、
+显式生产者排序和稳定的数据顺序，而不是隐藏的全局批次上限。

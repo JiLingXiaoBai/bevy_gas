@@ -2,25 +2,18 @@ use super::{
     GameplayAbilitySystemRuntimePlugin, GameplayTagPlugin, RandomPlugin, UniqueNamePlugin,
 };
 use crate::ability_system::AdditionalCostProvider;
-use crate::gameplay_position::PositionPresentationPlugin;
 use bevy::app::PluginGroupBuilder;
 use bevy::prelude::*;
 use std::marker::PhantomData;
 
-/// Plugin group containing GAS resources, runtime systems, and optional position presentation.
+/// Plugin group containing GAS resources and the fixed-tick execution runtime.
 ///
-/// Disable [`PositionPresentationPlugin`] on the group builder for simulation-only applications
-/// or when the game supplies its own presentation systems.
+/// Games install their own spatial-query and presentation plugins independently.
 pub struct GameplayAbilitySystemPlugin;
 
 impl PluginGroup for GameplayAbilitySystemPlugin {
     fn build(self) -> PluginGroupBuilder {
-        PluginGroupBuilder::start::<Self>()
-            .add(UniqueNamePlugin)
-            .add(GameplayTagPlugin)
-            .add(RandomPlugin)
-            .add(GameplayAbilitySystemRuntimePlugin)
-            .add(PositionPresentationPlugin)
+        build_group::<Self>(GameplayAbilitySystemRuntimePlugin)
     }
 }
 
@@ -39,11 +32,14 @@ struct ConfiguredAbilitySystemPlugin<P>(PhantomData<fn() -> P>);
 
 impl<P: AdditionalCostProvider> PluginGroup for ConfiguredAbilitySystemPlugin<P> {
     fn build(self) -> PluginGroupBuilder {
-        PluginGroupBuilder::start::<Self>()
-            .add(UniqueNamePlugin)
-            .add(GameplayTagPlugin)
-            .add(RandomPlugin)
-            .add(GameplayAbilitySystemRuntimePlugin::with_additional_costs::<P>())
-            .add(PositionPresentationPlugin)
+        build_group::<Self>(GameplayAbilitySystemRuntimePlugin::with_additional_costs::<P>())
     }
+}
+
+fn build_group<G: PluginGroup>(runtime: impl Plugin) -> PluginGroupBuilder {
+    PluginGroupBuilder::start::<G>()
+        .add(UniqueNamePlugin)
+        .add(GameplayTagPlugin)
+        .add(RandomPlugin)
+        .add(runtime)
 }

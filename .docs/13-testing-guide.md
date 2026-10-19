@@ -9,7 +9,6 @@
 tests/
 ├── gas_test.rs                         # GAS 集成测试 crate 门面
 ├── gas_test/
-│   ├── ability_input_test.rs            # Logical input bindings and fixed-tick buffering
 │   ├── support_test.rs                       # App、builder、tick 和查询 helper
 │   ├── effects_test.rs                       # Effect 行为测试门面
 │   ├── effects_test/
@@ -30,25 +29,22 @@ tests/
 │   │   └── chaining_test.rs                  # 链上下文、深度与循环限制
 │   ├── attributes_test.rs               # 属性注册、冷热槽位、重算与聚合
 │   ├── gameplay_tags_test.rs            # 标签注册、位集与引用计数
-│   ├── gameplay_position_test.rs        # 独立表现插件/禁用、逻辑分离、插值与无效配置
-│   ├── gameplay_targeting_test.rs       # 动态 AABB、目标管线、确定性与技能集成
+│   ├── gameplay_targeting_test.rs       # 目标结果契约与多目标技能/任务结算
 │   ├── queues_test.rs                   # 跨类型 FIFO、运行条件与批次语义
 │   └── runtime_paths_test.rs            # Plugin 管线、Bundle 与公共运行路径
 ├── randoms_test.rs                     # RNG 种子确定性与概率边界
 └── unique_names_test.rs                # 驻留复用与名称区分
 
 examples/
-├── ability_input_bindings.rs           # Buffered input and slot rebinding without a window
 ├── ability_effect_flow.rs              # 无窗口的完整技能、伤害与冷却时间线
 ├── inventory_bomb.rs                   # 背包炸弹与法力共同支付；同 tick 请求争用最后一颗
-├── logical_position_targeting.rs       # 无窗口逻辑移动、索敌与 PostUpdate 表现插值
 └── tag_registration.rs                 # 无窗口的单次标签注册后退出
 ```
 
 集成测试按 crate 顶层功能领域归属组织。`src/gas/` 内功能的集成测试统一放在
 `tests/gas_test/`，由 `tests/gas_test.rs` 声明和加载；即使功能可选或只有一个测试文件，
-也不单独创建顶层测试目标。例如，输入绑定属于 GAS，其测试位于
-`tests/gas_test/ability_input_test.rs`。`randoms_test.rs` 和 `unique_names_test.rs` 则分别
+也不单独创建顶层测试目标。输入绑定已迁至模板，其测试由模板的
+`tests/gameplay_test.rs` 加载。`randoms_test.rs` 和 `unique_names_test.rs` 则分别
 对应 crate 顶层的 `randoms` 和 `unique_names` 领域，保留独立测试目标。
 游戏配置的编译、数据校验和资源加载测试在对应游戏工程中维护。
 
@@ -106,11 +102,7 @@ cargo test --lib grant_exhaustion_test
 # GAS integration-test crate
 cargo test --test gas_test
 
-# Input binding and buffering integration tests
-cargo test --test gas_test ability_input_test
-
-# Logical positions, presentation interpolation and targeting
-cargo test --test gas_test gameplay_position_test
+# Target-result contracts and multi-target execution
 cargo test --test gas_test gameplay_targeting_test
 
 # External-resource costs through custom ECS access
@@ -131,9 +123,7 @@ cargo test --test gas_test -- --list
 
 # Compile or run the checked example
 cargo run --example ability_effect_flow
-cargo run --example ability_input_bindings
 cargo run --example inventory_bomb
-cargo run --example logical_position_targeting
 cargo check --example tag_registration
 cargo run --example tag_registration
 ```
@@ -141,8 +131,11 @@ cargo run --example tag_registration
 `tag_registration` 使用 `MinimalPlugins.set(ScheduleRunnerPlugin::run_once())` 和 LogPlugin，
 执行一次无窗口 App 更新后退出，可用于命令行和 CI 冒烟验证。仓库示例无需默认窗口/渲染 features。
 
-库依赖 Bevy 的最小功能集为 `std`、`multi_threaded`、`bevy_log`，官方 `bevy_shape/rand`
-保留随机采样 API；开发依赖另启用 `keyboard`。调整 features 后分别运行 `cargo check --lib`
+输入绑定示例、输入缓冲测试和几何采样测试由模板维护，运行命令见
+[模板输入与空间随机](../../bevy_gas_template/.docs/06-input-and-spatial-random.md)。
+
+库依赖 Bevy 的最小功能集为 `std`、`multi_threaded`、`bevy_log`。
+调整 features 后分别运行 `cargo check --lib`
 和 `cargo check --all-targets`，避免只在开发依赖功能合并后才能编译；仍需完成下述检查。
 
 ## 提交前检查
@@ -248,7 +241,7 @@ for _ in 0..tick_count {
 
 队列测试至少区分三种语义：
 
-1. `RequestProducers` 或 `Targeting` 在 resolver 前入队，请求在当前 tick 消费；
+1. `RequestProducers` 或明确排序在 resolver 前的游戏系统入队，请求在当前 tick 消费；
 2. resolver drain 期间追加的派生请求仍在本次 drain 消费；
 3. `GameplayResolve` 之后入队，请求明确保留到下一 tick。
 
@@ -261,39 +254,16 @@ Batch 回归同时检查实例化后的 getter 结构与执行结果：64 层嵌
 但不能撤回前方已产生的请求。该测试验证有限深度行为，不证明公开递归枚举的 Clone/Drop
 支持任意深度。
 
-## 动态 AABB 索敌回归
+## 目标结果与游戏接入回归
 
-范围抓取只有动态树实现，不保留扫描后端作为运行时回退或测试对照。测试用已知实体和位置构造
-明确的有序预期结果，覆盖球形/锥形边界、零半径、相等距离和 `Limit`；不要把树内部遍历顺序
-写成预期 Gameplay 顺序。
+`gameplay_targeting_test.rs` 直接创建 `AbilityTargetData`，验证调用方顺序、主目标一致性、
+空 acquired 数据拒绝，以及 startup/运行时任务对全部捕获目标的效果处理。
+GAS 测试不需要挂载逻辑位置、Targetable 或安装空间索敌插件。
 
-空间生命周期应覆盖首次同步前的 `SpatialIndexNotReady`、代理盒内/外移动、标签变化、组件
-新增/移除/替换、实体销毁与 ID 复用，以及非有限位置的排除和恢复。验证同步 API 时先执行
-`sync_targeting_spatial_index_system`，再通过 `TargetingSystemParams` 调用 `acquire_targets()`；
-验证同 tick 生成、移动与 continuation 时应运行完整 `FixedUpdate`。
-移动系统和请求采样系统应分开注册到 `Movement` / `RequestProducers`，验证 source origin 与
-候选目标使用同 tick 的位置；还需覆盖 Movement 的 deferred 修改/生成在 AbilityTasks、请求采样
-和空间同步之前已经生效。
-
-性能测量应包含索引同步、查询、精筛和排序，而不是仅测树查询；同时改变实体数、移动比例、
-请求数和范围覆盖率。改造前后的同场景数据可在相应版本分别采集，无需长期保存旧实现。
-测量使用显式 ignored 测试，不设置依赖机器速度的固定通过阈值。
-
-## 逻辑位置与表现测试
-
-`gameplay_position_test.rs` 的基础 fixture 只安装 MinimalPlugins、TransformPlugin 与
-PositionPresentationPlugin，证明插值和组件替换清历史不依赖 GAS。另行覆盖默认/配置 GAS
-插件组包含表现插件、禁用表现插件以及单装 Runtime 时不会修改 Transform。
-它还验证 `LogicalPosition` 不自动插入 Transform，以及可选表现的直接
-同步、插值、首次无历史、零/多 fixed tick、传送 reset、模式切换、rotation/scale 保留、非法状态
-与恢复。索敌测试应只依赖逻辑位置，并验证修改表现 Transform 不影响选择；不能为了满足索敌
-Fixture 而安装 TransformPlugin 或运行 FixedUpdate 内的变换传播。
-
-验证表现时，单独 `run_schedule(FixedUpdate)` 不会执行 FixedFirst 历史采集。需要显式推进
-`FixedFirst` → `FixedUpdate`，设置固定时间余量后运行 `PostUpdate`；零 tick 帧只运行
-PostUpdate，多 tick 帧逐次采集和更新，最后才运行表现同步。视觉子节点传播测试安装
-TransformPlugin，并确保同步位于官方 Propagate 之前。完整接入示例见
-[`logical_position_targeting`](../examples/logical_position_targeting.rs)。
+位置插值、动态 AABB 树更新/清理、目标选择管线与队列的回归已迁入模板 `tests/gameplay_test/`。
+模板同时验证游戏移动、空间同步和索敌阶段插入 GAS 公开阶段后的 deferred 可见性和同 tick
+结算；位置示例也在模板运行。细节见
+[模板 — 测试导航](../../bevy_gas_template/.docs/05-spatial-targeting.md#测试导航)。
 
 ## 公共 API 路径测试
 
@@ -333,8 +303,7 @@ handle/spec、管理器和系统函数应从 `bevy_gas::gas::<domain>` 或 crate
 | 技能             | 激活、Cost、Cooldown、阻止/取消标签与实例策略                        |
 | 技能任务/链      | startup、WaitTicks、完成动作、深度与循环检测                         |
 | 额外成本         | 只读预检、同名批量需求、同 tick 可见性、各入口支付、失败补偿与取消不退款 |
-| 逻辑位置/表现    | 单向同步、插值时间、传送 reset、组件错误、与索敌解耦 |
-| Targeting        | 管线校验、逻辑位置动态树更新/清理、边界与有限值、稳定排序、多目标 continuation |
+| 目标结果契约 | 顺序保留、主目标一致性、空值拒绝、多目标激活与任务结算 |
 | 统一 FIFO        | Ability/Effect 跨类型顺序、完整 drain、阶段边界                      |
 | 组件组合         | Bundle 四组件齐全，Tag/Attribute 独立存在                            |
 | 支撑设施         | RNG 同种子序列、名称复用、空名称与不同字符串区分                     |

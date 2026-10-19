@@ -142,8 +142,8 @@ pub struct GameplayAbilitySpec {
 
 `GameplayAbilitySpec::new(handle, ability, level)` 只接收授予 Handle、共享定义和等级。
 `active_count` 用于多实例检查；仍有活跃实例时，ASC 不允许清除对应规格。规格不保存输入编号或
-按下状态；逻辑动作与 Handle 的映射由独立的
-[`AbilityInputBindings<Action>`](./18-ability-input-bindings.md) Component 管理。
+按下状态；逻辑动作与 Handle 的映射由游戏维护，可使用模板的
+[`AbilityInputBindings<Action>`](./18-ability-input-bindings.md) Component。
 
 ## 激活数据、上下文与技能链
 
@@ -332,7 +332,7 @@ Active ──► Ending ──► Cleanup/despawn
 
 ## FixedUpdate 边界
 
-- 在 `AbilityTasks`、`RequestProducers` 或 `Targeting` 阶段产生的 Gameplay 请求可由当前 tick 的
+- 在 `AbilityTasks`、`RequestProducers` 或明确排在 resolver 前的游戏阶段产生的 Gameplay 请求可由当前 tick 的
   `GameplayResolve` 消费。
 - `GameplayResolve` 执行一个激活请求时，会先同步完成其 startup `Instant` 效果和链式子技能的
   startup，再取出下一个全局 FIFO 请求；普通入队请求仍按 FIFO 顺序消费。
@@ -354,7 +354,7 @@ Active ──► Ending ──► Cleanup/despawn
 
 继续阅读：[08 — 技能任务](./08-ability-tasks.md)、
 [09 — 技能系统组件](./09-ability-system-component.md)、
-[15 — Gameplay 目标抓取](./15-gameplay-targeting.md)。
+[15 — Gameplay 目标结果契约](./15-gameplay-targeting.md)。
 
 ASC 实例登记将创建、结束、回滚和组件丢弃连接到同一个幂等释放路径；状态更新就地修改，
 组件替换表示终止旧激活。详见 [09 — ASC](./09-ability-system-component.md)。

@@ -92,7 +92,7 @@ pub fn get_blocked_ability_tags(&self) -> &GameplayTagContainer;
 - `give_ability()` 现在返回 `Result`。原先直接使用返回 Handle 的调用应改为
   `let handle = ability_system.give_ability(ability, level)?;`，或显式处理授予失败。
 - `clear_ability()` 在 Handle 不存在或规格仍有活跃实例时返回 `false`。
-- 输入绑定通过同实体的 `AbilityInputBindings<Action>` 显式附加，不属于 ASC 或默认 Bundle。
+- 输入绑定由模板提供，通过同实体的 `AbilityInputBindings<Action>` 显式附加，不属于 ASC 或默认 Bundle。
   `clear_ability()` 成功后，由调用方执行 `bindings.unbind_ability(handle)` 清除该技能的所有
   绑定；ASC 不反向依赖输入层。替换整个 ASC 时必须同步清空或重建绑定。详见
   [18 — 技能输入绑定](./18-ability-input-bindings.md)。
@@ -342,15 +342,9 @@ Effect Plan；快速预检按当前 removal tags 选择临时排除的来源，c
 EffectTicks
   Duration → Requirement → Period → Requirement
     ↓
-Movement
-    ↓
 AbilityTasks
     ↓
 RequestProducers
-    ↓
-TargetingSpatialSync
-    ↓
-Targeting
     ↓
 PreGameplayConvergence
     ↓

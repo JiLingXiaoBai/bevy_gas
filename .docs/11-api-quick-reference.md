@@ -14,8 +14,8 @@
 | GAS 聚合门面 | `bevy_gas::gas::GameplayEffect` | 对 GAS 领域公开项做显式聚合 |
 | crate root | `bevy_gas::GameplayEffect` | 显式兼容重导出；另拥有 `Random` 与 `UniqueName*` 支撑类型 |
 
-`lib.rs` 还显式重导出 `ability_input`、`ability_system`、`attributes`、`gameplay_abilities`、
-`gameplay_effects`、`gameplay_execution`、`gameplay_position`、`gameplay_tags`、`gameplay_targeting`、
+`lib.rs` 还显式重导出 `ability_system`、`attributes`、`gameplay_abilities`、
+`gameplay_effects`、`gameplay_execution`、`gameplay_tags`、`gameplay_targeting`、
 `modifiers` 与 `settings` 模块，因此旧的 `bevy_gas::gameplay_effects::...` 路径仍可用。
 所有门面都禁止 `pub use *`；新增内部 `pub` 项不会自动成为公开 API。
 
@@ -27,14 +27,12 @@
 | --- | --- |
 | Runtime | `GameplayAbilitySystemPlugin`、`GameplayAbilitySystemRuntimePlugin`、`GameplayAbilitySystemSet` |
 | Ability System | `AbilitySystemComponent`、`AbilitySystemParams`、`GameplayAbilitySystemBundle` |
-| Ability Input | `AbilityInputBindings` |
 | Attributes | `AttributeId`、`AttributeIdRegister`、`AttributeRegion`、`AttributeSet` |
 | Abilities | `AbilityActivationContext`、`AbilitySpecHandle`、`AbilityTags`、`GameplayAbility` |
 | Effects | `ActiveGameplayEffects`、`EffectDurationTicks`、`EffectPayload`、`EffectSystemParams`、`EffectTags`、`GameplayEffect`、`StackingPolicy` |
 | Execution | `GameplayExecutionQueue` |
 | Tags | `GameplayTag`、`GameplayTagContainer`、`GameplayTagRegister`、`TagRequirements` |
-| Position | `LogicalPosition`、`PositionPresentation`、`PositionPresentationPlugin` |
-| Targeting | `AbilityActivationTargets`、`AbilityTargetData`、`TargetingDefinition`、`TargetingRequestQueue`、`TargetingSystemParams` |
+| Targeting | `AbilityActivationTargets`、`AbilityTargetData` |
 | Modifiers | `Modifier`、`ModifierEvaluationContext`、`ModifierMagnitude`、`ModifierMagnitudeCalculation`、`ModifierOperation` |
 
 错误类型、低层 handle/spec、管理器、独立基础插件、系统函数与支撑类型不在 prelude；请从拥有它
@@ -46,7 +44,6 @@
 | --- | --- | --- | --- |
 | `GameplayAbilitySystemPlugin` | `PluginGroup` | 是 | `bevy_gas::gas` / crate root |
 | `GameplayAbilitySystemRuntimePlugin` | `Plugin` | 是 | `bevy_gas::gas` / crate root |
-| `PositionPresentationPlugin` | `Plugin` | 是 | `bevy_gas::gas::gameplay_position` / GAS 聚合门面 / crate root |
 | `GameplayAbilitySystemSet` | `SystemSet` | 是 | `bevy_gas::gas` / crate root |
 | `GameplayTagPlugin` | `Plugin` | 否 | `bevy_gas::gas` / crate root |
 | `UniqueNamePlugin` | `Plugin` | 否 | `bevy_gas::gas` / crate root |
@@ -169,53 +166,18 @@ ASC、Active Ability 或 `Commands`。`AbilitySystemParams` 内嵌它并实现 `
 两个请求类型由 `gameplay_execution` 领域拥有。`ability_system` 与 `gameplay_effects` 门面分别
 兼容重导出对应请求类型；新代码需要同时处理两类请求时，应从 Execution 门面导入。
 
-### Gameplay 逻辑位置与表现
-
-公开领域路径为 `bevy_gas::gas::gameplay_position`，GAS 聚合门面和 crate root 也显式重导出。
-两个常用 Component 和 `PositionPresentationPlugin` 进入 prelude。
+### Gameplay 目标结果
 
 | 项 | 类型 | 说明 |
 | --- | --- | --- |
-| `LogicalPosition(pub Vec3)` | `Component` | 权威世界坐标；不 Required Transform，不继承父变换 |
-| `PositionPresentation` | `Component` | 可选根实体表现；Required Transform，单向写 translation |
-| `PositionPresentationPlugin` | `Plugin` | 独立安装历史采集、表现同步与逻辑位置替换清历史 Observer |
-| `PositionPresentationError` | `enum` | 缺失逻辑位置/Transform、非有限逻辑坐标或存在父级 |
-| `capture_logical_position_history_system` | `fn` | 系统：FixedFirst 保存插值起点 |
-| `sync_position_presentation_system` | `fn` | 系统：PostUpdate 在 Transform 传播前同步或插值表现 |
+| `AbilityTargetHit` | `struct` | 游戏提供的 Entity、世界位置和可选法线 |
+| `AbilityTargetData` | `struct` | 保留调用方顺序的目标结果集合 |
+| `AbilityActivationTargets` | `struct` | 单 Entity 或非空 Target Data 的唯一激活目标值 |
+| `AbilityActivationTargetsError` | `enum` | `acquired()` 拒绝空 Target Data 的构造错误 |
 
-`PositionPresentation::default()` / `interpolated()` 启用插值，`direct()` 使用当前位置。
-`is_interpolation_enabled()` 查询模式，`set_interpolation_enabled(bool)` 切换并在模式变化时
-清历史；传送后调用 `reset()` 清历史，`last_error()` 读取最近采集/同步错误。
-默认 GAS Plugin Group 包含表现插件；单独安装 Runtime 时需另外安装它，也可从完整组禁用。
-移动系统使用 `GameplayAbilitySystemSet::Movement`，位置采样和请求生产使用后续的
-`RequestProducers`。行为和调度要求见 [15 — 逻辑位置与可选表现](./15-gameplay-targeting.md#逻辑位置与可选表现)。
-
-### Gameplay 目标抓取
-
-| 项                                      | 类型        | 说明                                      |
-| --------------------------------------- | ----------- | ----------------------------------------- |
-| `Targetable`                            | `Component` | 标记可被非自身 Selection 选中的实体       |
-| `AbilityTargetHit`                      | `struct`    | 实体、世界位置和可选表面法线              |
-| `AbilityTargetData`                     | `struct`    | 带原点的确定性有序命中集合                |
-| `AbilityActivationTargets`              | `struct`    | 单 Entity 或非空 Target Data 的已验证唯一激活目标值 |
-| `AbilityActivationTargetsError`         | `enum`      | `acquired()` 拒绝空 Target Data 的构造错误 |
-| `TargetingDefinition`                   | `struct`    | 已验证的有序目标操作管线                  |
-| `TargetingOperation`                    | `enum`      | Selection / Filter / Sort / Limit 操作    |
-| `TargetingSortOrder`                    | `enum`      | Ascending / Descending                    |
-| `TargetingDefinitionError`              | `enum`      | 非法管线配置                              |
-| `TargetingInput`                        | `struct`    | 捕获的原点、方向和显式目标                |
-| `TargetingError`                        | `enum`      | 运行时抓取失败                            |
-| `TargetingCandidateQuery`               | `type alias` | 候选 Entity 的只读 ECS 数据访问；不单独作为抓取参数 |
-| `TargetingSystemParams`                 | `SystemParam` | 同步/队列抓取共用的只读索引与候选 Query |
-| `TargetingSpatialIndex`                 | `Resource`  | Targetable 逻辑点位置的动态 AABB 树；由 Runtime 初始化 |
-| `TargetingRequestId`                    | `struct`    | 队列请求的稳定标识                        |
-| `TargetingContinuation`                 | `enum`      | 只发结果或继续激活技能                    |
-| `TargetingResultEvent`                  | `Event`     | 请求完成后由 `Commands::trigger` 触发的 Observer Event |
-| `TargetingRequestQueue`                 | `Resource`  | 每 tick 全量消费的 FIFO 请求队列           |
-| `acquire_targets`                       | `fn`        | 通过 `&TargetingSystemParams` 同步执行管线，范围选择只查询动态树 |
-| `sync_targeting_spatial_index_system`    | `fn`        | 系统：同步逻辑位置索引；调用方先完成逻辑移动，再运行抓取 |
-| `process_targeting_request_queue_system`| `fn`        | 系统：处理请求并分派 continuation         |
-| `targeting_request_queue_has_work`      | `fn`        | 队列系统的运行条件                        |
+以上类型保留在 `bevy_gas::gas::gameplay_targeting`，GAS 不执行目标查询或碰撞检测。
+逻辑位置、表现、Targetable、索敌定义、索引、请求队列与系统已迁入模板，导入与插件迁移见
+[15 — 目标结果契约](./15-gameplay-targeting.md#从旧版库内索敌迁移)。
 
 ### Gameplay 技能
 
@@ -238,18 +200,11 @@ ASC、Active Ability 或 `Commands`。`AbilitySystemParams` 内嵌它并实现 `
 | `AdditionalCost` | `struct` | 游戏资源 UniqueName + 正整数需求；由 Abilities 领域拥有 |
 | `AdditionalCostError` | `enum` | 外部资源不足、Provider 配置和执行错误 |
 
-### 技能输入绑定
+### 游戏输入适配
 
-公开路径为 `bevy_gas::gas::ability_input`，行为契约见
-[18 — 技能输入绑定](./18-ability-input-bindings.md)。
-
-| 项 | 类型 | 说明 |
-| --- | --- | --- |
-| `AbilityInputBindings<Action>` | `Component` | 同实体 ASC 的逻辑动作到技能 Handle 映射；支持重绑、解绑和稳定顺序遍历 |
-| `AbilityInputBindingError` | `enum` | 未绑定输入或绑定的技能已不在 ASC 中；不进入 prelude |
-
-`get(&action)` 只读取映射；`resolve(&action, &ability_system)` 同时检查规格是否仍存在。
-输入产生激活时使用 `AbilityActivationContext::input(source, chain)`；`Input` 原因不携带动作 ID。
+输入绑定已迁移至 `bevy_gas_template::gameplay::ability_input`，GAS 不再导出绑定组件或错误。
+迁移清单见 [18 — 输入绑定迁移](./18-ability-input-bindings.md)。
+GAS 保留 `AbilityActivationContext::input(source, chain)`；`Input` 原因不携带动作 ID。
 
 ### 技能任务
 
@@ -303,7 +258,7 @@ ASC、Active Ability 或 `Commands`。`AbilitySystemParams` 内嵌它并实现 `
 | `UniqueName`                    | `struct`   | 驻留字符串句柄（u32）                 |
 | `UniqueNameError`               | `enum`     | 名称句柄空间耗尽错误                   |
 | `UniqueNamePool`                | `Resource` | 碰撞安全的字符串驻留池，注册返回 Result |
-| `Random`                        | `Resource` | 种子确定性 RNG                        |
+| `Random` | `Resource` | 独立的通用范围和效果概率随机流；几何采样归属模板 `SpatialRandom` |
 | `GameplayAbilitySystemSettings` | `struct`   | 全局编译期常量                        |
 
 `UniqueName`、`UniqueNameError`、`UniqueNamePool` 与 `Random` 只从 crate root 公开，不在
