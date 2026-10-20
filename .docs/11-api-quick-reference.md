@@ -197,8 +197,8 @@ ASC、Active Ability 或 `Commands`。`AbilitySystemParams` 内嵌它并实现 `
 | `AbilityChainError`        | `enum`       | 链验证错误                                            |
 | `AbilityActivationError`   | `enum`       | 激活失败原因                                          |
 | `AbilityCommitError`       | `enum`       | 属性/额外成本、Cooldown 的准备、执行和补偿失败原因 |
-| `AdditionalCost` | `struct` | 游戏资源 UniqueName + 正整数需求；由 Abilities 领域拥有 |
-| `AdditionalCostError` | `enum` | 外部资源不足、Provider 配置和执行错误 |
+| `AdditionalCost` | `struct` | 游戏资源 i32 ID + 正整数 u32 需求；由 Abilities 领域拥有 |
+| `AdditionalCostError` | `enum` | 外部资源不足、Provider 配置和执行错误；资源字段为 i32 |
 
 ### 游戏输入适配
 

@@ -306,7 +306,7 @@ handle/spec、管理器和系统函数应从 `bevy_gas::gas::<domain>` 或 crate
 | Requirement/免疫 | 抑制、恢复、移除、固定点收敛与 fail-closed                           |
 | 技能             | 激活、Cost、Cooldown、阻止/取消标签与实例策略                        |
 | 技能任务/链      | startup、WaitTicks、完成动作、深度与循环检测                         |
-| 额外成本         | 只读预检、同名批量需求、同 tick 可见性、各入口支付、失败补偿与取消不退款 |
+| 额外成本         | 只读预检、同 ID 批量需求、同 tick 可见性、各入口支付、失败补偿与取消不退款 |
 | 目标结果契约 | 顺序保留、主目标一致性、空值拒绝、多目标激活与任务结算 |
 | 统一 FIFO        | Ability/Effect 跨类型顺序、完整 drain、阶段边界                      |
 | 组件组合         | Bundle 四组件齐全，Tag/Attribute 独立存在                            |

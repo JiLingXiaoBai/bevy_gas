@@ -1,4 +1,3 @@
-use crate::unique_names::UniqueName;
 use std::borrow::Cow;
 use std::error::Error;
 use std::fmt;
@@ -13,12 +12,12 @@ pub enum AdditionalCostError {
     /// The configured provider does not recognize this resource.
     UnsupportedResource {
         /// Identifier the provider cannot price or debit.
-        resource: UniqueName,
+        resource: i32,
     },
     /// The complete batch requires more units than are available.
     InsufficientResource {
         /// Resource whose available balance is insufficient.
-        resource: UniqueName,
+        resource: i32,
         /// Total required by the batch, including repeated entries.
         required: u32,
         /// Units currently available for payment.
@@ -52,7 +51,7 @@ impl fmt::Display for AdditionalCostError {
             Self::InvalidAmount => write!(f, "additional cost amount must be positive"),
             Self::MissingProvider => write!(f, "no additional-cost provider is configured"),
             Self::UnsupportedResource { resource } => {
-                write!(f, "unsupported additional-cost resource {resource:?}")
+                write!(f, "unsupported additional-cost resource {resource}")
             }
             Self::InsufficientResource {
                 resource,
@@ -60,7 +59,7 @@ impl fmt::Display for AdditionalCostError {
                 available,
             } => write!(
                 f,
-                "additional-cost resource {resource:?} requires {required} units but only {available} are available"
+                "additional-cost resource {resource} requires {required} units but only {available} are available"
             ),
             Self::Rejected { reason } => write!(f, "additional cost rejected: {reason}"),
             Self::ProviderFailure { reason } => {

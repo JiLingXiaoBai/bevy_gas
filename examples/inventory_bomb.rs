@@ -13,14 +13,13 @@ use bevy_gas::{
     GameplayExecutionResult, Modifier, ModifierMagnitude, ModifierOperation, StackingPolicy,
     can_activate_ability,
 };
-use bevy_gas::{UniqueName, UniqueNamePool};
 use std::error::Error;
 use std::sync::Arc;
 
 // This game stores its authoritative bomb count in its own component.
 #[derive(Component)]
 struct Inventory {
-    bomb_resource: UniqueName,
+    bomb_resource: i32,
     bombs: u32,
 }
 
@@ -144,11 +143,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             InventoryCosts,
         >());
 
-    let bomb = app
-        .world_mut()
-        .get_resource_mut::<UniqueNamePool>()
-        .ok_or("missing unique-name pool")?
-        .new_name("Inventory.Bomb")?;
+    let bomb = 5001;
     let mana = app
         .world_mut()
         .run_system_once(|mut register: AttributeIdRegister| {

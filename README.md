@@ -61,6 +61,7 @@ fn spawn_gameplay_actor(mut commands: Commands) {
 共享的 GAS 定义。配套游戏起始模板
 [bevy_gas_template](../bevy_gas_template/README.md) 包含独立配置工程，并通过 `../bevy_gas` 本地 path 依赖本库。
 
+额外消耗直接使用游戏定义的 i32 资源 ID 与正整数数量，Provider 按 ID 检查和支付，无需资源名称注册。
 接入步骤与库和游戏的职责划分见 [外部配置集成](./.docs/19-external-configuration.md)。
 
 ## 文档

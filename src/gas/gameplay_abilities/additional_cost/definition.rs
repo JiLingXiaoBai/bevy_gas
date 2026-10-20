@@ -1,28 +1,29 @@
 use super::AdditionalCostError;
-use crate::unique_names::UniqueName;
 use std::num::NonZeroU32;
 
 /// One positive integer requirement interpreted by the game's additional-cost provider.
 ///
-/// Resource identifiers belong to the game; GAS does not store inventory balances. Providers
-/// must evaluate repeated identifiers together and reject unsupported identifiers.
+/// Resource identifiers belong to the game and accept every `i32` value without registration.
+/// GAS does not store inventory balances. Providers must evaluate repeated identifiers together
+/// and reject unsupported identifiers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AdditionalCost {
-    resource: UniqueName,
+    resource: i32,
     amount: NonZeroU32,
 }
 
 impl AdditionalCost {
     /// Creates a requirement for `amount` units of `resource`.
     ///
+    /// The game-defined `resource` may be negative, zero, or positive.
     /// Returns the requirement, or [`AdditionalCostError::InvalidAmount`] for zero units.
-    pub fn new(resource: UniqueName, amount: u32) -> Result<Self, AdditionalCostError> {
+    pub fn new(resource: i32, amount: u32) -> Result<Self, AdditionalCostError> {
         let amount = NonZeroU32::new(amount).ok_or(AdditionalCostError::InvalidAmount)?;
         Ok(Self { resource, amount })
     }
 
     /// Returns the game-defined resource identifier.
-    pub fn resource(&self) -> UniqueName {
+    pub fn resource(&self) -> i32 {
         self.resource
     }
 

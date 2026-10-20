@@ -153,10 +153,17 @@ app.add_systems(
 
 ## 接入背包等额外消耗
 
-属性消耗仍使用 `GameplayAbility::with_cost(...)`。额外成本用游戏自己的 `UniqueName` 标识，
+属性消耗仍使用 `GameplayAbility::with_cost(...)`。额外成本用游戏自己的 `i32` 资源 ID 标识，
 通过 `AdditionalCost::new(resource, positive_amount)?` 创建，再由
-`with_additional_costs(...)` 写入技能定义。名称只标识资源，不保存数量；实际余额由背包等
+`with_additional_costs(...)` 写入技能定义。完整 i32 范围均可使用，包括负数和 0；资源是否存在
+由 Provider 判断。`resource()` 返回该整数，`AdditionalCostError::UnsupportedResource` 与
+`InsufficientResource` 的 resource 字段也为 i32。ID 只标识资源；实际余额由背包等
 Component 或 Resource 唯一持有。
+
+例如游戏可用 5001 表示炸弹，Provider 直接匹配 `cost.resource() == 5001` 或用整数 ID 查询
+自己的资源字典，无需注册名称或借用 `UniqueNamePool`。从旧接口迁移时，按游戏规则将原名称
+映射为整数，并同步更新成本构造、库存键、Provider 匹配和错误字段；标签与属性继续使用各自
+注册流程。成本列表的原始顺序和重复项保持不变，付款与补偿协议不变。
 
 完整可运行示例见 [`inventory_bomb`](../examples/inventory_bomb.rs)：
 `cargo run --example inventory_bomb`。它演示背包炸弹作为额外成本接入技能流程。

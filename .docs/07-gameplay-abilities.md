@@ -77,9 +77,11 @@ FIFO，已入队请求不会因 EndAbility 撤回。任务顺序与边界见 [08
 
 属性 Cost 继续使用 Instant、Add 类型的 GameplayEffect；背包物品、耐久等游戏资源通过
 `with_additional_costs(Vec<AdditionalCost>)` 声明。两种成本可以同时使用。
-`AdditionalCost::new(resource, amount)` 接收游戏注册的 `UniqueName` 和正整数 `u32` 数量，
-数量为零返回 `AdditionalCostError::InvalidAmount`。`get_additional_costs()` 只读访问完整列表，
-builder 替换整个列表；同名条目不会自动去重，Provider 必须按整批需求判断是否足够。
+`AdditionalCost::new(resource: i32, amount: u32)` 接收游戏定义的整数资源 ID 和正整数数量，
+数量为零返回 `AdditionalCostError::InvalidAmount`。资源 ID 允许完整 i32 范围，包括负数和 0；
+无需名称注册，是否存在由 Provider 判断。`resource()` 原样返回 i32 ID，资源相关错误字段也使用 i32。
+`get_additional_costs()` 只读访问完整列表，builder 替换整个列表；同 ID 条目不会自动去重，
+Provider 必须按整批需求判断是否足够。
 
 定义只描述需求，不持有库存、支付状态或可变回调。游戏通过 `AdditionalCostProvider` 显式声明
 背包等 ECS 查询，预检查与真实提交均由同一适配器处理；默认 `()` Provider 拒绝非空额外成本。

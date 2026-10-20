@@ -5,18 +5,18 @@ use bevy_gas::{
     AbilitySystemParams, AdditionalCost, AdditionalCostContext, AdditionalCostError,
     AdditionalCostProvider, AttributeIdManager, AttributeSet, GameplayAbilitySystemPlugin,
     GameplayAbilitySystemRuntimePlugin, GameplayEffectApplicationError, GameplayExecutionOutcome,
-    GameplayExecutionResult, UniqueName, UniqueNamePool, can_activate_ability, cancel_ability,
-    commit_ability, try_activate_ability_by_handle,
+    GameplayExecutionResult, UniqueNamePool, can_activate_ability, cancel_ability, commit_ability,
+    try_activate_ability_by_handle,
 };
 
 #[derive(Component, Clone, Debug, PartialEq, Eq)]
 struct Inventory {
-    balances: Vec<(UniqueName, u32)>,
+    balances: Vec<(i32, u32)>,
 }
 
 impl Inventory {
     fn planned_debit(&self, costs: &[AdditionalCost]) -> Result<Self, AdditionalCostError> {
-        let mut totals: Vec<(UniqueName, u32)> = Vec::new();
+        let mut totals: Vec<(i32, u32)> = Vec::new();
         for cost in costs {
             if let Some((_, total)) = totals.iter_mut().find(|(id, _)| *id == cost.resource()) {
                 *total = total.checked_add(cost.amount()).ok_or_else(|| {
@@ -151,14 +151,7 @@ fn inventory_app() -> App {
     app
 }
 
-fn resource_name(app: &mut App, name: &str) -> UniqueName {
-    app.world_mut()
-        .resource_mut::<UniqueNamePool>()
-        .new_name(name)
-        .unwrap()
-}
-
-fn spawn_inventory_owner(app: &mut App, resource: UniqueName, amount: u32) -> Entity {
+fn spawn_inventory_owner(app: &mut App, resource: i32, amount: u32) -> Entity {
     app.world_mut()
         .spawn((
             GameplayAbilitySystemBundle::default(),
@@ -169,7 +162,7 @@ fn spawn_inventory_owner(app: &mut App, resource: UniqueName, amount: u32) -> En
         .id()
 }
 
-fn balance(app: &App, source: Entity, resource: UniqueName) -> u32 {
+fn balance(app: &App, source: Entity, resource: i32) -> u32 {
     app.world()
         .get::<Inventory>(source)
         .unwrap()
@@ -180,7 +173,7 @@ fn balance(app: &App, source: Entity, resource: UniqueName) -> u32 {
         .1
 }
 
-fn item_ability(resource: UniqueName, amount: u32) -> GameplayAbility {
+fn item_ability(resource: i32, amount: u32) -> GameplayAbility {
     GameplayAbility::default()
         .with_additional_costs(vec![AdditionalCost::new(resource, amount).unwrap()])
 }
@@ -217,22 +210,62 @@ fn commit_with_inventory(
 }
 
 #[test]
-fn additional_cost_requires_a_positive_amount() {
-    let mut app = inventory_app();
-    let bomb = resource_name(&mut app, "Item.Bomb");
+fn additional_cost_accepts_all_i32_resources_and_requires_a_positive_amount() {
+    for resource in [i32::MIN, -1, 0, 1, i32::MAX] {
+        assert_eq!(
+            AdditionalCost::new(resource, 0),
+            Err(AdditionalCostError::InvalidAmount)
+        );
+        for amount in [1, 3, u32::MAX] {
+            let cost = AdditionalCost::new(resource, amount).unwrap();
+            assert_eq!(cost.resource(), resource);
+            assert_eq!(cost.amount(), amount);
+        }
+    }
+}
+
+#[test]
+fn integer_resource_costs_work_across_worlds_without_name_registration() {
+    for resource in [i32::MIN, -1, 0, i32::MAX] {
+        let ability = Arc::new(item_ability(resource, 1));
+        let mut worlds = [inventory_app(), inventory_app()];
+        for app in &mut worlds {
+            app.world_mut().remove_resource::<UniqueNamePool>();
+            let source = spawn_inventory_owner(app, resource, 1);
+            assert_eq!(
+                commit_with_inventory(app, source, Arc::clone(&ability)),
+                Ok(())
+            );
+            assert_eq!(balance(app, source, resource), 0);
+            assert!(!app.world().contains_resource::<UniqueNamePool>());
+        }
+    }
+}
+
+#[test]
+fn resource_errors_display_game_defined_integer_ids() {
+    let unsupported = AdditionalCostError::UnsupportedResource { resource: -7 };
     assert_eq!(
-        AdditionalCost::new(bomb, 0),
-        Err(AdditionalCostError::InvalidAmount)
+        unsupported.to_string(),
+        "unsupported additional-cost resource -7"
     );
-    let cost = AdditionalCost::new(bomb, 3).unwrap();
-    assert_eq!(cost.resource(), bomb);
-    assert_eq!(cost.amount(), 3);
+    assert!(!unsupported.is_rejection());
+    let insufficient = AdditionalCostError::InsufficientResource {
+        resource: 0,
+        required: 3,
+        available: 1,
+    };
+    assert_eq!(
+        insufficient.to_string(),
+        "additional-cost resource 0 requires 3 units but only 1 are available"
+    );
+    assert!(insufficient.is_rejection());
 }
 
 #[test]
 fn direct_activation_charges_the_owner_once_and_preserves_context() {
     let mut app = inventory_app();
-    let bomb = resource_name(&mut app, "Item.Bomb");
+    let bomb = 5001;
     let source = spawn_inventory_owner(&mut app, bomb, 3);
     let target = spawn_inventory_owner(&mut app, bomb, 8);
     let handle = app
@@ -260,7 +293,7 @@ fn direct_activation_charges_the_owner_once_and_preserves_context() {
 #[test]
 fn readonly_precheck_uses_immutable_world_without_spending_inventory() {
     let mut app = inventory_app();
-    let bomb = resource_name(&mut app, "Item.Bomb");
+    let bomb = 5001;
     let source = spawn_inventory_owner(&mut app, bomb, 1);
     let affordable = Arc::new(item_ability(bomb, 1));
     let expensive = Arc::new(item_ability(bomb, 2));
@@ -288,7 +321,7 @@ fn readonly_precheck_uses_immutable_world_without_spending_inventory() {
 #[test]
 fn standalone_commit_pays_inventory_without_starting_an_instance() {
     let mut app = inventory_app();
-    let bomb = resource_name(&mut app, "Item.Bomb");
+    let bomb = 5001;
     let source = spawn_inventory_owner(&mut app, bomb, 1);
     assert_eq!(
         commit_with_inventory(&mut app, source, Arc::new(item_ability(bomb, 1))),
@@ -305,7 +338,7 @@ fn standalone_commit_pays_inventory_without_starting_an_instance() {
 #[test]
 fn fifo_requests_compete_for_the_last_item_at_resolution() {
     let mut app = inventory_app();
-    let bomb = resource_name(&mut app, "Item.Bomb");
+    let bomb = 5001;
     let source = spawn_inventory_owner(&mut app, bomb, 1);
     let handle = give_ability(
         &mut app,
@@ -352,7 +385,7 @@ fn fifo_requests_compete_for_the_last_item_at_resolution() {
 fn repeated_costs_are_checked_as_a_batch_and_debited_once() {
     for (available, succeeds) in [(5, false), (6, true)] {
         let mut app = inventory_app();
-        let bomb = resource_name(&mut app, "Item.Bomb");
+        let bomb = 5001;
         let source = spawn_inventory_owner(&mut app, bomb, available);
         let ability = Arc::new(GameplayAbility::default().with_additional_costs(vec![
             AdditionalCost::new(bomb, 3).unwrap(),
@@ -382,8 +415,8 @@ fn repeated_costs_are_checked_as_a_batch_and_debited_once() {
 #[test]
 fn a_later_unaffordable_resource_does_not_spend_earlier_items_or_attributes() {
     let mut app = inventory_app();
-    let bomb = resource_name(&mut app, "Item.Bomb");
-    let reagent = resource_name(&mut app, "Item.Reagent");
+    let bomb = 5001;
+    let reagent = -5002;
     let mana = register_attribute(&mut app, "Mana");
     let source = spawn_inventory_owner(&mut app, bomb, 2);
     app.world_mut()
@@ -420,7 +453,7 @@ fn a_later_unaffordable_resource_does_not_spend_earlier_items_or_attributes() {
 #[test]
 fn prepare_rejection_leaves_attributes_and_inventory_unchanged() {
     let mut app = inventory_app();
-    let bomb = resource_name(&mut app, "Item.Bomb");
+    let bomb = 5001;
     let mana = register_attribute(&mut app, "Mana");
     let source = spawn_inventory_owner(&mut app, bomb, 2);
     let attributes = attribute_set(&app, mana, 10.0);
@@ -464,7 +497,7 @@ fn erase_attributes_after_payment(
 fn gas_execution_failure_compensates_inventory_and_retains_the_original_error() {
     for fail_rollback in [false, true] {
         let mut app = inventory_app();
-        let bomb = resource_name(&mut app, "Item.Bomb");
+        let bomb = 5001;
         let mana = register_attribute(&mut app, "Mana");
         let source = spawn_inventory_owner(&mut app, bomb, 1);
         let mut attributes = attribute_set(&app, mana, 10.0);
@@ -514,7 +547,7 @@ fn gas_execution_failure_compensates_inventory_and_retains_the_original_error() 
 fn chained_activation_uses_the_same_provider_and_sees_parent_payment() {
     for available in [1, 2] {
         let mut app = inventory_app();
-        let bomb = resource_name(&mut app, "Item.Bomb");
+        let bomb = 5001;
         let source = spawn_inventory_owner(&mut app, bomb, available);
         let child = give_ability(&mut app, source, Arc::new(item_ability(bomb, 1)));
         let parent = give_ability(
@@ -548,7 +581,7 @@ fn chained_activation_uses_the_same_provider_and_sees_parent_payment() {
 #[test]
 fn missing_provider_rejects_additional_costs_instead_of_granting_a_free_activation() {
     let mut app = test_app();
-    let bomb = resource_name(&mut app, "Item.Bomb");
+    let bomb = 5001;
     let source = spawn_inventory_owner(&mut app, bomb, 1);
     let handle = give_ability(&mut app, source, Arc::new(item_ability(bomb, 1)));
     assert_eq!(
@@ -566,8 +599,8 @@ fn missing_provider_rejects_additional_costs_instead_of_granting_a_free_activati
 #[test]
 fn unsupported_resources_fail_closed_without_spending_known_items() {
     let mut app = inventory_app();
-    let bomb = resource_name(&mut app, "Item.Bomb");
-    let unsupported = resource_name(&mut app, "Item.Unknown");
+    let bomb = 5001;
+    let unsupported = -1;
     let source = spawn_inventory_owner(&mut app, bomb, 1);
     let ability = Arc::new(GameplayAbility::default().with_additional_costs(vec![
         AdditionalCost::new(bomb, 1).unwrap(),
@@ -587,7 +620,7 @@ fn unsupported_resources_fail_closed_without_spending_known_items() {
 #[test]
 fn cancelling_a_successful_activation_does_not_refund_its_items() {
     let mut app = inventory_app();
-    let bomb = resource_name(&mut app, "Item.Bomb");
+    let bomb = 5001;
     let source = spawn_inventory_owner(&mut app, bomb, 1);
     let handle = give_ability(&mut app, source, Arc::new(item_ability(bomb, 1)));
     assert_eq!(
@@ -620,7 +653,7 @@ fn configured_runtime_plugins_share_the_default_runtime_identity() {
 #[test]
 fn repeated_cost_amount_overflow_fails_without_debiting_inventory() {
     let mut app = inventory_app();
-    let bomb = resource_name(&mut app, "Item.Bomb");
+    let bomb = 5001;
     let source = spawn_inventory_owner(&mut app, bomb, u32::MAX);
     let ability = Arc::new(GameplayAbility::default().with_additional_costs(vec![
         AdditionalCost::new(bomb, u32::MAX).unwrap(),
@@ -641,7 +674,7 @@ fn repeated_cost_amount_overflow_fails_without_debiting_inventory() {
 #[test]
 fn cooldown_preparation_failure_does_not_prepare_or_spend_additional_costs() {
     let mut app = inventory_app();
-    let bomb = resource_name(&mut app, "Item.Bomb");
+    let bomb = 5001;
     let cooldown_tag = register_tag(&mut app, "Cooldown.Bomb");
     let source = spawn_inventory_owner(&mut app, bomb, 1);
     app.world_mut()

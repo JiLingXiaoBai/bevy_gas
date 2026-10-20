@@ -11,8 +11,9 @@
 ## 公共接口衔接
 
 1. 安装 `GameplayAbilitySystemPlugin`，准备名称、标签和属性注册资源。
-2. 游戏读取并校验自己的数据，以确定顺序注册标签、属性和额外资源名称。
+2. 游戏读取并校验自己的数据，以确定顺序注册标签和属性。
    常规系统可使用 `GameplayTagRegister`、`AttributeIdRegister` 与 `UniqueNamePool`。
+   额外成本的资源 ID 直接使用游戏定义的 i32，不参与名称注册。
 3. 构造 `Modifier`、`GameplayEffect` 和 `GameplayAbility`，通过 `Arc` 共享定义；
    游戏另行构造自己的索敌规则，Resource 保存稳定配置 ID 到相应定义的映射。
 4. 创建 `GameplayAbilitySystemBundle`，初始化属性，再通过
@@ -36,8 +37,9 @@
 
 - 自定义数值公式实现 `ModifierMagnitudeCalculation`，由游戏编译层构造
   `ModifierMagnitude::Calculated`；只读取公开求值上下文。
-- 背包、耐久等成本由 `AdditionalCost` 描述，通过游戏的 `AdditionalCostProvider`
-  执行同步检查、支付和失败补偿。
+- 背包、耐久等成本由 `AdditionalCost::new(resource: i32, amount: u32)` 描述，数量必须为正；
+  资源 ID 允许完整 i32 范围。游戏的 `AdditionalCostProvider` 直接按 ID 判断资源是否存在，
+  执行整批同步检查、支付和失败补偿，无需资源名称或名称池映射。
 - 游戏事件动作可构造 `AbilityTaskOnFinishedDef::EmitEvent`，通过
   `On<AbilityTaskEvent>` Observer 接入投射物、动画等游戏系统。Observer 延迟执行，
   不能充当启动阶段下一动作之前必须完成的同步结算。
