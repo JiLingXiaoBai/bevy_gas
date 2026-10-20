@@ -103,6 +103,11 @@ impl AttributeSet {
         id: AttributeId,
     ) -> Result<Option<f32>, AttributeIdError>;
 
+    pub fn evaluate_attribute(
+        &self,
+        manager: &AttributeIdManager,
+        id: AttributeId,
+    ) -> Result<Option<AttributeSnapshot>, AttributeIdError>;
     pub fn apply_instant_modifier(
         &mut self,
         manager: &AttributeIdManager,
@@ -132,6 +137,7 @@ impl AttributeSet {
 pub enum AttributeSetError {
     AttributeId(AttributeIdError),
     UninitializedAttribute { id: AttributeId },
+    NonFiniteModifier { id: AttributeId },
 }
 ```
 
@@ -198,6 +204,15 @@ Gameplay FIFO、Requirement 收敛和技能清理之后。
 
 这也是 `get_current_value()` 需要 `&mut self` 的原因：一次读取可能消费 dirty 位并更新
 current。
+
+`evaluate_attribute(&self, manager, id)` 提供只读求值：复制单个 Attribute 到栈上，用当前 base 与
+Aggregator 计算最新 current，返回 `AttributeSnapshot`。它会包含 dirty Buff，但不写入缓存、
+不清 dirty 位，不复制完整属性集，也不触发 post-execute。无论缓存是否已刷新，该接口都会进行
+纯求值；普通持久读取仍可使用 `get_current_value()` 消费 dirty 并缓存结果。
+
+这个接口供 Modifier 的来源/目标实时读取和其他只读预览使用。自定义 executor 可能因此多次
+执行，必须保持纯计算且不依赖调用次数。有效但未初始化的属性返回 `Ok(None)`，无效 ID 返回
+`AttributeIdError::MissingLocation`。
 
 ### 即时与持续修改
 

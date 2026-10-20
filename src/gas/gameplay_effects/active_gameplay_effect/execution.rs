@@ -19,13 +19,14 @@ use bevy::prelude::*;
 
 /// Executes an immediately prepared gameplay-effect plan.
 ///
-/// This revalidates structural ECS requirements, but does not repeat application
-/// requirements, immunity, probability, or stacking decisions. It also does not
+/// This revalidates modifier magnitudes and structural ECS requirements, but does not repeat
+/// application requirements, immunity, probability, or stacking decisions. It also does not
 /// provide transactional rollback if a later mutation fails.
 ///
 /// # Errors
 ///
-/// Returns [`GameplayEffectApplicationError`] if required ECS state changed.
+/// Returns [`GameplayEffectApplicationError`] if required ECS state changed or a
+/// modifier magnitude is non-finite after stack scaling.
 pub fn execute_gameplay_effect_plan(
     plan: GameplayEffectApplicationPlan,
     params: &mut EffectSystemParams,
@@ -81,6 +82,7 @@ pub(crate) fn validate_gameplay_effect_plan(
         &params.tag_container_query,
         &params.active_effect_query.as_readonly(),
     )?;
+    plan.validate_modifier_magnitudes(&params.active_effect_query.as_readonly())?;
     Ok(())
 }
 
@@ -105,7 +107,7 @@ pub(super) fn validate_effect_execution_requirements(
         };
         for modifier in spec.get_modifier_specs() {
             attr_set
-                .validate_initialized_attribute(attribute_id_manager, modifier.get_id())
+                .validate_modifier(attribute_id_manager, modifier)
                 .map_err(|error| map_attribute_set_error(target, error))?;
         }
     }

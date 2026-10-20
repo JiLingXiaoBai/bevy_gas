@@ -1,7 +1,7 @@
 use super::super::aggregation::AttributeAggregatorSet;
 use super::super::{
     AttributeId, AttributeIdError, AttributeIdManager, AttributeLocation, AttributeRegion,
-    AttributeSetSnapshot,
+    AttributeSetSnapshot, AttributeSnapshot,
 };
 use super::state::{Attribute, AttributeSet};
 use bevy::prelude::{Changed, Entity, Query};
@@ -60,6 +60,29 @@ impl AttributeSet {
             attribute.recalculate(aggregators.get(location));
         }
         Ok(Some(attribute.get_current_value()))
+    }
+
+    /// Evaluates the live base and current values for `id` without modifying this set.
+    ///
+    /// The current value uses the present base and aggregator, including pending dirty modifiers.
+    /// Evaluation copies one attribute on the stack; it does not clear dirty bits, update cached
+    /// values, or invoke post-execute callbacks. Custom executors must remain pure calculations.
+    /// `Ok(None)` means the ID is valid but this set has not initialized it.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`AttributeIdError::MissingLocation`] if `id` is not registered in `manager`.
+    pub fn evaluate_attribute(
+        &self,
+        manager: &AttributeIdManager,
+        id: AttributeId,
+    ) -> Result<Option<AttributeSnapshot>, AttributeIdError> {
+        let location = manager.location(id)?;
+        let Some(mut attribute) = *self.attribute_slot(location) else {
+            return Ok(None);
+        };
+        attribute.recalculate(self.aggregators.get(location));
+        Ok(Some(attribute.make_snapshot()))
     }
 
     /// Captures the current hot and cold attribute values for `source_entity`.

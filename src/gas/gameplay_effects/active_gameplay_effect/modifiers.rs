@@ -7,6 +7,27 @@ use super::state::ActiveEffectHandle;
 use crate::attributes::{AttributeIdManager, AttributeSet};
 use bevy::prelude::Entity;
 
+/// Rejects non-finite magnitudes before any modifier or effect state is changed.
+pub(super) fn validate_modifier_magnitudes(
+    target: Entity,
+    spec: &GameplayEffectSpec,
+    stack_count: u32,
+) -> Result<(), GameplayEffectApplicationError> {
+    let multiplier = stack_multiplier(
+        spec.get_stacking_policy().get_magnitude_policy(),
+        stack_count,
+    );
+    for modifier in spec.get_modifier_specs() {
+        if !modifier.scaled_by_stack(multiplier).get_value().is_finite() {
+            return Err(GameplayEffectApplicationError::NonFiniteModifier {
+                target,
+                id: modifier.get_id(),
+            });
+        }
+    }
+    Ok(())
+}
+
 pub(super) fn apply_duration_modifiers(
     target: Entity,
     attr_set: &mut AttributeSet,
@@ -15,6 +36,7 @@ pub(super) fn apply_duration_modifiers(
     handle: ActiveEffectHandle,
     stack_count: u32,
 ) -> Result<(), GameplayEffectApplicationError> {
+    validate_modifier_magnitudes(target, spec, stack_count)?;
     let stack_multiplier = stack_multiplier(
         spec.get_stacking_policy().get_magnitude_policy(),
         stack_count,
@@ -39,6 +61,7 @@ pub(super) fn refresh_duration_modifiers(
     handle: ActiveEffectHandle,
     stack_count: u32,
 ) -> Result<(), GameplayEffectApplicationError> {
+    validate_modifier_magnitudes(target, spec, stack_count)?;
     attr_set.remove_modifiers_for_attributes(
         attribute_id_manager,
         handle,
@@ -61,6 +84,7 @@ pub(super) fn apply_instant_modifiers(
     spec: &GameplayEffectSpec,
     stack_count: u32,
 ) -> Result<(), GameplayEffectApplicationError> {
+    validate_modifier_magnitudes(target, spec, stack_count)?;
     let stack_multiplier = stack_multiplier(
         spec.get_stacking_policy().get_magnitude_policy(),
         stack_count,

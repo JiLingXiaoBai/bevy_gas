@@ -5,6 +5,7 @@ use super::super::gameplay_effect_spec::{EffectDurationTicksSpec, GameplayEffect
 use super::super::{EffectContext, EffectSystemParams, EffectTags};
 use super::error::{GameplayEffectApplicationError, map_attribute_set_error};
 use super::execution::validate_effect_execution_requirements;
+use super::modifiers::validate_modifier_magnitudes;
 use super::removal::collect_active_effects_with_tags_for_params;
 use super::state::{ActiveEffectHandle, ActiveGameplayEffects};
 use crate::attributes::{AttributeIdManager, AttributeSet, AttributeSnapshot};
@@ -36,6 +37,24 @@ pub(super) enum GameplayEffectApplicationKind {
 }
 
 impl GameplayEffectApplicationPlan {
+    /// Checks the actual retained specification when an application adds a stack.
+    pub(super) fn validate_modifier_magnitudes(
+        &self,
+        active_effects: &Query<&ActiveGameplayEffects>,
+    ) -> Result<(), GameplayEffectApplicationError> {
+        if let GameplayEffectApplicationKind::StackExisting {
+            handle,
+            new_stack_count,
+        } = self.kind
+            && let Ok(effects) = active_effects.get(handle.get_target())
+            && let Some(effect) = effects.get(handle)
+        {
+            return validate_modifier_magnitudes(self.target, effect.get_spec(), new_stack_count);
+        }
+        // A vanished stack target falls back to creating a single new effect.
+        validate_modifier_magnitudes(self.target, &self.spec, 1)
+    }
+
     /// Returns the prepared modifier specifications.
     pub fn get_modifier_specs(&self) -> &[ModifierSpec] {
         self.spec.get_modifier_specs()
@@ -190,7 +209,7 @@ pub fn prepare_gameplay_effect(
         &params.active_effect_query.as_readonly(),
         &params.tag_manager,
     )?;
-    if let Some((handle, stack_count)) = find_stackable_active_effect(
+    let kind = if let Some((handle, stack_count)) = find_stackable_active_effect(
         source,
         target,
         &spec,
@@ -199,49 +218,34 @@ pub fn prepare_gameplay_effect(
     ) {
         let stacking_policy = spec.get_stacking_policy();
         let limit = stacking_policy.get_stack_limit();
-        if limit != 0 && stack_count >= limit {
+        let new_stack_count = if limit != 0 && stack_count >= limit {
             match stacking_policy.get_overflow_policy() {
                 StackOverflowPolicy::RejectApplication => {
                     return Err(GameplayEffectApplicationError::StackOverflowRejected);
                 }
-                StackOverflowPolicy::RefreshDuration => {
-                    return Ok(GameplayEffectApplicationPlan {
-                        source,
-                        target,
-                        spec,
-                        removed_effects,
-                        kind: GameplayEffectApplicationKind::StackExisting {
-                            handle,
-                            new_stack_count: stack_count,
-                        },
-                    });
-                }
+                StackOverflowPolicy::RefreshDuration => stack_count,
             }
+        } else {
+            stack_count.saturating_add(1)
+        };
+        GameplayEffectApplicationKind::StackExisting {
+            handle,
+            new_stack_count,
         }
-        return Ok(GameplayEffectApplicationPlan {
-            source,
-            target,
-            spec,
-            removed_effects,
-            kind: GameplayEffectApplicationKind::StackExisting {
-                handle,
-                new_stack_count: stack_count.saturating_add(1),
-            },
-        });
-    }
-
-    let kind = if spec.get_duration_spec().is_instant() {
+    } else if spec.get_duration_spec().is_instant() {
         GameplayEffectApplicationKind::Instant
     } else {
         GameplayEffectApplicationKind::CreateActive
     };
-    Ok(GameplayEffectApplicationPlan {
+    let plan = GameplayEffectApplicationPlan {
         source,
         target,
         spec,
         removed_effects,
         kind,
-    })
+    };
+    plan.validate_modifier_magnitudes(&params.active_effect_query.as_readonly())?;
+    Ok(plan)
 }
 
 fn find_stackable_active_effect(

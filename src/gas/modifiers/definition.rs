@@ -24,7 +24,10 @@ pub enum ModifierMagnitude {
 
 /// Calculates a modifier magnitude from context supplied by the caller.
 pub trait ModifierMagnitudeCalculation: Send + Sync {
-    /// Evaluates and returns the modifier magnitude.
+    /// Evaluates and returns the modifier magnitude without mutating gameplay state.
+    ///
+    /// Implementations choose an explicit fallback for unavailable context data. NaN and
+    /// infinite results are rejected by effect application and attribute mutation APIs.
     fn calculate(&self, context: &dyn ModifierEvaluationContext) -> f32;
 }
 
@@ -47,6 +50,9 @@ impl Modifier {
     }
 
     /// Evaluates this definition into a value-only specification.
+    ///
+    /// This does not validate the result; effect application and attribute mutation APIs
+    /// reject non-finite magnitudes before applying them.
     pub fn make_spec(&self, context: &dyn ModifierEvaluationContext) -> ModifierSpec {
         let final_value = match &self.magnitude {
             ModifierMagnitude::Flat(value) => *value,

@@ -1,20 +1,23 @@
 use super::support_test::{
     ability_task_count, active_ability_count, active_effect_handles, add_modifier,
     add_tag_to_entity, apply_effect, apply_effect_with_payload, current_value, empty_effect_tags,
-    give_ability, register_attribute, register_tag, run_fixed_update, spawn_attribute_set,
-    test_app,
+    give_ability, register_attribute, register_hot_attribute, register_tag, run_effect_period_tick,
+    run_fixed_update, spawn_attribute_set, test_app,
 };
 use bevy::ecs::system::RunSystemOnce;
 use bevy::prelude::*;
 use bevy_gas::{
     AbilityActivationContext, AbilitySystemComponent, AbilityTaskDef, AbilityTaskOnFinishedDef,
-    ActiveGameplayEffects, AttributeId, AttributeSet, EffectDurationTicks, EffectPayload,
-    GameplayAbility, GameplayAbilitySystemBundle, GameplayAbilitySystemSet, GameplayEffect,
-    GameplayExecutionQueue, GameplayTag, GameplayTagContainer, Modifier, ModifierEvaluationContext,
-    ModifierMagnitude, ModifierMagnitudeCalculation, ModifierOperation, StackingPolicy,
+    ActiveGameplayEffects, Aggregator, AttributeId, AttributeIdError, AttributeIdManager,
+    AttributeSet, AttributeSetSnapshot, EffectContext, EffectDurationTicks, EffectPayload,
+    EffectPeriodTicks, GameplayAbility, GameplayAbilitySystemBundle, GameplayAbilitySystemSet,
+    GameplayEffect, GameplayExecutionQueue, GameplayTag, GameplayTagContainer, Modifier,
+    ModifierEvaluationContext, ModifierMagnitude, ModifierMagnitudeCalculation, ModifierOperation,
+    ModifierSourceId, ModifierSpec, StackingPolicy, default_executor,
     process_gameplay_execution_queue_system,
 };
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 #[derive(Resource)]
 struct OneShotEffectRequest {
@@ -460,4 +463,278 @@ fn default_runtime_preserves_ordering_against_the_public_resolver_system() {
     );
     run_fixed_update(&mut app);
     assert_eq!(current_value(&mut app, target, health), 15.0);
+}
+
+struct LiveCombatMagnitude {
+    attack: AttributeId,
+    defense: AttributeId,
+}
+
+impl ModifierMagnitudeCalculation for LiveCombatMagnitude {
+    fn calculate(&self, context: &dyn ModifierEvaluationContext) -> f32 {
+        let attack = context.source_attribute(self.attack).unwrap().unwrap();
+        let defense = context.target_attribute(self.defense).unwrap().unwrap();
+        -(attack.current() - defense.current()).max(0.0)
+    }
+}
+
+#[test]
+fn calculated_magnitude_reads_dirty_live_attributes_without_replacing_source_snapshot() {
+    let mut app = test_app();
+    let attack = register_hot_attribute(&mut app, "Attack");
+    let defense = register_attribute(&mut app, "Defense");
+    let health = register_attribute(&mut app, "Health");
+    let captured_attack = register_attribute(&mut app, "CapturedAttack");
+    let source = spawn_attribute_set(&mut app, attack, 10.0);
+    let target = spawn_attribute_set(&mut app, health, 100.0);
+    let manager = app.world().resource::<AttributeIdManager>().clone();
+    {
+        let mut attributes = app.world_mut().get_mut::<AttributeSet>(target).unwrap();
+        attributes
+            .initialize_attribute(&manager, defense, 3.0, None)
+            .unwrap();
+        attributes
+            .initialize_attribute(&manager, captured_attack, 0.0, None)
+            .unwrap();
+    }
+    let snapshot = app
+        .world_mut()
+        .get_mut::<AttributeSet>(source)
+        .unwrap()
+        .make_snapshot(source);
+    for (entity, attribute, value) in [(source, attack, 5.0), (target, defense, 2.0)] {
+        let buff = Arc::new(GameplayEffect::new(
+            vec![add_modifier(attribute, value)],
+            EffectDurationTicks::Infinite,
+            None,
+            1.0,
+            StackingPolicy::non_stacking(),
+            empty_effect_tags(),
+        ));
+        assert!(apply_effect(&mut app, entity, source, buff));
+    }
+
+    // Neither actor's dirty attribute cache has been read or recalculated by a fixed tick.
+    let hit = Arc::new(GameplayEffect::new(
+        vec![
+            Modifier::new(
+                health,
+                ModifierOperation::Add,
+                ModifierMagnitude::Calculated(Box::new(LiveCombatMagnitude { attack, defense })),
+            ),
+            Modifier::new(
+                captured_attack,
+                ModifierOperation::Add,
+                ModifierMagnitude::Calculated(Box::new(SnapshotCurrentMagnitude {
+                    attribute: attack,
+                })),
+            ),
+        ],
+        EffectDurationTicks::Instant,
+        None,
+        1.0,
+        StackingPolicy::non_stacking(),
+        empty_effect_tags(),
+    ));
+    assert!(apply_effect_with_payload(
+        &mut app,
+        target,
+        hit,
+        EffectPayload::new(source, None, 1).with_source_snapshot(snapshot),
+    ));
+    assert_eq!(current_value(&mut app, target, health), 90.0);
+    assert_eq!(current_value(&mut app, target, captured_attack), 10.0);
+    assert_eq!(current_value(&mut app, source, attack), 15.0);
+    assert_eq!(current_value(&mut app, target, defense), 5.0);
+}
+
+static LIVE_READ_EVALUATIONS: AtomicUsize = AtomicUsize::new(0);
+
+fn count_live_read_evaluations(aggregator: &Aggregator, base: f32) -> f32 {
+    LIVE_READ_EVALUATIONS.fetch_add(1, Ordering::SeqCst);
+    default_executor(aggregator, base)
+}
+
+#[test]
+fn readonly_attribute_evaluation_keeps_pending_dirty_recalculation() {
+    let mut app = test_app();
+    let power = register_hot_attribute(&mut app, "Power");
+    let manager = app.world().resource::<AttributeIdManager>();
+    let mut attributes = AttributeSet::default();
+    attributes
+        .initialize_attribute(manager, power, 10.0, Some(count_live_read_evaluations))
+        .unwrap();
+    assert_eq!(
+        attributes.get_current_value(manager, power).unwrap(),
+        Some(10.0)
+    );
+    attributes
+        .apply_duration_modifier(
+            manager,
+            &ModifierSpec::new(power, ModifierOperation::Add, 5.0),
+            ModifierSourceId::new(1, 0, 0),
+        )
+        .unwrap();
+    let before = LIVE_READ_EVALUATIONS.load(Ordering::SeqCst);
+    let value = attributes
+        .evaluate_attribute(manager, power)
+        .unwrap()
+        .unwrap();
+    assert_eq!(value.base(), 10.0);
+    assert_eq!(value.current(), 15.0);
+    assert_eq!(LIVE_READ_EVALUATIONS.load(Ordering::SeqCst), before + 1);
+    // A regular read still performs the pending recalculation, then uses its cache afterwards.
+    assert_eq!(
+        attributes.get_current_value(manager, power).unwrap(),
+        Some(15.0)
+    );
+    assert_eq!(LIVE_READ_EVALUATIONS.load(Ordering::SeqCst), before + 2);
+    assert_eq!(
+        attributes.get_current_value(manager, power).unwrap(),
+        Some(15.0)
+    );
+    assert_eq!(LIVE_READ_EVALUATIONS.load(Ordering::SeqCst), before + 2);
+}
+
+struct ContextWithoutLiveAttributes<'a> {
+    manager: &'a AttributeIdManager,
+    source: Entity,
+}
+
+impl ModifierEvaluationContext for ContextWithoutLiveAttributes<'_> {
+    fn target(&self) -> Option<Entity> {
+        None
+    }
+    fn source(&self) -> Entity {
+        self.source
+    }
+    fn instigator(&self) -> Entity {
+        self.source
+    }
+    fn causer(&self) -> Option<Entity> {
+        None
+    }
+    fn level(&self) -> u32 {
+        1
+    }
+    fn source_snapshot(&self) -> Option<&AttributeSetSnapshot> {
+        None
+    }
+    fn attribute_id_manager(&self) -> &AttributeIdManager {
+        self.manager
+    }
+    fn source_tags(&self) -> Option<&GameplayTagContainer> {
+        None
+    }
+    fn target_tags(&self) -> Option<&GameplayTagContainer> {
+        None
+    }
+}
+
+#[test]
+fn context_defaults_preserve_implementers_without_live_access_and_validate_ids() {
+    let mut app = test_app();
+    let known = register_attribute(&mut app, "Known");
+    let manager = app.world().resource::<AttributeIdManager>().clone();
+    let invalid = register_attribute(&mut app, "NotInCapturedManager");
+    let source = app.world_mut().spawn_empty().id();
+    let context = ContextWithoutLiveAttributes {
+        manager: &manager,
+        source,
+    };
+    assert!(context.source_attribute(known).unwrap().is_none());
+    assert!(context.target_attribute(known).unwrap().is_none());
+    assert!(
+        matches!(context.source_attribute(invalid), Err(AttributeIdError::MissingLocation { id }) if id == invalid)
+    );
+    assert!(
+        matches!(context.target_attribute(invalid), Err(AttributeIdError::MissingLocation { id }) if id == invalid)
+    );
+}
+
+#[test]
+fn effect_context_distinguishes_missing_live_data_from_unregistered_ids() {
+    let mut app = test_app();
+    let known = register_attribute(&mut app, "Known");
+    let uninitialized = register_attribute(&mut app, "Uninitialized");
+    let manager = app.world().resource::<AttributeIdManager>().clone();
+    let invalid = register_attribute(&mut app, "NotInCapturedManager");
+    app.insert_resource(manager);
+    let source = spawn_attribute_set(&mut app, known, 7.0);
+    let missing = app.world_mut().spawn_empty().id();
+    let stale = spawn_attribute_set(&mut app, known, 11.0);
+    let snapshot = app
+        .world_mut()
+        .get_mut::<AttributeSet>(stale)
+        .unwrap()
+        .make_snapshot(stale);
+    assert!(app.world_mut().despawn(stale));
+    app.world_mut().run_system_once(
+        move |manager: Res<AttributeIdManager>, attributes: Query<&'static AttributeSet>, tags: Query<&'static GameplayTagContainer>| {
+            let payload = EffectPayload::new(source, None, 1);
+            let context = EffectContext {
+                target: Some(source), payload: &payload, attribute_id_manager: &manager,
+                attr_set_query: &attributes, tag_container_query: &tags,
+            };
+            assert!(context.source_attribute(uninitialized).unwrap().is_none());
+            assert!(context.target_attribute(uninitialized).unwrap().is_none());
+            for source in [missing, stale] {
+                for target in [None, Some(missing), Some(stale)] {
+                    let payload = EffectPayload::new(source, None, 1).with_source_snapshot(snapshot.clone());
+                    let context = EffectContext {
+                        target, payload: &payload, attribute_id_manager: &manager,
+                        attr_set_query: &attributes, tag_container_query: &tags,
+                    };
+                    assert!(context.source_attribute(known).unwrap().is_none());
+                    assert!(context.target_attribute(known).unwrap().is_none());
+                    assert!(matches!(context.source_attribute(invalid), Err(AttributeIdError::MissingLocation { id }) if id == invalid));
+                    assert!(matches!(context.target_attribute(invalid), Err(AttributeIdError::MissingLocation { id }) if id == invalid));
+                    assert_eq!(context.source_snapshot().unwrap().get_current_value(&manager, known).unwrap(), Some(11.0));
+                }
+            }
+        }
+    ).unwrap();
+}
+
+#[test]
+fn periodic_effects_keep_live_attribute_magnitudes_captured_at_application() {
+    let mut app = test_app();
+    let attack = register_attribute(&mut app, "Attack");
+    let defense = register_attribute(&mut app, "Defense");
+    let health = register_attribute(&mut app, "Health");
+    let source = spawn_attribute_set(&mut app, attack, 10.0);
+    let target = spawn_attribute_set(&mut app, health, 100.0);
+    let manager = app.world().resource::<AttributeIdManager>().clone();
+    app.world_mut()
+        .get_mut::<AttributeSet>(target)
+        .unwrap()
+        .initialize_attribute(&manager, defense, 3.0, None)
+        .unwrap();
+    let effect = Arc::new(GameplayEffect::new(
+        vec![Modifier::new(
+            health,
+            ModifierOperation::Add,
+            ModifierMagnitude::Calculated(Box::new(LiveCombatMagnitude { attack, defense })),
+        )],
+        EffectDurationTicks::Infinite,
+        Some(EffectPeriodTicks::new(ModifierMagnitude::Flat(1.0), false)),
+        1.0,
+        StackingPolicy::non_stacking(),
+        empty_effect_tags(),
+    ));
+    assert!(apply_effect(&mut app, target, source, effect));
+    for (entity, attribute, value) in [(source, attack, 100.0), (target, defense, 50.0)] {
+        app.world_mut()
+            .get_mut::<AttributeSet>(entity)
+            .unwrap()
+            .apply_instant_modifier(
+                &manager,
+                &ModifierSpec::new(attribute, ModifierOperation::Add, value),
+            )
+            .unwrap();
+    }
+    run_effect_period_tick(&mut app);
+    assert_eq!(current_value(&mut app, target, health), 93.0);
+    run_effect_period_tick(&mut app);
+    assert_eq!(current_value(&mut app, target, health), 86.0);
 }

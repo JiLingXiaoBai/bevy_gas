@@ -9,6 +9,8 @@ pub enum AttributeSetError {
     AttributeId(AttributeIdError),
     /// The attribute ID is valid, but this set has not initialized its slot.
     UninitializedAttribute { id: AttributeId },
+    /// A modifier magnitude is NaN or infinite and cannot be applied.
+    NonFiniteModifier { id: AttributeId },
 }
 
 impl fmt::Display for AttributeSetError {
@@ -20,6 +22,11 @@ impl fmt::Display for AttributeSetError {
                 "attribute {} is not initialized in this AttributeSet",
                 id.to_index()
             ),
+            Self::NonFiniteModifier { id } => write!(
+                f,
+                "modifier magnitude for attribute {} must be finite",
+                id.to_index()
+            ),
         }
     }
 }
@@ -28,7 +35,7 @@ impl Error for AttributeSetError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::AttributeId(error) => Some(error),
-            Self::UninitializedAttribute { .. } => None,
+            Self::UninitializedAttribute { .. } | Self::NonFiniteModifier { .. } => None,
         }
     }
 }

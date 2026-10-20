@@ -61,6 +61,14 @@ pub trait ModifierEvaluationContext {
     fn causer(&self) -> Option<Entity>;
     fn level(&self) -> u32;
     fn source_snapshot(&self) -> Option<&AttributeSetSnapshot>;
+    fn source_attribute(
+        &self,
+        id: AttributeId,
+    ) -> Result<Option<AttributeSnapshot>, AttributeIdError>;
+    fn target_attribute(
+        &self,
+        id: AttributeId,
+    ) -> Result<Option<AttributeSnapshot>, AttributeIdError>;
     fn attribute_id_manager(&self) -> &AttributeIdManager;
     fn source_tags(&self) -> Option<&GameplayTagContainer>;
     fn target_tags(&self) -> Option<&GameplayTagContainer>;
@@ -69,6 +77,22 @@ pub trait ModifierEvaluationContext {
 
 `EffectContext` 实现了该 trait，但 calculator 不依赖 `EffectContext` 的具体类型，也不能直接
 访问 ECS Query、ASC 或 Active Effect 存储。
+
+`source_attribute(id)` 与 `target_attribute(id)` 读取求值当时的实时属性，返回单属性的
+base/current 值副本。`EffectContext` 通过 `AttributeSet::evaluate_attribute()` 纳入尚未重算的
+持续 Buff，不会清除 dirty 位、修改缓存或触发 post-execute 回调，也不需要复制完整属性集。
+calculator 仍不接触可变 ECS 状态；自定义聚合 executor 必须保持纯计算。
+
+返回值明确区分：
+
+- `Ok(Some(snapshot))`：实体持有该已初始化属性，`base()` / `current()` 分别取得基础值和聚合值；
+- `Ok(None)`：context 没有实时读取能力，或实体、AttributeSet、目标、已初始化属性缺失；
+- `Err(AttributeIdError::MissingLocation { .. })`：ID 未在本 context 的注册表中登记；即使实体不存在，
+  仍先报告无效 ID。
+
+两个方法提供默认实现：验证 ID 后返回 `Ok(None)`，已有自定义 context 无需立即增加实时读取
+能力。`source_snapshot()` 继续返回调用方显式传入的历史快照；实时读取不会隐式回退到它，
+也不会用实时值替换历史快照。伤害公式可明确选择发射时的攻击快照，或命中求值时的实时攻击与防御。
 
 ### 已求值规格
 
@@ -145,6 +169,28 @@ impl Aggregator {
 `remove_modifiers_by_source()`。
 
 ## 关键语义
+
+### 幅度求值时机
+
+`GameplayEffect::make_spec()` 在效果应用准备阶段求值一次，将 modifier、持续时间和周期的数值
+写入规格。新增实时读取只扩大这一次计算可访问的数据，不建立属性依赖图，也不让持续效果自动
+追踪来源属性变化。周期效果仍复用应用时捕获的 modifier；之后攻击力或目标防御变化不会使已有
+周期伤害自动重算。需要逐次命中取值时，由游戏每次生成新的效果应用，后续有明确用例再扩展周期策略。
+
+### 数值有效性
+
+`Modifier::make_spec()`、`ModifierSpec::new()` 和 `scaled_by_stack()` 保持为纯求值／构造接口，
+不改变返回类型。普通 Effect 在 Prepare 和 Execute 边界检查所有幅度，以及实际保留 spec 的
+叠层缩放结果；NaN／正负无穷返回 `GameplayEffectApplicationError::NonFiniteModifier { target, id }`。
+检查失败发生在本次效果的属性、标签、效果移除和叠层状态修改之前；入口原有的需求收敛和概率
+抽取规则不变。技能成本保留既有的 `InsufficientCost` 拒绝语义。
+
+直接调用 `AttributeSet::apply_instant_modifier()` 或 `apply_duration_modifier()` 时，非法幅度
+返回 `AttributeSetError::NonFiniteModifier { id }`，不改属性或持续贡献。低层 `Aggregator`
+本身不提供这一校验；正常 Gameplay 应通过上述 AttributeSet／Effect 入口修改属性。
+
+这些检查不承诺任意有限输入之间的加法／乘法都不会溢出，也不限制初始化值或自定义 executor、
+post-execute 回调的结果。游戏仍需约束属性范围；本轮不引入全局浮点饱和或更改聚合公式。
 
 ### 默认聚合顺序
 
@@ -230,6 +276,30 @@ let damage = Modifier::new(
     })),
 );
 ```
+
+需要命中时实时攻防时，仍通过中立 context 读取数值：
+
+```rust
+struct AttackAgainstDefense {
+    attack: AttributeId,
+    defense: AttributeId,
+}
+
+impl ModifierMagnitudeCalculation for AttackAgainstDefense {
+    fn calculate(&self, context: &dyn ModifierEvaluationContext) -> f32 {
+        let (Ok(Some(attack)), Ok(Some(defense))) = (
+            context.source_attribute(self.attack),
+            context.target_attribute(self.defense),
+        ) else {
+            return 0.0;
+        };
+        -(attack.current() - defense.current()).max(0.0)
+    }
+}
+```
+
+示例对缺失或无效属性选择零伤害；具体游戏应明确自己的拒绝、记录或安全值策略，不能假定这类
+情况会自动终止效果。calculator 的 `f32` 返回类型目前不能传播业务错误。
 
 读取快照时显式处理缺失或错误：
 

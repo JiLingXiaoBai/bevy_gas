@@ -42,12 +42,14 @@ impl AttributeSet {
     ///
     /// Returns [`AttributeSetError::AttributeId`] if the modifier attribute is
     /// not registered, or [`AttributeSetError::UninitializedAttribute`] if this
-    /// set has not initialized it.
+    /// set has not initialized it. Returns [`AttributeSetError::NonFiniteModifier`]
+    /// before mutation when the magnitude is NaN or infinite.
     pub fn apply_instant_modifier(
         &mut self,
         manager: &AttributeIdManager,
         spec: &ModifierSpec,
     ) -> Result<(), AttributeSetError> {
+        self.validate_modifier(manager, spec)?;
         let id = spec.get_id();
         let location = self.initialized_attribute_location(manager, id)?;
         let was_dirty = self.take_dirty(location);
@@ -120,17 +122,32 @@ impl AttributeSet {
     ///
     /// Returns [`AttributeSetError::AttributeId`] if the modifier attribute is
     /// not registered, or [`AttributeSetError::UninitializedAttribute`] if this
-    /// set has not initialized it.
+    /// set has not initialized it. Returns [`AttributeSetError::NonFiniteModifier`]
+    /// before mutation when the magnitude is NaN or infinite.
     pub fn apply_duration_modifier(
         &mut self,
         manager: &AttributeIdManager,
         spec: &ModifierSpec,
         source_id: impl Into<ModifierSourceId>,
     ) -> Result<(), AttributeSetError> {
+        self.validate_modifier(manager, spec)?;
         let location = self.initialized_attribute_location(manager, spec.get_id())?;
         self.aggregators
             .apply_modifier_spec(location, spec, source_id.into());
         self.mark_dirty(location);
+        Ok(())
+    }
+
+    /// Validates an incoming modifier without changing attributes or dirty flags.
+    pub(crate) fn validate_modifier(
+        &self,
+        manager: &AttributeIdManager,
+        spec: &ModifierSpec,
+    ) -> Result<(), AttributeSetError> {
+        self.validate_initialized_attribute(manager, spec.get_id())?;
+        if !spec.get_value().is_finite() {
+            return Err(AttributeSetError::NonFiniteModifier { id: spec.get_id() });
+        }
         Ok(())
     }
 

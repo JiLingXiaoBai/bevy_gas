@@ -7,7 +7,9 @@ use super::error::AbilityCommitError;
 use crate::gameplay_abilities::{
     AbilityActivationContext, AdditionalCost, GameplayAbility, effect_payload_from_ability_context,
 };
-use crate::gameplay_effects::{GameplayEffectApplicationPlan, prepare_gameplay_effect};
+use crate::gameplay_effects::{
+    GameplayEffectApplicationError, GameplayEffectApplicationPlan, prepare_gameplay_effect,
+};
 use bevy::prelude::Entity;
 use std::sync::Arc;
 
@@ -48,7 +50,13 @@ pub(in super::super) fn prepare_ability_commit_plans<'a, P: AdditionalCostProvid
         }
         let payload = effect_payload_from_ability_context(source, level, activation_context);
         let plan = prepare_gameplay_effect(source, cost_def, &mut params.effects, &payload)
-            .map_err(AbilityCommitError::CostPreparation)?;
+            .map_err(|error| match error {
+                // Preserve the cost API's existing non-finite affordability rejection.
+                GameplayEffectApplicationError::NonFiniteModifier { .. } => {
+                    AbilityCommitError::InsufficientCost
+                }
+                error => AbilityCommitError::CostPreparation(error),
+            })?;
         if !plan.is_instant() {
             return Err(AbilityCommitError::CostMustBeInstant);
         }

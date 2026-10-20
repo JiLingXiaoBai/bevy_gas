@@ -28,6 +28,7 @@ tests/
 │   │   ├── tasks_test.rs                     # WaitTicks、嵌套 Batch 顺序与任务结束
 │   │   └── chaining_test.rs                  # 链上下文、深度与循环限制
 │   ├── attributes_test.rs               # 属性注册、冷热槽位、重算与聚合
+│   ├── modifier_validation_test.rs      # 非有限 modifier 的原子拒绝、周期/抑制与叠层边界
 │   ├── gameplay_tags_test.rs            # 标签注册、位集与引用计数
 │   ├── gameplay_targeting_test.rs       # 目标结果契约与多目标技能/任务结算
 │   ├── queues_test.rs                   # 跨类型 FIFO、运行条件与批次语义
@@ -101,6 +102,9 @@ cargo test --lib grant_exhaustion_test
 
 # GAS integration-test crate
 cargo test --test gas_test
+
+# Non-finite modifiers, mutation atomicity, and retained stack specifications
+cargo test --test gas_test modifier_validation_test
 
 # Target-result contracts and multi-target execution
 cargo test --test gas_test gameplay_targeting_test

@@ -247,6 +247,7 @@ pub enum GameplayEffectApplicationError {
     ActiveEffectCapacityExceeded { target: Entity },
     MissingAttributeSet { target: Entity },
     MissingAttribute { target: Entity, id: AttributeId },
+    NonFiniteModifier { target: Entity, id: AttributeId },
     MissingTagContainer { target: Entity },
     StackOverflowRejected,
     GameplayTag(GameplayTagError),
@@ -256,6 +257,9 @@ pub enum GameplayEffectApplicationError {
 
 `is_rejection()` 仅对概率拒绝、应用条件失败、免疫阻止和堆叠溢出拒绝返回 `true`。其余错误
 表示配置或 ECS 状态问题。
+
+`NonFiniteModifier` 表示某个属性的 modifier 幅度为 NaN／正负无穷，或叠层缩放后溢出。
+普通效果通过执行队列返回 `Failed`；技能成本保留已有的 `InsufficientCost` 拒绝语义。
 
 ## 关键语义
 
@@ -298,13 +302,19 @@ Prepare 的顺序是：
 2. 检查 source/target application requirements；
 3. 检查目标上未抑制 Active Effect 授予的 immunity；
 4. 通过 `EffectContext` 求值 spec；
-5. 验证 duration、目标组件、属性初始化和 granted tag ID；
+5. 验证 duration、目标组件、属性初始化、modifier 幅度有限性和 granted tag ID；
 6. 收集 `remove_effects_with_tags` 匹配项；
-7. 在未计划移除的效果中查找堆叠目标并决定层数。
+7. 在未计划移除的效果中查找堆叠目标并决定层数，验证实际保留的旧 spec 按新层数缩放后仍有限。
 
-Execute 会重新验证结构性 ECS 状态和待清理数据，然后先移除计划中的旧效果，再执行 instant、
+Execute 会重新验证结构性 ECS 状态、幅度（含叠层缩放）和待清理数据，然后先移除计划中的旧效果，再执行 instant、
 stack 或 create。它不会重新掷骰，也不会重新检查 application requirement、immunity 或堆叠
 决策，并且不提供数据库式回滚。Plan 不应跨帧保存。
+
+上述幅度检查会在修改属性、授予标签、移除匹配效果以及更新已有层数／计时器之前完成，
+包括尚未 pulse 的周期效果和将被抑制的持续效果。周期执行与贡献恢复也会检查缩放值。
+它不改动 `Linear` 对所有操作一律线性乘层数的规则，也不改动 `Override` 单槽语义。
+检查对象是输入幅度及叠层缩放结果，不是所有浮点运算的全局有限性保证；有限值之间的
+属性聚合溢出、自定义 executor 和 post-execute 回调仍需由游戏约束数值范围和实现。
 
 `apply_gameplay_effect()` 在调用前后执行 Requirement 收敛；运行时生产系统若需要与技能激活
 共享严格 FIFO，应使用 `GameplayExecutionQueue::push_application()`。

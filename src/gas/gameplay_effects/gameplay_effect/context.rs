@@ -1,4 +1,7 @@
-use crate::attributes::{AttributeIdManager, AttributeSet, AttributeSetSnapshot};
+use crate::attributes::{
+    AttributeId, AttributeIdError, AttributeIdManager, AttributeSet, AttributeSetSnapshot,
+    AttributeSnapshot,
+};
 use crate::gameplay_tags::GameplayTagContainer;
 use crate::modifiers::ModifierEvaluationContext;
 use bevy::ecs::entity::Entity;
@@ -36,6 +39,19 @@ impl<'w, 's> EffectContext<'w, 's> {
         self.payload.get_source_snapshot()
     }
 
+    fn attribute(
+        &self,
+        entity: Option<Entity>,
+        id: AttributeId,
+    ) -> Result<Option<AttributeSnapshot>, AttributeIdError> {
+        self.attribute_id_manager.location(id)?;
+        let Some(attributes) = entity.and_then(|entity| self.attr_set_query.get(entity).ok())
+        else {
+            return Ok(None);
+        };
+        attributes.evaluate_attribute(self.attribute_id_manager, id)
+    }
+
     /// Returns the global mapping used to locate hot and cold attributes.
     pub fn attribute_id_manager(&self) -> &AttributeIdManager {
         self.attribute_id_manager
@@ -65,6 +81,20 @@ impl ModifierEvaluationContext for EffectContext<'_, '_> {
 
     fn source_snapshot(&self) -> Option<&AttributeSetSnapshot> {
         self.payload.get_source_snapshot()
+    }
+
+    fn source_attribute(
+        &self,
+        id: AttributeId,
+    ) -> Result<Option<AttributeSnapshot>, AttributeIdError> {
+        self.attribute(Some(self.payload.get_source()), id)
+    }
+
+    fn target_attribute(
+        &self,
+        id: AttributeId,
+    ) -> Result<Option<AttributeSnapshot>, AttributeIdError> {
+        self.attribute(self.target, id)
     }
 
     fn attribute_id_manager(&self) -> &AttributeIdManager {

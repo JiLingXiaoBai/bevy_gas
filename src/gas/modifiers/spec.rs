@@ -69,7 +69,9 @@ pub struct ModifierSpec {
 }
 
 impl ModifierSpec {
-    /// Creates an evaluated modifier specification.
+    /// Creates an evaluated modifier specification without validating `value`.
+    ///
+    /// Effect application and attribute mutation APIs reject non-finite magnitudes.
     pub const fn new(id: AttributeId, op: ModifierOperation, value: f32) -> Self {
         Self { id, op, value }
     }
@@ -90,6 +92,9 @@ impl ModifierSpec {
     }
 
     /// Returns a copy whose magnitude is multiplied by `stack_count`.
+    ///
+    /// This preserves linear scaling for every operation. The result can overflow;
+    /// effect application validates it before changing gameplay state.
     pub fn scaled_by_stack(&self, stack_count: u32) -> Self {
         Self {
             id: self.id,

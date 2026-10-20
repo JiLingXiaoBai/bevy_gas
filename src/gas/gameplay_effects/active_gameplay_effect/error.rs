@@ -30,6 +30,8 @@ pub enum GameplayEffectApplicationError {
     MissingAttributeSet { target: Entity },
     /// The target has attribute storage but has not initialized a modified attribute.
     MissingAttribute { target: Entity, id: AttributeId },
+    /// An evaluated modifier magnitude, including stack scaling, is NaN or infinite.
+    NonFiniteModifier { target: Entity, id: AttributeId },
     /// The target does not have the tag container required by the effect.
     MissingTagContainer { target: Entity },
     /// The stacking policy rejected an application beyond its limit.
@@ -81,6 +83,11 @@ impl fmt::Display for GameplayEffectApplicationError {
             Self::MissingAttribute { target, id } => write!(
                 f,
                 "gameplay effect target {target:?} has not initialized attribute {}",
+                id.to_index()
+            ),
+            Self::NonFiniteModifier { target, id } => write!(
+                f,
+                "gameplay effect target {target:?} has a non-finite modifier for attribute {}",
                 id.to_index()
             ),
             Self::MissingTagContainer { target } => write!(
@@ -149,6 +156,9 @@ pub(super) fn map_attribute_set_error(
         AttributeSetError::AttributeId(error) => GameplayEffectApplicationError::AttributeId(error),
         AttributeSetError::UninitializedAttribute { id } => {
             GameplayEffectApplicationError::MissingAttribute { target, id }
+        }
+        AttributeSetError::NonFiniteModifier { id } => {
+            GameplayEffectApplicationError::NonFiniteModifier { target, id }
         }
     }
 }
