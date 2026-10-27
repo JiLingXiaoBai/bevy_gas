@@ -200,7 +200,7 @@ cargo build
 
 ## 知识库
 
-项目的详细架构、API 参考、使用模式等文档位于 `.docs/` 目录，详见 [.docs/README.md](.docs/README.md)。
+项目的详细架构、API 参考、使用模式等文档位于 `.docs/` 目录，详见 [根 README 的文档导航](README.md#文档导航)。
 
 ## 编码约定
 
