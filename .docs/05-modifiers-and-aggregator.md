@@ -455,4 +455,5 @@ fn captured_current(
 - 调用方域与运行时域互相隔离；多个自定义来源系统仍须协调调用方域内的 scope/slot/generation。
 - `AppliedModifier` 提供只读幅度与来源访问；正常属性修改仍使用 `ModifierSpec` 与
   `AttributeSet`，自定义聚合通过 `Aggregator::modifiers()` 读取贡献。
-- `Aggregator` 的桶和 executor 标志都是私有实现，不应通过字段布局扩展。
+- `Aggregator` 的内部桶 `add_base`、`multiply_additive`、`multiply_compound` 分别与同名运算对应；
+  桶和 executor 标志都是私有实现，不应通过字段布局扩展。

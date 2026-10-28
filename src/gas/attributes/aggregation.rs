@@ -14,19 +14,19 @@ pub fn default_executor(aggregator: &Aggregator, base_value: f32) -> f32 {
         return override_value.get_value();
     }
 
-    let additive = sum_modifiers(&aggregator.additive, 0.0);
-    let multiplier = sum_modifiers(&aggregator.multiplicative_additive, 1.0);
+    let add_base = sum_modifiers(&aggregator.add_base, 0.0);
+    let multiply_additive = sum_modifiers(&aggregator.multiply_additive, 1.0);
     let mut divisor = sum_modifiers(&aggregator.divisive, 1.0);
     if divisor.abs() <= DIVISOR_ZERO_TOLERANCE {
         divisor = 1.0;
     }
-    let compound = aggregator
-        .multiplicative
+    let multiply_compound = aggregator
+        .multiply_compound
         .iter()
         .fold(1.0, |product, modifier| product * modifier.get_value());
     let final_additive = sum_modifiers(&aggregator.final_additive, 0.0);
 
-    (base_value + additive) * multiplier / divisor * compound + final_additive
+    (base_value + add_base) * multiply_additive / divisor * multiply_compound + final_additive
 }
 
 fn sum_modifiers(modifiers: &[AppliedModifier], bias: f32) -> f32 {
@@ -38,9 +38,9 @@ fn sum_modifiers(modifiers: &[AppliedModifier], bias: f32) -> f32 {
 /// Collects active modifiers for one attribute and evaluates its current value.
 #[derive(Debug, Clone)]
 pub struct Aggregator {
-    additive: Vec<AppliedModifier>,
-    multiplicative_additive: Vec<AppliedModifier>,
-    multiplicative: Vec<AppliedModifier>,
+    add_base: Vec<AppliedModifier>,
+    multiply_additive: Vec<AppliedModifier>,
+    multiply_compound: Vec<AppliedModifier>,
     overrides: Vec<AppliedModifier>,
     divisive: Vec<AppliedModifier>,
     final_additive: Vec<AppliedModifier>,
@@ -51,9 +51,9 @@ pub struct Aggregator {
 impl Default for Aggregator {
     fn default() -> Self {
         Self {
-            additive: Vec::new(),
-            multiplicative_additive: Vec::new(),
-            multiplicative: Vec::new(),
+            add_base: Vec::new(),
+            multiply_additive: Vec::new(),
+            multiply_compound: Vec::new(),
             overrides: Vec::new(),
             divisive: Vec::new(),
             final_additive: Vec::new(),
@@ -87,11 +87,9 @@ impl Aggregator {
     ) {
         let applied_modifier = AppliedModifier::new(source_id.into(), spec.get_value());
         match spec.get_operation() {
-            ModifierOperation::AddBase => self.additive.push(applied_modifier),
-            ModifierOperation::MultiplyCompound => self.multiplicative.push(applied_modifier),
-            ModifierOperation::MultiplyAdditive => {
-                self.multiplicative_additive.push(applied_modifier)
-            }
+            ModifierOperation::AddBase => self.add_base.push(applied_modifier),
+            ModifierOperation::MultiplyCompound => self.multiply_compound.push(applied_modifier),
+            ModifierOperation::MultiplyAdditive => self.multiply_additive.push(applied_modifier),
             ModifierOperation::Override => self.overrides.push(applied_modifier),
             ModifierOperation::DivideAdditive => self.divisive.push(applied_modifier),
             ModifierOperation::AddFinal => self.final_additive.push(applied_modifier),
@@ -110,9 +108,9 @@ impl Aggregator {
         operation: ModifierOperation,
     ) -> impl DoubleEndedIterator<Item = &AppliedModifier> + ExactSizeIterator + '_ {
         let modifiers = match operation {
-            ModifierOperation::AddBase => self.additive.as_slice(),
-            ModifierOperation::MultiplyAdditive => self.multiplicative_additive.as_slice(),
-            ModifierOperation::MultiplyCompound => self.multiplicative.as_slice(),
+            ModifierOperation::AddBase => self.add_base.as_slice(),
+            ModifierOperation::MultiplyAdditive => self.multiply_additive.as_slice(),
+            ModifierOperation::MultiplyCompound => self.multiply_compound.as_slice(),
             ModifierOperation::Override => self.overrides.as_slice(),
             ModifierOperation::DivideAdditive => self.divisive.as_slice(),
             ModifierOperation::AddFinal => self.final_additive.as_slice(),
@@ -125,9 +123,9 @@ impl Aggregator {
     /// Surviving entries can change order, including which override is selected next.
     pub fn remove_modifiers_by_source(&mut self, source_id: ModifierSourceId) {
         for modifiers in [
-            &mut self.additive,
-            &mut self.multiplicative_additive,
-            &mut self.multiplicative,
+            &mut self.add_base,
+            &mut self.multiply_additive,
+            &mut self.multiply_compound,
             &mut self.overrides,
             &mut self.divisive,
             &mut self.final_additive,
@@ -150,9 +148,9 @@ impl Aggregator {
 
     /// Removes all retained modifiers.
     pub fn reset(&mut self) {
-        self.additive.clear();
-        self.multiplicative_additive.clear();
-        self.multiplicative.clear();
+        self.add_base.clear();
+        self.multiply_additive.clear();
+        self.multiply_compound.clear();
         self.overrides.clear();
         self.divisive.clear();
         self.final_additive.clear();
@@ -160,9 +158,9 @@ impl Aggregator {
 
     /// Returns the total number of modifiers across all operation slots.
     pub fn modifier_count(&self) -> usize {
-        self.additive.len()
-            + self.multiplicative_additive.len()
-            + self.multiplicative.len()
+        self.add_base.len()
+            + self.multiply_additive.len()
+            + self.multiply_compound.len()
             + self.overrides.len()
             + self.divisive.len()
             + self.final_additive.len()
