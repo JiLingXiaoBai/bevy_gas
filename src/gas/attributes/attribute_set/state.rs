@@ -1,4 +1,4 @@
-use super::super::aggregation::AttributeAggregatorSet;
+use super::super::aggregation::{AttributeAggregatorSet, DIVISOR_ZERO_TOLERANCE};
 use super::super::{
     Aggregator, AttributeId, AttributeIdManager, AttributeLocation, AttributeRegion,
     AttributeSnapshot,
@@ -58,10 +58,19 @@ impl Attribute {
 
     fn modify_base_value(&mut self, spec: &ModifierSpec) {
         match spec.get_operation() {
-            ModifierOperation::Add => self.base += spec.get_value(),
-            ModifierOperation::PercentAdd => self.base *= 1.0 + spec.get_value(),
-            ModifierOperation::Multiply => self.base *= spec.get_value(),
+            ModifierOperation::AddBase | ModifierOperation::AddFinal => {
+                self.base += spec.get_value();
+            }
+            ModifierOperation::MultiplyAdditive | ModifierOperation::MultiplyCompound => {
+                self.base *= spec.get_value();
+            }
             ModifierOperation::Override => self.base = spec.get_value(),
+            ModifierOperation::DivideAdditive => {
+                let divisor = spec.get_value();
+                if divisor.abs() > DIVISOR_ZERO_TOLERANCE {
+                    self.base /= divisor;
+                }
+            }
         }
     }
 

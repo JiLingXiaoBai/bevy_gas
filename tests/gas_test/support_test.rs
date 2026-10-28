@@ -65,7 +65,7 @@ pub fn effect_tags(asset_tags: Vec<GameplayTag>, granted_tags: Vec<GameplayTag>)
 }
 
 pub fn add_modifier(attribute: AttributeId, value: f32) -> Modifier {
-    modifier(attribute, ModifierOperation::Add, value)
+    modifier(attribute, ModifierOperation::AddBase, value)
 }
 
 pub fn modifier(attribute: AttributeId, operation: ModifierOperation, value: f32) -> Modifier {

@@ -418,7 +418,7 @@ fn rejected_startup_effect_does_not_stop_later_actions() {
     let rejected = Arc::new(GameplayEffect::new(
         vec![Modifier::new(
             health,
-            ModifierOperation::Add,
+            ModifierOperation::AddBase,
             ModifierMagnitude::Flat(1000.0),
         )],
         EffectDurationTicks::Instant,

@@ -57,12 +57,12 @@ fn direct_attribute_mutation_rejects_nonfinite_specs_without_replacing_contribut
         attributes
             .apply_duration_modifier(
                 manager,
-                &ModifierSpec::new(id, ModifierOperation::Add, 5.0),
+                &ModifierSpec::new(id, ModifierOperation::AddBase, 5.0),
                 source,
             )
             .unwrap();
         for value in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
-            let invalid = ModifierSpec::new(id, ModifierOperation::Add, value);
+            let invalid = ModifierSpec::new(id, ModifierOperation::AddBase, value);
             assert_eq!(
                 attributes.apply_instant_modifier(manager, &invalid),
                 Err(AttributeSetError::NonFiniteModifier { id }),
@@ -301,7 +301,7 @@ fn assert_invalid_effect_is_atomic(invalid: ModifierMagnitude, mode: EffectMode,
     let incoming = Arc::new(GameplayEffect::new(
         vec![
             add_modifier(health, 5.0),
-            Modifier::new(power, ModifierOperation::Add, invalid),
+            Modifier::new(power, ModifierOperation::AddBase, invalid),
         ],
         duration,
         period,
@@ -332,7 +332,7 @@ fn stacking_effect(
     Arc::new(GameplayEffect::new(
         vec![Modifier::new(
             attribute,
-            ModifierOperation::Add,
+            ModifierOperation::AddBase,
             ModifierMagnitude::Calculated(Box::new(LevelMagnitude {
                 first_level,
                 later_levels,

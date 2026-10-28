@@ -296,7 +296,7 @@ fn calculated_magnitude_can_use_effect_level() {
     let effect = Arc::new(GameplayEffect::new(
         vec![Modifier::new(
             damage,
-            ModifierOperation::Add,
+            ModifierOperation::AddBase,
             ModifierMagnitude::Calculated(Box::new(LevelMagnitude { scale: 3.0 })),
         )],
         EffectDurationTicks::Instant,
@@ -331,7 +331,7 @@ fn calculated_magnitude_can_use_source_snapshot() {
     let effect = Arc::new(GameplayEffect::new(
         vec![Modifier::new(
             damage,
-            ModifierOperation::Add,
+            ModifierOperation::AddBase,
             ModifierMagnitude::Calculated(Box::new(SnapshotCurrentMagnitude { attribute: power })),
         )],
         EffectDurationTicks::Instant,
@@ -361,7 +361,7 @@ fn calculated_magnitude_can_read_source_tags() {
     let effect = Arc::new(GameplayEffect::new(
         vec![Modifier::new(
             damage,
-            ModifierOperation::Add,
+            ModifierOperation::AddBase,
             ModifierMagnitude::Calculated(Box::new(SourceTagMagnitude {
                 tag: empowered,
                 tagged: 20.0,
@@ -519,12 +519,12 @@ fn calculated_magnitude_reads_dirty_live_attributes_without_replacing_source_sna
         vec![
             Modifier::new(
                 health,
-                ModifierOperation::Add,
+                ModifierOperation::AddBase,
                 ModifierMagnitude::Calculated(Box::new(LiveCombatMagnitude { attack, defense })),
             ),
             Modifier::new(
                 captured_attack,
-                ModifierOperation::Add,
+                ModifierOperation::AddBase,
                 ModifierMagnitude::Calculated(Box::new(SnapshotCurrentMagnitude {
                     attribute: attack,
                 })),
@@ -571,7 +571,7 @@ fn readonly_attribute_evaluation_keeps_pending_dirty_recalculation() {
     attributes
         .apply_duration_modifier(
             manager,
-            &ModifierSpec::new(power, ModifierOperation::Add, 5.0),
+            &ModifierSpec::new(power, ModifierOperation::AddBase, 5.0),
             ModifierSourceId::new(1, 0, 0),
         )
         .unwrap();
@@ -713,7 +713,7 @@ fn periodic_effects_keep_live_attribute_magnitudes_captured_at_application() {
     let effect = Arc::new(GameplayEffect::new(
         vec![Modifier::new(
             health,
-            ModifierOperation::Add,
+            ModifierOperation::AddBase,
             ModifierMagnitude::Calculated(Box::new(LiveCombatMagnitude { attack, defense })),
         )],
         EffectDurationTicks::Infinite,
@@ -729,7 +729,7 @@ fn periodic_effects_keep_live_attribute_magnitudes_captured_at_application() {
             .unwrap()
             .apply_instant_modifier(
                 &manager,
-                &ModifierSpec::new(attribute, ModifierOperation::Add, value),
+                &ModifierSpec::new(attribute, ModifierOperation::AddBase, value),
             )
             .unwrap();
     }

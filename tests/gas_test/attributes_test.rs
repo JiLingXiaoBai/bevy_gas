@@ -275,9 +275,9 @@ fn duration_modifiers_use_add_percent_then_multiply_order() {
     let target = spawn_attribute_set(&mut app, damage, 100.0);
     let effect = Arc::new(GameplayEffect::new(
         vec![
-            modifier(damage, ModifierOperation::Multiply, 2.0),
-            modifier(damage, ModifierOperation::PercentAdd, 0.5),
-            modifier(damage, ModifierOperation::Add, 10.0),
+            modifier(damage, ModifierOperation::MultiplyCompound, 2.0),
+            modifier(damage, ModifierOperation::MultiplyAdditive, 1.5),
+            modifier(damage, ModifierOperation::AddBase, 10.0),
         ],
         EffectDurationTicks::Infinite,
         None,
@@ -297,8 +297,8 @@ fn override_modifier_takes_precedence_over_other_duration_modifiers() {
     let target = spawn_attribute_set(&mut app, damage, 100.0);
     let effect = Arc::new(GameplayEffect::new(
         vec![
-            modifier(damage, ModifierOperation::Add, 10.0),
-            modifier(damage, ModifierOperation::Multiply, 2.0),
+            modifier(damage, ModifierOperation::AddBase, 10.0),
+            modifier(damage, ModifierOperation::MultiplyCompound, 2.0),
             modifier(damage, ModifierOperation::Override, 42.0),
         ],
         EffectDurationTicks::Infinite,

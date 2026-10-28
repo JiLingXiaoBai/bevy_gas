@@ -269,8 +269,8 @@ fn repeated_cost_modifiers_are_checked_together_before_any_payment() {
         })
         .id();
     let ability = ability_with_cost_modifiers(vec![
-        modifier(mana, ModifierOperation::Add, -60.0),
-        modifier(mana, ModifierOperation::Add, -60.0),
+        modifier(mana, ModifierOperation::AddBase, -60.0),
+        modifier(mana, ModifierOperation::AddBase, -60.0),
     ]);
 
     assert_cost_rejected(&mut app, source, &ability);
@@ -293,8 +293,8 @@ fn activation_pays_all_repeated_cost_modifiers_exactly_once() {
         })
         .id();
     let ability = ability_with_cost_modifiers(vec![
-        modifier(mana, ModifierOperation::Add, -40.0),
-        modifier(mana, ModifierOperation::Add, -60.0),
+        modifier(mana, ModifierOperation::AddBase, -40.0),
+        modifier(mana, ModifierOperation::AddBase, -60.0),
     ]);
 
     assert!(can_activate_cost_ability(&mut app, source, &ability));
@@ -310,17 +310,33 @@ fn activation_pays_all_repeated_cost_modifiers_exactly_once() {
 #[test]
 fn cost_affordability_uses_the_active_aggregator_after_changing_base() {
     let cases = [
-        (10.0, ModifierOperation::Multiply, 2.0, -15.0, None),
+        (10.0, ModifierOperation::MultiplyCompound, 2.0, -15.0, None),
         (
             20.0,
-            ModifierOperation::Multiply,
+            ModifierOperation::MultiplyCompound,
             0.5,
             -15.0,
             Some((5.0, 2.5)),
         ),
         (
             10.0,
-            ModifierOperation::Add,
+            ModifierOperation::AddBase,
+            100.0,
+            -50.0,
+            Some((-40.0, 60.0)),
+        ),
+        (10.0, ModifierOperation::DivideAdditive, 0.5, -15.0, None),
+        (
+            20.0,
+            ModifierOperation::DivideAdditive,
+            2.0,
+            -15.0,
+            Some((5.0, 2.5)),
+        ),
+        (10.0, ModifierOperation::AddFinal, 10.0, -25.0, None),
+        (
+            10.0,
+            ModifierOperation::AddFinal,
             100.0,
             -50.0,
             Some((-40.0, 60.0)),
@@ -361,6 +377,59 @@ fn cost_affordability_uses_the_active_aggregator_after_changing_base() {
     }
 }
 
+fn largest_final_add(aggregator: &Aggregator, base: f32) -> f32 {
+    base + aggregator
+        .modifiers(ModifierOperation::AddFinal)
+        .map(|modifier| modifier.get_value())
+        .fold(0.0_f32, f32::max)
+}
+
+#[test]
+fn cost_preview_and_payment_share_a_game_defined_readonly_aggregation_rule() {
+    let mut app = test_app();
+    let mana = register_attribute(&mut app, "Mana");
+    let mut attributes = AttributeSet::default();
+    attributes
+        .initialize_attribute(
+            app.world().resource::<AttributeIdManager>(),
+            mana,
+            10.0,
+            Some(largest_final_add),
+        )
+        .unwrap();
+    let source = app
+        .world_mut()
+        .spawn(GameplayAbilitySystemBundle {
+            attributes,
+            ..Default::default()
+        })
+        .id();
+    let effect = Arc::new(GameplayEffect::new(
+        vec![
+            modifier(mana, ModifierOperation::AddFinal, 10.0),
+            modifier(mana, ModifierOperation::AddFinal, 20.0),
+        ],
+        EffectDurationTicks::Infinite,
+        None,
+        1.0,
+        StackingPolicy::non_stacking(),
+        empty_effect_tags(),
+    ));
+    assert!(apply_effect(&mut app, source, source, effect));
+
+    // A default sum would accept this cost; selecting the largest contribution rejects it.
+    let unaffordable = ability_with_cost_effect(instant_add_effect(mana, -35.0));
+    assert_cost_rejected(&mut app, source, &unaffordable);
+    assert_eq!(cost_attribute_values(&mut app, source, mana), (10.0, 30.0));
+
+    let affordable = ability_with_cost_effect(instant_add_effect(mana, -25.0));
+    assert!(can_activate_cost_ability(&mut app, source, &affordable));
+    assert_eq!(cost_attribute_values(&mut app, source, mana), (10.0, 30.0));
+    assert_eq!(commit_cost_ability(&mut app, source, &affordable), Ok(()));
+    assert_eq!(cost_attribute_values(&mut app, source, mana), (-15.0, 5.0));
+    assert_eq!(active_effect_handles(&app, source).len(), 1);
+}
+
 #[test]
 fn interleaved_hot_and_cold_costs_accumulate_independently() {
     let mut app = test_app();
@@ -382,11 +451,11 @@ fn interleaved_hot_and_cold_costs_accumulate_independently() {
         })
         .id();
     let ability = ability_with_cost_modifiers(vec![
-        modifier(energy, ModifierOperation::Add, -10.0),
-        modifier(mana, ModifierOperation::Add, -30.0),
-        modifier(stamina, ModifierOperation::Add, -20.0),
-        modifier(mana, ModifierOperation::Add, -70.0),
-        modifier(energy, ModifierOperation::Add, -20.0),
+        modifier(energy, ModifierOperation::AddBase, -10.0),
+        modifier(mana, ModifierOperation::AddBase, -30.0),
+        modifier(stamina, ModifierOperation::AddBase, -20.0),
+        modifier(mana, ModifierOperation::AddBase, -70.0),
+        modifier(energy, ModifierOperation::AddBase, -20.0),
     ]);
 
     assert!(can_activate_cost_ability(&mut app, source, &ability));
@@ -426,7 +495,7 @@ fn cost_checks_preserve_modifier_order_and_reject_non_finite_values() {
         let ability = ability_with_cost_modifiers(
             costs
                 .into_iter()
-                .map(|cost| modifier(mana, ModifierOperation::Add, cost))
+                .map(|cost| modifier(mana, ModifierOperation::AddBase, cost))
                 .collect(),
         );
 
@@ -501,8 +570,8 @@ fn cost_precheck_skips_post_execute_and_payment_calls_it_once_per_modifier() {
         })
         .id();
     let ability = ability_with_cost_modifiers(vec![
-        modifier(mana, ModifierOperation::Add, -20.0),
-        modifier(mana, ModifierOperation::Add, -30.0),
+        modifier(mana, ModifierOperation::AddBase, -20.0),
+        modifier(mana, ModifierOperation::AddBase, -30.0),
     ]);
 
     assert!(can_activate_cost_ability(&mut app, source, &ability));
@@ -533,7 +602,7 @@ fn cost_affordability_includes_effects_removed_before_payment() {
             })
             .id();
         let active_effect = Arc::new(GameplayEffect::new(
-            vec![modifier(mana, ModifierOperation::Add, adjustment)],
+            vec![modifier(mana, ModifierOperation::AddBase, adjustment)],
             EffectDurationTicks::Infinite,
             None,
             1.0,
@@ -543,7 +612,7 @@ fn cost_affordability_includes_effects_removed_before_payment() {
         assert!(apply_effect(&mut app, source, source, active_effect));
         let handles_before = active_effect_handles(&app, source);
         let cost = Arc::new(GameplayEffect::new(
-            vec![modifier(mana, ModifierOperation::Add, -50.0)],
+            vec![modifier(mana, ModifierOperation::AddBase, -50.0)],
             EffectDurationTicks::Instant,
             None,
             1.0,

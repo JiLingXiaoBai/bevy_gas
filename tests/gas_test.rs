@@ -24,3 +24,6 @@ mod runtime_paths_test;
 
 #[path = "gas_test/modifier_validation_test.rs"]
 mod modifier_validation_test;
+
+#[path = "gas_test/modifier_aggregation_test.rs"]
+mod modifier_aggregation_test;

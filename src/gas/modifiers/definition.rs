@@ -2,16 +2,35 @@ use super::{ModifierEvaluationContext, ModifierSpec};
 use crate::attributes::AttributeId;
 
 /// Operation used to combine a modifier with an attribute value.
+///
+/// Discriminants match Unreal Engine's six gameplay modifier operations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
 pub enum ModifierOperation {
-    /// Adds the evaluated magnitude to the value.
-    Add,
-    /// Adds the evaluated magnitude to the shared percentage multiplier.
-    PercentAdd,
-    /// Multiplies the value by the evaluated magnitude.
-    Multiply,
+    /// Adds the evaluated magnitude before percentage, division, and multiplication.
+    AddBase = 0,
+    /// Combines multipliers as `1 + sum(magnitude - 1)`.
+    ///
+    /// A magnitude of `1.5` contributes a fifty-percent increase. Instant execution
+    /// multiplies the base by the magnitude directly.
+    MultiplyAdditive = 1,
+    /// Combines divisors as `1 + sum(magnitude - 1)` before compound multiplication.
+    ///
+    /// A magnitude of `2.0` halves the value when used alone. Instant execution divides
+    /// the base by the magnitude directly. The default executor and instant execution
+    /// treat divisors with absolute value at most `1e-8` as one.
+    DivideAdditive = 2,
     /// Replaces the evaluated value while the modifier is active.
-    Override,
+    Override = 3,
+    /// Multiplies the independently retained magnitudes together.
+    ///
+    /// Separate modifiers compound; effect stacking scales one magnitude by the stack
+    /// count instead of raising it to that power.
+    MultiplyCompound = 4,
+    /// Adds the evaluated magnitude after percentage, division, and multiplication.
+    ///
+    /// Instant execution adds to the base immediately, in effect definition order.
+    AddFinal = 5,
 }
 
 /// Describes how a modifier obtains its evaluated magnitude.

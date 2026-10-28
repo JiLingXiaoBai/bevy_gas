@@ -131,7 +131,7 @@ Component，不会替实体初始化具体属性值或授予技能。只需要�
 | --- | --- |
 | [03 — Gameplay 标签](./.docs/03-gameplay-tags.md) | 层级注册、位集、引用计数容器和标签条件 |
 | [04 — 属性系统](./.docs/04-attributes.md) | ID 注册、冷热存储、快照、dirty 位图和重算 |
-| [05 — 修饰器与聚合器](./.docs/05-modifiers-and-aggregator.md) | Modifier 共享边界、幅度求值、来源 ID 和聚合顺序 |
+| [05 — 修饰器与聚合器](./.docs/05-modifiers-and-aggregator.md) | 六种 Modifier 运算、只读贡献访问、自定义聚合、幅度求值和来源 ID |
 | [06 — Gameplay 效果](./.docs/06-gameplay-effects.md) | Effect 定义、应用计划、持续/周期、堆叠、免疫和条件收敛 |
 
 ### 行为领域

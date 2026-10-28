@@ -267,7 +267,7 @@ pub fn commit_ability<P: AdditionalCostProvider>(
 它准备并预验证 Cost/Cooldown Plan 和整批 Additional Costs，再同步准备外部成本、执行属性
 Cost 和 Cooldown，不创建活跃技能实例。属性或冷却执行失败时补偿已准备的外部成本；补偿
 失败通过 `AbilityCommitError::AdditionalCostRollback` 同时保留原 Commit 错误与补偿错误。外部成本语义见 [07 — 技能](./07-gameplay-abilities.md#additional-costs)。
-Cost 必须是只含 Add Modifier 的 Instant Effect。支付检查按定义顺序在临时属性上逐笔执行
+Cost 必须是只含 AddBase Modifier 的 Instant Effect。支付检查按定义顺序在临时属性上逐笔执行
 与实际扣费相同的 base 修改和聚合计算；同一属性的后续条目接着上一步结果计算。每个成本幅度、
 每一步的 base 和 current 必须有限，且每一步 current 必须非负。base 不额外要求非负，是否可支付
 取决于当前聚合规则；不能先合并金额或跳过中间结果。

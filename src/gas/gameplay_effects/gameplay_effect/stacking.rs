@@ -5,9 +5,13 @@ pub enum StackingType {
     AggregateByTarget,
 }
 
+/// Determines how effect stacks affect evaluated modifier magnitudes.
 #[derive(Debug, Clone, Copy)]
 pub enum StackMagnitudePolicy {
+    /// Keeps each modifier at its single-stack magnitude.
     None,
+    /// Uses operation-aware Unreal scaling: additive multiplier/divisor deltas scale
+    /// from one, overrides stay constant, and other magnitudes multiply by the count.
     Linear,
 }
 

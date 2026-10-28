@@ -154,7 +154,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mana_cost = Arc::new(GameplayEffect::new(
         vec![Modifier::new(
             mana,
-            ModifierOperation::Add,
+            ModifierOperation::AddBase,
             ModifierMagnitude::Flat(-10.0),
         )],
         EffectDurationTicks::Instant,

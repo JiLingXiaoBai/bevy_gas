@@ -28,6 +28,7 @@ tests/
 │   │   ├── tasks_test.rs                     # WaitTicks、嵌套 Batch 顺序与任务结束
 │   │   └── chaining_test.rs                  # 链上下文、深度与循环限制
 │   ├── attributes_test.rs               # 属性注册、冷热槽位、重算与聚合
+│   ├── modifier_aggregation_test.rs     # UE 六种运算、bias 叠层、Override 候选与自定义聚合
 │   ├── modifier_validation_test.rs      # 非有限 modifier 的原子拒绝、周期/抑制与叠层边界
 │   ├── gameplay_tags_test.rs            # 标签注册、位集与引用计数
 │   ├── gameplay_targeting_test.rs       # 目标结果契约与多目标技能/任务结算
@@ -105,6 +106,9 @@ cargo test --test gas_test
 
 # Non-finite modifiers, mutation atomicity, and retained stack specifications
 cargo test --test gas_test modifier_validation_test
+
+# Six modifier operations, read-only contributions, and custom aggregation
+cargo test --test gas_test modifier_aggregation_test
 
 # Target-result contracts and multi-target execution
 cargo test --test gas_test gameplay_targeting_test
@@ -299,7 +303,7 @@ handle/spec、管理器和系统函数应从 `bevy_gas::gas::<domain>` 或 crate
 | 标签注册         | 父标签自动注册、容量、无效句柄与冲突区分                             |
 | 标签容器         | 引用计数、继承、`has_tag` / `has_all` / `has_any`                    |
 | 属性             | 冷热注册、初始化、dirty 位图、快照与延迟重算                         |
-| 修饰器           | `Override → Add → PercentAdd → Multiply`、中立 Source ID、计算上下文 |
+| 修饰器           | UE 运算编号与倍率输入、bias 叠层及减层、Override 首项选择与 swap removal、近零除数容差；`AddBase → MultiplyAdditive → DivideAdditive → MultiplyCompound → AddFinal`、只读贡献访问、自定义聚合、中立 Source ID、计算上下文 |
 | 即时效果         | Base 修改、post-execute、无需 Active Effect 存储                     |
 | 持续/周期效果    | Modifier 生命周期、到期、Period 与 `execute_on_applied`              |
 | 堆叠             | 来源/目标聚合、上限、幅度、Duration/Period 策略                      |

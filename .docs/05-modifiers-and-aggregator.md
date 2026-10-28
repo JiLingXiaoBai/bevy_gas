@@ -25,10 +25,12 @@ Modifiers 不决定效果何时过期，也不保存 `ActiveEffectHandle`。Effe
 
 ```rust
 pub enum ModifierOperation {
-    Add,
-    PercentAdd,
-    Multiply,
-    Override,
+    AddBase = 0,
+    MultiplyAdditive = 1,
+    DivideAdditive = 2,
+    Override = 3,
+    MultiplyCompound = 4,
+    AddFinal = 5,
 }
 
 pub enum ModifierMagnitude {
@@ -50,6 +52,35 @@ impl Modifier {
     pub fn make_spec(&self, context: &dyn ModifierEvaluationContext) -> ModifierSpec;
 }
 ```
+
+六种运算的名称、编号和幅度输入约定与
+[UE 5.7 官方 `GameplayModOp` 定义](https://dev.epicgames.com/documentation/en-us/unreal-engine/python-api/class/GameplayModOp?application_version=5.7)
+对齐：
+
+| 运算 | 编号 | 持续聚合语义 |
+| --- | --- | --- |
+| `AddBase` | `0` | 在百分比和倍率之前相加 |
+| `MultiplyAdditive` | `1` | 倍率相对 1 的增量相加，乘以 `1 + sum(value - 1)` |
+| `DivideAdditive` | `2` | 除数相对 1 的增量相加，除以 `1 + sum(value - 1)` |
+| `Override` | `3` | 使用当前存储顺序中的第一个覆盖值，忽略其他运算 |
+| `MultiplyCompound` | `4` | 独立贡献相乘 |
+| `AddFinal` | `5` | 所有乘除完成后相加 |
+
+`MultiplyAdditive(1.5)` 表示增加 50%，`MultiplyAdditive(0.75)` 表示降低 25%；
+两个值为 1.5 的持续乘法修饰器合成为 2 倍。
+`DivideAdditive(2.0)` 表示除以 2，两个值为 2 的持续除法修饰器合成为除以 3。
+`MultiplyCompound(1.5)` 则直接乘以 1.5，两个这样的修饰器合成为 2.25 倍。
+
+这是破坏性迁移：旧 `Add` 改名为 `AddBase`，旧 `Multiply` 改名为 `MultiplyCompound`，
+旧 `PercentAdd` 改名为 `MultiplyAdditive`，且其幅度必须加 1。动态 calculator 的输出也须
+迁移，例如原先返回 `0.5` 的增益现在返回 `1.5`。模板配置同步采用上表编号；旧配置的
+`Multiply=2` 应迁移到 `MultiplyCompound=4`，`DivideAdditive=4` 应迁移到 `DivideAdditive=2`。
+
+行为核对依据是公开的 [GameplayAbilities 源码快照（2025-09-29）](https://github.com/oblogin/GameplayAbilities/tree/371e12fc35be974c4cea4b2205c3fd10f99b337e/Source/GameplayAbilities)，
+包括 [GameplayEffectAggregator.cpp](https://github.com/oblogin/GameplayAbilities/blob/371e12fc35be974c4cea4b2205c3fd10f99b337e/Source/GameplayAbilities/Private/GameplayEffectAggregator.cpp)
+的求值、移除和更新，以及 [GameplayEffectTypes.cpp](https://github.com/oblogin/GameplayAbilities/blob/371e12fc35be974c4cea4b2205c3fd10f99b337e/Source/GameplayAbilities/Private/GameplayEffectTypes.cpp)
+的堆叠幅度计算。该快照没有声明精确 UE 版本，因此这里对齐六种运算的数值行为，不宣称整个 GAS 与
+UE 5.7 完全一致；求值通道、标签筛选和自定义求值元数据仍不在本次范围内。
 
 ### `ModifierEvaluationContext`
 
@@ -110,8 +141,18 @@ impl ModifierSpec {
 }
 ```
 
-`scaled_by_stack()` 返回副本，并把原始 `value` 乘以 `stack_count as f32`。它对所有操作一视
-同仁，包括 `Multiply` 和 `Override`；调用方必须确认这种线性语义符合设计。
+`scaled_by_stack()` 返回副本，按操作的 bias 缩放单层幅度 `m`，层数为 `n`：
+
+| 操作 | 叠层后的幅度 |
+| --- | --- |
+| `AddBase`、`MultiplyCompound`、`AddFinal` | `m * n` |
+| `MultiplyAdditive`、`DivideAdditive` | `(m - 1) * n + 1` |
+| `Override` | `m`，不随层数变化 |
+
+例如 `MultiplyAdditive(1.5)` 两层为 `2.0`；同一 GE 的 `MultiplyCompound(1.5)` 两层为
+`3.0`，不是 `2.25`。两个独立的 `MultiplyCompound(1.5)` 贡献才聚合为 `2.25`。`Linear`
+描述的是同一效果的幅度缩放策略，不表示逐层执行一次操作。直接调用此方法传入零层时，
+前两组分别得到 `0` 和 `1`，`Override` 仍保持原值；正常效果生命周期不会保留零层效果。
 
 ### 来源 ID 与已应用值
 
@@ -149,6 +190,10 @@ pub fn default_executor(aggregator: &Aggregator, base_value: f32) -> f32;
 
 impl Aggregator {
     pub fn set_executor(&mut self, executor: Option<fn(&Aggregator, f32) -> f32>);
+    pub fn modifiers(
+        &self,
+        operation: ModifierOperation,
+    ) -> impl DoubleEndedIterator<Item = &AppliedModifier> + ExactSizeIterator + '_;
     pub fn apply_modifier_spec(
         &mut self,
         spec: &ModifierSpec,
@@ -167,6 +212,14 @@ impl Aggregator {
 
 `remove_modifier_by_handle()` 同样只是兼容命名。新代码应使用
 `remove_modifiers_by_source()`。
+
+`modifiers(operation)` 借用对应运算的已保留修饰器，按当前存储顺序返回只读引用；空运算组返回空
+迭代器，并支持反向遍历和精确剩余长度。调用不会复制修饰器或分配临时列表，也不提供修改
+聚合器内部存储的能力。每项可通过
+`get_value()` 和 `get_source_id()` 读取求值幅度和中立来源 ID。
+`Override` 也保留全部活动候选，迭代器不筛掉暂时未被默认 executor 选中的覆盖值。
+新贡献追加在末尾；按来源移除时使用与 UE 一致的 swap removal，尾项可以移动到被删除的位置。
+效果刷新贡献时先移除旧项再追加新项，因此当前顺序不保证等于最初的应用顺序。
 
 ## 关键语义
 
@@ -190,28 +243,46 @@ impl Aggregator {
 本身不提供这一校验；正常 Gameplay 应通过上述 AttributeSet／Effect 入口修改属性。
 
 这些检查不承诺任意有限输入之间的加法／乘法都不会溢出，也不限制初始化值或自定义 executor、
-post-execute 回调的结果。游戏仍需约束属性范围；本轮不引入全局浮点饱和或更改聚合公式。
+post-execute 回调的结果。游戏仍需约束属性范围；新增运算不引入全局浮点饱和。
 
 ### 默认聚合顺序
 
 默认 executor 的逻辑为：
 
 ```text
-if override exists:
-    return override.value
+if an override exists:
+    return first_override_in_current_storage_order.value
 
-value = base
-value += sum(additive)
-value *= 1.0 + sum(percent_additive)
-value *= each multiplicative modifier in insertion order
-return value
+add_base = sum(AddBase.value, initial = 0)
+multiply_additive = biased_sum(MultiplyAdditive.value - 1, initial = 1)
+divide_additive = biased_sum(DivideAdditive.value - 1, initial = 1)
+multiply_compound = product(MultiplyCompound.value, initial = 1)
+add_final = sum(AddFinal.value, initial = 0)
+if abs(divide_additive) <= 1e-8:
+    divide_additive = 1
+return ((base + add_base) * multiply_additive / divide_additive)
+       * multiply_compound + add_final
 ```
 
-因此给定 base `100`、Add `10`、PercentAdd `0.5`、Multiply `2`，结果为
-`(100 + 10) * 1.5 * 2 = 330`。Override 存在时会忽略 base 和其他三个桶。
+因此给定 base `100`、AddBase `10`、MultiplyAdditive `1.5`、DivideAdditive `2`、MultiplyCompound `2`、
+AddFinal `5`，结果为 `((100 + 10) * 1.5 / 2) * 2 + 5 = 170`。
+各操作先独立合并，再应用公式；加法空组为 0，倍率、除数和乘积空组为 1。
+Override 存在时会忽略 base 和其他五种运算。
 
-Aggregator 只保留一个 override 槽；后应用的 override 会替换当前值，而不是形成可恢复的
-override 栈。移除当前 override 来源后，先前被覆盖的 override 不会自动恢复。
+**近零除数约定：** 默认 executor 在聚合除数满足 `abs(divisor) <= 1e-8` 时使用中性除数 1；
+即时 `DivideAdditive` 对输入幅度使用相同判断，仍进行正常重算和执行后回调。这包括两个持续
+`DivideAdditive(0.5)` 合成零分母的情况。超过容差的正负除数正常参与计算，可能产生很大的值或
+浮点溢出；持续倍率合并还受 `f32` 舍入影响。自定义 executor 负责自身的除数与数值边界；
+下方示例沿用此中性规则。
+
+直接调用 `AttributeSet::apply_instant_modifier()` 时，对传入 spec 的原始幅度判断容差。
+通过 GameplayEffect 执行时，单层也先执行 bias 缩放，不绕过 `(m - 1) * 1 + 1`；例如
+`DivideAdditive(1.000001e-8)` 在此步骤舍入为 0，因此该即时 GE 保持 base 不变，而直接
+应用相同 spec 会执行除法。这是单层缩放的 `f32` 舍入差异，不是两条路径使用不同的容差。
+
+Aggregator 保留所有活动 override 候选，默认选择当前存储顺序中的第一项。例如依次添加
+`A=10`、`B=20`、`C=30` 时选 A；移除 A 后，swap removal 将 C 放到首位，因此选 C，随后
+移除 C 才选 B。这不是按最大值或最新应用选择；游戏可通过只读候选实现自己的优先级。
 
 ### Instant 与 Duration 的区别
 
@@ -219,13 +290,19 @@ override 栈。移除当前 override 来源后，先前被覆盖的 override 不
 
 | 操作 | 对 base 的行为 |
 | --- | --- |
-| `Add` | `base += value` |
-| `PercentAdd` | `base *= 1.0 + value` |
-| `Multiply` | `base *= value` |
+| `AddBase` | `base += value` |
+| `MultiplyAdditive` | `base *= value` |
+| `MultiplyCompound` | `base *= value` |
 | `Override` | `base = value` |
+| `DivideAdditive` | `abs(value) > 1e-8` 时 `base /= value`；近零值为中性除数 1 |
+| `AddFinal` | `base += value` |
 
 `AttributeSet::apply_duration_modifier()` 不改 base，而是把值交给 Aggregator，并使用
 `ModifierSourceId` 支持之后的精确移除。
+
+即时修饰器按效果定义顺序逐项执行，不先按运算类型分组：即时 `AddFinal` 与 `AddBase` 都直接加到
+base，不会等到整批修饰器末尾；连续两个即时 `DivideAdditive(2)` 会除以 4，而两个持续
+`DivideAdditive(2)` 聚合后除以 3。非周期持续效果才使用上述默认聚合顺序。
 
 ### 自定义 executor
 
@@ -249,11 +326,66 @@ Aggregator 并使用默认逻辑。
 executor 同时用于实际属性重算和成本数值预演，必须保持纯计算：相同输入产生相同输出，
 不修改外部状态，也不依赖调用次数。实际提交后的通知或其他副作用应使用 post-execute 回调。
 
+游戏可以通过 `modifiers()` 定制已有运算的筛选和组合规则。例如，下列移动速度策略保留所有
+百分比增益，只让最强百分比减速参与，并继续处理其他五种运算：
+
+```rust
+use bevy_gas::{Aggregator, ModifierOperation};
+
+fn strongest_slow(aggregator: &Aggregator, base: f32) -> f32 {
+    if let Some(modifier) = aggregator.modifiers(ModifierOperation::Override).next() {
+        return modifier.get_value();
+    }
+
+    let mut value = base;
+    for modifier in aggregator.modifiers(ModifierOperation::AddBase) {
+        value += modifier.get_value();
+    }
+
+    let mut bonuses = 0.0;
+    let mut slow = 0.0_f32;
+    for modifier in aggregator.modifiers(ModifierOperation::MultiplyAdditive) {
+        let magnitude = modifier.get_value() - 1.0;
+        if magnitude >= 0.0 {
+            bonuses += magnitude;
+        } else {
+            slow = slow.min(magnitude);
+        }
+    }
+    value *= 1.0 + bonuses + slow;
+
+    let mut divisor = 1.0;
+    for modifier in aggregator.modifiers(ModifierOperation::DivideAdditive) {
+        divisor += modifier.get_value() - 1.0;
+    }
+    if divisor.abs() > 1.0e-8 {
+        value /= divisor;
+    }
+    for modifier in aggregator.modifiers(ModifierOperation::MultiplyCompound) {
+        value *= modifier.get_value();
+    }
+    for modifier in aggregator.modifiers(ModifierOperation::AddFinal) {
+        value += modifier.get_value();
+    }
+    value.max(0.0)
+}
+```
+
+通过 `initialize_attribute(..., Some(strongest_slow))` 安装游戏函数。未选中的减速仍保存在
+聚合器中，最强减速移除后，下一次求值会自然选中剩余减速。不要为实现筛选而删除暂时未参与
+计算的来源。模板可以把配置中的策略名映射为游戏函数；增加此类策略无需修改 GAS。
+
+只读访问不增加运算类别、通道或优先级数据；自定义规则只能使用保留的幅度和来源信息。
+需要装备／技能分组、已移除来源的历史或原始堆叠层数时，应先补充相应数据契约。运行中切换策略也
+不能通过重新初始化模拟，否则会清空该属性的持续修饰器。
+
 ### 确定性与分配
 
-每个操作桶保持插入顺序。默认加法与百分比先顺序求和，乘法按插入顺序执行；不依赖
-HashMap 遍历。Aggregator 的 Vec 可能分配堆内存，因此应让 profiling 决定是否需要进一步
-优化，而不是依赖其私有布局。
+每个操作桶按当前存储顺序求值，追加、按来源 swap removal 和重新追加都具有明确规则，
+不依赖 HashMap 遍历。相同的应用／移除序列得到相同顺序，但删除会改变剩余项的顺序，
+也可能改变浮点累加结果。自定义 executor 也必须使用明确顺序和稳定的并列选择
+规则。只读迭代不分配；Aggregator 保存新增贡献时的 Vec 仍可能分配堆内存，应让 profiling
+决定是否需要进一步优化，而不是依赖其私有布局。
 
 ## 示例
 
@@ -270,7 +402,7 @@ impl ModifierMagnitudeCalculation for LevelScaledDamage {
 
 let damage = Modifier::new(
     health,
-    ModifierOperation::Add,
+    ModifierOperation::AddBase,
     ModifierMagnitude::Calculated(Box::new(LevelScaledDamage {
         base_damage: 20.0,
     })),
@@ -321,6 +453,6 @@ fn captured_current(
   缺失快照、标签或属性时的安全值。
 - 不要在 calculator 中使用 `unwrap()`、`expect()` 或依赖隐藏全局状态。
 - 调用方域与运行时域互相隔离；多个自定义来源系统仍须协调调用方域内的 scope/slot/generation。
-- `AppliedModifier` 为兼容性保持公开，但正常玩法代码通常只需要 `ModifierSpec` 与
-  `AttributeSet`。
+- `AppliedModifier` 提供只读幅度与来源访问；正常属性修改仍使用 `ModifierSpec` 与
+  `AttributeSet`，自定义聚合通过 `Aggregator::modifiers()` 读取贡献。
 - `Aggregator` 的桶和 executor 标志都是私有实现，不应通过字段布局扩展。

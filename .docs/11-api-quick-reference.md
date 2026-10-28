@@ -92,7 +92,7 @@
 
 | 项                             | 类型     | 说明                                   |
 | ------------------------------ | -------- | -------------------------------------- |
-| `ModifierOperation`            | `enum`   | Add / PercentAdd / Multiply / Override |
+| `ModifierOperation`            | `enum`   | AddBase=0 / MultiplyAdditive=1 / DivideAdditive=2 / Override=3 / MultiplyCompound=4 / AddFinal=5 |
 | `ModifierMagnitude`            | `enum`   | Flat(f32) 或 Calculated(trait)         |
 | `ModifierMagnitudeCalculation` | `trait`  | 动态幅度计算                           |
 | `ModifierEvaluationContext`    | `trait`  | 与 Effect runtime 解耦的只读求值接口   |
@@ -101,6 +101,7 @@
 | `ModifierSourceId`             | `struct` | 中立的 scope + slot + generation 来源 ID |
 | `AppliedModifier`              | `struct` | 带中立来源 ID 的已应用修饰器           |
 | `Aggregator`                   | `struct` | 修饰器收集 + 求值                      |
+| `Aggregator::modifiers`        | `method` | 按运算和当前存储顺序借用全部只读候选，无临时分配 |
 | `default_executor`             | `fn`     | Aggregator 默认求值公式                 |
 
 ### Gameplay 效果

@@ -91,24 +91,38 @@ impl ModifierSpec {
         self.value
     }
 
-    /// Returns a copy whose magnitude is multiplied by `stack_count`.
+    /// Returns a copy with the magnitude scaled for `stack_count` and its operation.
     ///
-    /// This preserves linear scaling for every operation. The result can overflow;
-    /// effect application validates it before changing gameplay state.
+    /// Additive multipliers and divisors use `1 + (value - 1) * stack_count`;
+    /// overrides retain their value. Base addition, compound multiplication, and final
+    /// addition use `value * stack_count`. Thus separate compound modifiers multiply,
+    /// but repeated stacks of one effect scale its magnitude linearly, as in Unreal.
+    /// A zero count produces the operation's bias (zero or one), except for overrides.
+    /// The result can overflow; effect application validates it before mutation.
     pub fn scaled_by_stack(&self, stack_count: u32) -> Self {
+        let value = match self.op {
+            ModifierOperation::Override => self.value,
+            operation => {
+                let bias = match operation {
+                    ModifierOperation::MultiplyAdditive | ModifierOperation::DivideAdditive => 1.0,
+                    _ => 0.0,
+                };
+                (self.value - bias) * stack_count as f32 + bias
+            }
+        };
         Self {
             id: self.id,
             op: self.op,
-            value: self.value * stack_count as f32,
+            value,
         }
     }
 }
 
 /// Evaluated value retained by an attribute aggregator.
 ///
-/// This public type is retained for API compatibility. Attribute aggregation
-/// treats it as an implementation detail and identifies ownership through the
-/// neutral [`ModifierSourceId`].
+/// Custom executors borrow these values through
+/// [`Aggregator::modifiers`](crate::attributes::Aggregator::modifiers).
+/// Ownership is identified through the neutral [`ModifierSourceId`].
 #[derive(Debug, Clone, Copy)]
 pub struct AppliedModifier {
     source_id: ModifierSourceId,

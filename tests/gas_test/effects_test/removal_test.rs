@@ -364,7 +364,7 @@ fn install_caller_modifier_matching_effect(
                 .unwrap()
                 .apply_duration_modifier(
                     &params.attribute_id_manager,
-                    &ModifierSpec::new(attribute, ModifierOperation::Add, 7.0),
+                    &ModifierSpec::new(attribute, ModifierOperation::AddBase, 7.0),
                     caller_source,
                 )
                 .unwrap();

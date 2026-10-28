@@ -78,7 +78,7 @@ fn failed_effect_application_does_not_leave_duration_modifier() {
     let effect = Arc::new(GameplayEffect::new(
         vec![Modifier::new(
             health,
-            ModifierOperation::Add,
+            ModifierOperation::AddBase,
             ModifierMagnitude::Flat(5.0),
         )],
         EffectDurationTicks::Infinite,

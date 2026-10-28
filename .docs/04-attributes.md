@@ -220,17 +220,30 @@ Aggregator 计算最新 current，返回 `AttributeSnapshot`。它会包含 dirt
 
 | `ModifierOperation` | 对 base 的行为 |
 | --- | --- |
-| `Add` | `base += value` |
-| `PercentAdd` | `base *= 1.0 + value` |
-| `Multiply` | `base *= value` |
+| `AddBase` | `base += value` |
+| `MultiplyAdditive` | `base *= value` |
+| `MultiplyCompound` | `base *= value` |
 | `Override` | `base = value` |
+| `DivideAdditive` | `abs(value) > 1e-8` 时 `base /= value`；近零值为中性除数 1 |
+| `AddFinal` | `base += value` |
 
 持续修改不改变 base，而是按 `ModifierSourceId` 保存在内部稀疏 Aggregator 中。移除一个不存在
 的来源是安全无操作。`remove_modifiers_for_attributes()` 会先解析全部 ID，再开始修改，避免无效
 ID 造成部分移除。
 
+即时操作按定义顺序执行；`AddFinal` 的末尾加法含义仅适用于持续聚合。持续 `DivideAdditive`
+以 `1 + sum(value - 1)` 合并除数；持续 `AddFinal` 在百分比、除法和独立乘法之后执行。
+即时和默认持续求值均把绝对值不超过 `1e-8` 的除数视为 1；即时中性除法仍会重算 current
+并调用执行后回调。超过容差的正负除数正常计算，游戏需约束其数值范围。
+六种运算的默认顺序与边界见 [05 — 修饰器与聚合器](./05-modifiers-and-aggregator.md)。
+
 重新调用 `initialize_attribute()` 会清空该槽位已有的 Aggregator 和持续修饰器，并用新 base
 重新初始化；`executor: None` 恢复默认求值器，`Some(function)` 安装函数指针执行器。
+
+游戏 executor 可以通过 `Aggregator::modifiers(operation)` 按当前存储顺序借用该运算的修饰器，
+读取幅度和来源，实现最强减速等自定义规则；不需要复制内部列表或访问可变 ECS 状态。
+未选中的修饰器仍保留，来源移除后可重新参与求值。Override 保留全部活动候选，默认取第一项；
+来源移除使用 swap removal，效果刷新贡献时先移除再追加，因此顺序可能随移除和刷新变化。
 
 ### 成本数值预演
 

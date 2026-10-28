@@ -156,7 +156,7 @@ fn instant_delta(attribute: AttributeId, value: f32) -> Arc<GameplayEffect> {
     Arc::new(GameplayEffect::new(
         vec![Modifier::new(
             attribute,
-            ModifierOperation::Add,
+            ModifierOperation::AddBase,
             ModifierMagnitude::Flat(value),
         )],
         EffectDurationTicks::Instant,

@@ -75,7 +75,7 @@ FIFO，已入队请求不会因 EndAbility 撤回。任务顺序与边界见 [08
 
 ### Additional Costs
 
-属性 Cost 继续使用 Instant、Add 类型的 GameplayEffect；背包物品、耐久等游戏资源通过
+属性 Cost 继续使用 Instant、AddBase 类型的 GameplayEffect；背包物品、耐久等游戏资源通过
 `with_additional_costs(Vec<AdditionalCost>)` 声明。两种成本可以同时使用。
 `AdditionalCost::new(resource: i32, amount: u32)` 接收游戏定义的整数资源 ID 和正整数数量，
 数量为零返回 `AdditionalCostError::InvalidAmount`。资源 ID 允许完整 i32 范围，包括负数和 0；

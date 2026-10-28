@@ -312,7 +312,7 @@ stack 或 create。它不会重新掷骰，也不会重新检查 application req
 
 上述幅度检查会在修改属性、授予标签、移除匹配效果以及更新已有层数／计时器之前完成，
 包括尚未 pulse 的周期效果和将被抑制的持续效果。周期执行与贡献恢复也会检查缩放值。
-它不改动 `Linear` 对所有操作一律线性乘层数的规则，也不改动 `Override` 单槽语义。
+`Linear` 的缩放按操作采用 UE bias 规则，`Override` 保持原幅度；默认聚合保留全部覆盖候选。
 检查对象是输入幅度及叠层缩放结果，不是所有浮点运算的全局有限性保证；有限值之间的
 属性聚合溢出、自定义 executor 和 post-execute 回调仍需由游戏约束数值范围和实现。
 
@@ -339,8 +339,14 @@ Requirement 以 target entity、slot、generation 的稳定顺序迭代到固定
 只有共享同一个 `Arc<GameplayEffect>` 实例（`Arc::ptr_eq`）的 spec 才能堆叠。按 source 聚合
 还要求 source 相同；按 target 聚合只要求位于同一目标容器。`stack_limit == 0` 表示无限制。
 
-`StackMagnitudePolicy::Linear` 将每个 spec 的原始 value 乘层数。已存在效果保留首次捕获的
-spec；后续应用更新层数和策略允许的计时器，不会用新 payload 重新捕获其 modifier 幅度。
+`StackMagnitudePolicy::Linear` 按操作缩放：`MultiplyAdditive` 和 `DivideAdditive` 使用
+`(value - 1) * stack_count + 1`；`Override` 不缩放；`AddBase`、`MultiplyCompound` 和
+`AddFinal` 使用 `value * stack_count`。所以同一 GE 的 `MultiplyCompound(1.5)` 两层为
+3 倍，两个独立贡献才相乘为 2.25 倍。`None` 始终使用单层幅度。
+
+已存在效果保留首次捕获的 spec；后续应用更新层数和策略允许的计时器，不会用新 payload
+重新捕获其 modifier 幅度。贡献刷新时先移除旧来源，再追加缩放结果；这会影响默认 Override
+的首项选择顺序，详见 [05 — 修饰器与聚合器](./05-modifiers-and-aggregator.md)。
 
 `RefreshDuration` 溢出策略保持原层数并继续成功堆叠路径；只有搭配
 `RefreshOnSuccessfulStack` 才实际刷新 duration。`RemoveSingleStack` 到期时减一层并把有限

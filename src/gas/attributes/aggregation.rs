@@ -1,37 +1,49 @@
 use super::AttributeLocation;
 use crate::modifiers::{AppliedModifier, ModifierOperation, ModifierSourceId, ModifierSpec};
 
-/// Evaluates an aggregator using the default operation ordering.
+pub(super) const DIVISOR_ZERO_TOLERANCE: f32 = 1.0e-8;
+
+/// Evaluates retained modifiers against `base_value` using the default ordering.
+///
+/// Returns the first retained override when present. Otherwise aggregates each operation
+/// separately, then applies base addition, additive multiplication, additive division,
+/// compound multiplication, and final addition. Additive multipliers and divisors combine
+/// as `1 + sum(value - 1)`. Divisors with absolute value at most `1e-8` act as one.
 pub fn default_executor(aggregator: &Aggregator, base_value: f32) -> f32 {
-    if let Some(override_value) = aggregator.override_value {
+    if let Some(override_value) = aggregator.overrides.first() {
         return override_value.get_value();
     }
 
-    let mut final_value = base_value;
-    for &add in &aggregator.additive {
-        final_value += add.get_value();
+    let additive = sum_modifiers(&aggregator.additive, 0.0);
+    let multiplier = sum_modifiers(&aggregator.multiplicative_additive, 1.0);
+    let mut divisor = sum_modifiers(&aggregator.divisive, 1.0);
+    if divisor.abs() <= DIVISOR_ZERO_TOLERANCE {
+        divisor = 1.0;
     }
+    let compound = aggregator
+        .multiplicative
+        .iter()
+        .fold(1.0, |product, modifier| product * modifier.get_value());
+    let final_additive = sum_modifiers(&aggregator.final_additive, 0.0);
 
-    let mut percent_sum = 0.0;
-    for &percent in &aggregator.percent_additive {
-        percent_sum += percent.get_value();
-    }
-    final_value *= 1.0 + percent_sum;
+    (base_value + additive) * multiplier / divisor * compound + final_additive
+}
 
-    for &multiplier in &aggregator.multiplicative {
-        final_value *= multiplier.get_value();
-    }
-
-    final_value
+fn sum_modifiers(modifiers: &[AppliedModifier], bias: f32) -> f32 {
+    modifiers
+        .iter()
+        .fold(bias, |sum, modifier| sum + (modifier.get_value() - bias))
 }
 
 /// Collects active modifiers for one attribute and evaluates its current value.
 #[derive(Debug, Clone)]
 pub struct Aggregator {
     additive: Vec<AppliedModifier>,
-    percent_additive: Vec<AppliedModifier>,
+    multiplicative_additive: Vec<AppliedModifier>,
     multiplicative: Vec<AppliedModifier>,
-    override_value: Option<AppliedModifier>,
+    overrides: Vec<AppliedModifier>,
+    divisive: Vec<AppliedModifier>,
+    final_additive: Vec<AppliedModifier>,
     executor: fn(&Aggregator, f32) -> f32,
     has_custom_executor: bool,
 }
@@ -40,9 +52,11 @@ impl Default for Aggregator {
     fn default() -> Self {
         Self {
             additive: Vec::new(),
-            percent_additive: Vec::new(),
+            multiplicative_additive: Vec::new(),
             multiplicative: Vec::new(),
-            override_value: None,
+            overrides: Vec::new(),
+            divisive: Vec::new(),
+            final_additive: Vec::new(),
             executor: default_executor,
             has_custom_executor: false,
         }
@@ -73,26 +87,59 @@ impl Aggregator {
     ) {
         let applied_modifier = AppliedModifier::new(source_id.into(), spec.get_value());
         match spec.get_operation() {
-            ModifierOperation::Add => self.additive.push(applied_modifier),
-            ModifierOperation::Multiply => self.multiplicative.push(applied_modifier),
-            ModifierOperation::PercentAdd => self.percent_additive.push(applied_modifier),
-            ModifierOperation::Override => self.override_value = Some(applied_modifier),
+            ModifierOperation::AddBase => self.additive.push(applied_modifier),
+            ModifierOperation::MultiplyCompound => self.multiplicative.push(applied_modifier),
+            ModifierOperation::MultiplyAdditive => {
+                self.multiplicative_additive.push(applied_modifier)
+            }
+            ModifierOperation::Override => self.overrides.push(applied_modifier),
+            ModifierOperation::DivideAdditive => self.divisive.push(applied_modifier),
+            ModifierOperation::AddFinal => self.final_additive.push(applied_modifier),
         }
     }
 
-    /// Removes every modifier owned by `source_id`.
+    /// Borrows the retained modifiers for `operation` in current storage order.
+    ///
+    /// Returns an allocation-free, read-only iterator over values and source IDs for
+    /// custom executors. New modifiers are appended; source removal uses swap removal
+    /// and can reorder surviving entries. All overrides remain retained, with the first
+    /// entry selected by the default executor. Unselected modifiers remain available
+    /// until their source is removed. Refreshing a source removes and appends its entries.
+    pub fn modifiers(
+        &self,
+        operation: ModifierOperation,
+    ) -> impl DoubleEndedIterator<Item = &AppliedModifier> + ExactSizeIterator + '_ {
+        let modifiers = match operation {
+            ModifierOperation::AddBase => self.additive.as_slice(),
+            ModifierOperation::MultiplyAdditive => self.multiplicative_additive.as_slice(),
+            ModifierOperation::MultiplyCompound => self.multiplicative.as_slice(),
+            ModifierOperation::Override => self.overrides.as_slice(),
+            ModifierOperation::DivideAdditive => self.divisive.as_slice(),
+            ModifierOperation::AddFinal => self.final_additive.as_slice(),
+        };
+        modifiers.iter()
+    }
+
+    /// Removes every modifier owned by `source_id` using swap removal.
+    ///
+    /// Surviving entries can change order, including which override is selected next.
     pub fn remove_modifiers_by_source(&mut self, source_id: ModifierSourceId) {
-        self.additive
-            .retain(|modifier| modifier.get_source_id() != source_id);
-        self.percent_additive
-            .retain(|modifier| modifier.get_source_id() != source_id);
-        self.multiplicative
-            .retain(|modifier| modifier.get_source_id() != source_id);
-        if self
-            .override_value
-            .is_some_and(|modifier| modifier.get_source_id() == source_id)
-        {
-            self.override_value = None;
+        for modifiers in [
+            &mut self.additive,
+            &mut self.multiplicative_additive,
+            &mut self.multiplicative,
+            &mut self.overrides,
+            &mut self.divisive,
+            &mut self.final_additive,
+        ] {
+            let mut index = 0;
+            while index < modifiers.len() {
+                if modifiers[index].get_source_id() == source_id {
+                    modifiers.swap_remove(index);
+                } else {
+                    index += 1;
+                }
+            }
         }
     }
 
@@ -104,17 +151,21 @@ impl Aggregator {
     /// Removes all retained modifiers.
     pub fn reset(&mut self) {
         self.additive.clear();
-        self.percent_additive.clear();
+        self.multiplicative_additive.clear();
         self.multiplicative.clear();
-        self.override_value = None;
+        self.overrides.clear();
+        self.divisive.clear();
+        self.final_additive.clear();
     }
 
     /// Returns the total number of modifiers across all operation slots.
     pub fn modifier_count(&self) -> usize {
         self.additive.len()
-            + self.percent_additive.len()
+            + self.multiplicative_additive.len()
             + self.multiplicative.len()
-            + usize::from(self.override_value.is_some())
+            + self.overrides.len()
+            + self.divisive.len()
+            + self.final_additive.len()
     }
 
     /// Evaluates the current value from `base_value`.

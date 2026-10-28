@@ -580,7 +580,7 @@ fn task_effect_application_inherits_activation_context_payload() {
     let effect = Arc::new(GameplayEffect::new(
         vec![Modifier::new(
             damage,
-            ModifierOperation::Add,
+            ModifierOperation::AddBase,
             ModifierMagnitude::Calculated(Box::new(QueuedEffectContextMagnitude {
                 expected_causer: causer,
                 snapshot_attribute: power,

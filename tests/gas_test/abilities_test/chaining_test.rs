@@ -158,7 +158,7 @@ fn chained_startup_effect_inherits_activation_payload() {
     let startup_effect = Arc::new(GameplayEffect::new(
         vec![Modifier::new(
             damage,
-            ModifierOperation::Add,
+            ModifierOperation::AddBase,
             ModifierMagnitude::Calculated(Box::new(ContextPayloadMagnitude {
                 expected_instigator: instigator,
                 expected_causer: causer,

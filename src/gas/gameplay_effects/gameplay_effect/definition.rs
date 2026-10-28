@@ -68,13 +68,14 @@ impl GameplayEffect {
         &self.tags
     }
 
-    /// Returns whether every modifier uses addition, including when there are no modifiers.
+    /// Returns whether every modifier uses base addition, including when there are no modifiers.
     ///
-    /// Ability costs require additive modifiers so affordability can be checked before payment.
+    /// Ability costs require [`ModifierOperation::AddBase`] so affordability can be checked
+    /// before payment. Final addition is not accepted as a cost operation.
     pub fn has_only_add_modifiers(&self) -> bool {
         self.modifiers
             .iter()
-            .all(|modifier| modifier.get_operation() == ModifierOperation::Add)
+            .all(|modifier| modifier.get_operation() == ModifierOperation::AddBase)
     }
 
     /// Returns the configured application probability without sampling it.

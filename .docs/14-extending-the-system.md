@@ -34,15 +34,32 @@ GAS `Random` 保留效果概率随机流，模板 `SpatialRandom` 持有独立�
 `Instant` / `WaitTicks`。需要延迟提交或等待外部信号时，应先定义通用协议和取消语义，
 再由游戏接入具体动作；不要假定发出 `AbilityTaskEvent` 已能暂停并恢复技能。
 
+## 自定义属性聚合规则
+
+已有六种 `ModifierOperation` 表达加法、百分比合并、除数合并、独立乘法、最终加法和覆盖。
+若只需改变修饰器筛选、组合顺序或限幅，优先在游戏侧提供纯函数 executor，再通过
+`AttributeSet::initialize_attribute(..., Some(executor))` 安装。executor 使用
+`Aggregator::modifiers(operation)` 借用只读贡献，可读取幅度与中立来源 ID；按当前存储
+顺序访问，不分配临时列表。来源移除使用 swap removal，效果刷新先移除再追加；
+不要依赖永久不变的应用次序。示例见 [05 — 修饰器与聚合器](./05-modifiers-and-aggregator.md)。
+
+不要在求值时修改 World、抽随机数、发送事件或删除未选中的贡献。实际重算、只读属性查询和
+成本预演都会调用 executor，相同输入必须得到相同输出。库继续负责来源生命周期和 dirty
+标记；游戏负责具体聚合规则，模板负责策略配置到函数的映射。
+
+只读访问不提供通道、优先级元数据或已移除来源的历史。Override 保留所有活动候选，默认
+选择当前存储中的第一项；游戏可遍历候选选取最大值，使最强覆盖到期后恢复弱覆盖。
+
 ## 新增 Modifier 操作
 
 1. 在 `src/gas/modifiers/definition.rs` 的 `ModifierOperation` 添加变体；
 2. 在 `src/gas/attributes/aggregation.rs` 的 `Aggregator::apply_modifier_spec()` 添加对应存储；
-3. 更新 `remove_modifiers_by_source()`、`reset()` 与 `modifier_count()`，保持清理和计数对称；
-4. 在 `default_executor()` 中明确该操作相对 Override/Add/PercentAdd/Multiply 的求值顺序；
+3. 更新 `modifiers()`、`remove_modifiers_by_source()`、`reset()` 与 `modifier_count()`，保持只读访问、清理和计数对称；
+4. 在 `default_executor()` 中明确该操作相对 Override/AddBase/MultiplyAdditive/DivideAdditive/MultiplyCompound/AddFinal 的求值顺序；
 5. 在 `src/gas/attributes/attribute_set/state.rs` 的即时 base 修改逻辑中处理新操作；
 6. 添加 Aggregator 纯行为测试，以及 Instant/Duration Effect 集成测试；
-7. 更新 [05 — 修饰器与聚合器](./05-modifiers-and-aggregator.md)。
+7. 同步游戏模板的配置枚举和编译映射，保持已有配置编号并通过导表重新生成代码；
+8. 更新 [05 — 修饰器与聚合器](./05-modifiers-and-aggregator.md)。
 
 Modifier 是独立共享领域：Effect 负责把定义求值为 `ModifierSpec`，Attribute 只消费 spec 与
 `ModifierSourceId`。不得让 `modifiers/` 反向依赖 Active Effect runtime 类型。

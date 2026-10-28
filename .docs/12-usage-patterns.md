@@ -176,7 +176,7 @@ fn make_laser_damage(
     Arc::new(GameplayEffect::new(
         vec![Modifier::new(
             health_id,
-            ModifierOperation::Add,
+            ModifierOperation::AddBase,
             ModifierMagnitude::Calculated(Box::new(LaserDamage { attack_id })),
         )],
         EffectDurationTicks::Instant,
@@ -233,7 +233,7 @@ fn grant_laser(
 
 `AbilityActivationContext::direct()` 不会自动捕获属性；要让上面的计算器读取施法时刻攻击力，
 producer 必须像本节的队列示例一样附加 `AttributeSetSnapshot`。若没有快照，示例计算器显式回退
-到 `0.0`。作为 ability cost 的效果必须是 Instant 且只包含 `Add` modifier。当前支付检查按
+到 `0.0`。作为 ability cost 的效果必须是 Instant 且只包含 `AddBase` modifier。当前支付检查按
 Modifier 独立比较检查开始时的当前值，因此同一个 Cost 对同一属性应只配置一个扣减 Modifier；
 多个扣减项不会先合并，合计值可能越过零。
 
@@ -246,7 +246,7 @@ fn make_poison(health_id: AttributeId) -> Arc<GameplayEffect> {
     Arc::new(GameplayEffect::new(
         vec![Modifier::new(
             health_id,
-            ModifierOperation::Add,
+            ModifierOperation::AddBase,
             ModifierMagnitude::Flat(-10.0),
         )],
         EffectDurationTicks::DurationTicks(ModifierMagnitude::Flat(15.0)),
@@ -286,8 +286,8 @@ fn make_speed_buff(
     Ok(Arc::new(GameplayEffect::new(
         vec![Modifier::new(
             speed_id,
-            ModifierOperation::PercentAdd,
-            ModifierMagnitude::Flat(0.3),
+            ModifierOperation::MultiplyAdditive,
+            ModifierMagnitude::Flat(1.3),
         )],
         EffectDurationTicks::Infinite,
         None,
