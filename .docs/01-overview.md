@@ -6,7 +6,7 @@
 ARPG 等 Gameplay 规则所需的基础能力。空间查询、逻辑位置、攻击命中、表现插值、具体输入映射、
 动画、视觉资源、网络同步和资源序列化格式由游戏决定。
 
-当前依赖基线为 Bevy 0.20.0、Rust 1.97.1+（edition 2024）；引擎接口迁移说明见
+当前依赖基线为 Bevy 0.20.1、Rust 1.97.1+（edition 2024）；引擎接口迁移说明见
 [02 — 插件与生命周期](./02-plugins-and-lifecycle.md#bevy-020-升级基线)。
 库的 Bevy 依赖关闭默认 features，仅启用 `std`、`multi_threaded` 和 `bevy_log`。
 输入绑定和 Bevy 几何采样由模板维护，GAS 不直接依赖 `bevy_shape`。窗口、渲染及资源格式

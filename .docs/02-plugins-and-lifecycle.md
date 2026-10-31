@@ -2,8 +2,8 @@
 
 ## Bevy 0.20 升级基线
 
-当前依赖 Bevy 0.20.0，使用 Rust edition 2024。Bevy 的最低 Rust 版本为 1.97.1，见
-[Bevy 0.20.0 Cargo 元数据](https://docs.rs/crate/bevy/0.20.0/source/Cargo.toml)。
+当前依赖 Bevy 0.20.1，使用 Rust edition 2024。Bevy 的最低 Rust 版本为 1.97.1，见
+[Bevy 0.20.1 Cargo 元数据](https://docs.rs/crate/bevy/0.20.1/source/Cargo.toml)。
 
 生命周期 Observer 的组件类型现在放在事件泛型内：`On<Discard, T>` 改为
 `On<Discard<T>>`，`On<Add, T>` / `On<Remove, T>` 同样改为 `On<Add<T>>` /

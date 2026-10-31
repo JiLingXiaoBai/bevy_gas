@@ -4,7 +4,7 @@
 Gameplay Tags、Attributes、Modifiers、Gameplay Effects、Gameplay Abilities、Ability Tasks、
 目标结果契约，以及基于 `FixedUpdate` tick 的统一 Gameplay 执行队列。
 
-项目使用 Rust edition 2024，当前依赖 Bevy 0.20.0，最低要求 Rust 1.97.1。具体依赖版本见 [Cargo.toml](./Cargo.toml)，升级说明见 [插件与生命周期](./.docs/02-plugins-and-lifecycle.md#bevy-020-升级基线)。
+项目使用 Rust edition 2024，当前依赖 Bevy 0.20.1，最低要求 Rust 1.97.1。具体依赖版本见 [Cargo.toml](./Cargo.toml)，升级说明见 [插件与生命周期](./.docs/02-plugins-and-lifecycle.md#bevy-020-升级基线)。
 
 本库关闭 Bevy 默认 features，运行依赖只启用 `std`、`multi_threaded` 和 `bevy_log`。
 输入绑定与 Bevy 几何采样由模板维护，GAS 随机资源只承担通用范围与效果概率采样。
